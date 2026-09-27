@@ -1,0 +1,29 @@
+# Godot 4.x cache and editor state
+.godot/
+
+# Godot-generated export files
+*.translation
+
+# Build outputs
+build/
+builds/
+*.apk
+*.aab
+*.ap_
+
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux / Editor swap files
+*~
+*.swp
+*.swo
+
+# IDE / Editor configuration
+.idea/
+.vscode/
