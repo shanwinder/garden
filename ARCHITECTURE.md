@@ -1175,9 +1175,22 @@ At minimum, architecture must make these testable without manual UI input:
 
 ### Test framework
 
-Do not add a third-party testing plugin automatically.
+**Approved initial approach (Task 0.4B, Milestone 0): native GDScript headless runner.**
 
-Initial implementation should prefer a small headless-compatible test approach using Godot itself. If the project later adopts a testing plugin such as GUT or another framework, that decision must be explicit and justified under the dependency rules.
+The project uses a small, self-contained headless test runner written in GDScript with no third-party addon or plugin dependency.
+
+Key properties of the approved runner:
+
+- Entry point: `res://tests/run_tests.gd` (extends `SceneTree`).
+- Base class: `res://tests/test_suite_base.gd` (extends `RefCounted`).
+- Suites are registered explicitly in the runner — no filesystem discovery.
+- Canonical command: `godot --headless --path . --script res://tests/run_tests.gd`
+- Exit code 0 when all tests pass; exit code 1 when any test fails.
+- No autoload, no scene required, no global mutable state.
+
+This runner should remain intentionally minimal. Do not grow it into a general-purpose testing framework merely to avoid adopting a dependency. If the project later needs a more capable test framework (such as GUT or GdUnit4), that adoption must go through the normal dependency and architecture-change process defined in Sections 38 and 46.
+
+There is currently no third-party testing addon in the project.
 
 ### Test fixtures
 
@@ -1549,7 +1562,7 @@ Before considering a non-trivial feature implementation acceptable, verify:
 The following decisions are intentionally not finalized yet:
 
 1. Exact placement model: free placement, grid, slots, or hybrid.
-2. Exact automated test framework/harness implementation.
+2. ~~Exact automated test framework/harness implementation.~~ **RESOLVED (Task 0.4B):** Native GDScript headless runner with no third-party addon. See Section 34 for details.
 3. Exact Android minimum/target SDK levels.
 4. Exact content localization languages for first release.
 5. Exact save-backup retention policy.

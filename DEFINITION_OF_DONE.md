@@ -895,19 +895,74 @@ A normal code task should not be called done until the applicable items below ar
 
 ## 44. Canonical Commands
 
-**Status: TBD**
+**Status: PARTIALLY ESTABLISHED — updated by Task 0.4B (Milestone 0)**
 
-The repository does not yet have a finalized project/test/export toolchain. Once the initial Godot project foundation is created, replace this section with the canonical commands for:
+The commands below have been verified on Godot 4.7.2.stable.official.ed1daf0bf.
+All commands are run from the repository root (`/Applications/garden` or equivalent).
 
-- project/headless validation;
-- automated tests;
-- lint/static checks if adopted;
-- debug run/build;
-- Android debug export;
-- Android release export when established;
-- repository diff/format checks.
+### Godot version check
 
-Until then, agents must discover and report the actual available commands rather than inventing command names.
+```sh
+godot --version
+# Expected output: 4.7.2.stable.official.ed1daf0bf
+```
+
+### Project / import validation
+
+```sh
+godot --headless --import
+# Exit code 0 = project imported cleanly.
+# Benign errors about editor_settings-4.7.tres in sandbox/CI are expected and ignorable.
+```
+
+### Automated test suite
+
+```sh
+godot --headless --path . --script res://tests/run_tests.gd
+# Exit code 0 = all tests passed.
+# Exit code 1 = one or more tests failed.
+# Human-readable PASS/FAIL summary is printed to stdout.
+```
+
+### Headless application boot smoke check
+
+The main scene is a persistent application scene and does not self-terminate.
+For headless smoke checks, use the import validation above, which verifies that
+all scripts parse and the project loads cleanly.
+
+### Git diff validation
+
+```sh
+# Check for whitespace errors in unstaged changes:
+git diff --check
+
+# Check for whitespace errors in staged changes before commit:
+git diff --cached --check
+
+# Inspect full staged diff before commit:
+git diff --cached
+```
+
+### Android debug export
+
+**TBD** — Android export presets do not yet exist in this repository.
+This section will be updated when the Android toolchain task is completed.
+
+### Android release export
+
+**TBD** — Requires signed release keystore and export preset. Not yet established.
+
+### Lint / static checks
+
+**TBD** — No separate static-analysis tool is currently configured.
+The Godot headless import (`godot --headless --import`) acts as the primary
+parse/type-check step available at this stage.
+
+---
+
+> **Note:** Only document commands that have been actually verified in this repository.
+> Do not add commands that were not run successfully.
+
 
 ---
 

@@ -1,6 +1,9 @@
 # Godot 4.x cache and editor state
 .godot/
 
+# Godot-generated sidecar files
+*.uid
+
 # Godot-generated export files
 *.translation
 
