@@ -895,7 +895,7 @@ A normal code task should not be called done until the applicable items below ar
 
 ## 44. Canonical Commands
 
-**Status: PARTIALLY ESTABLISHED — updated by Task 0.4C (Milestone 0)**
+**Status: PARTIALLY ESTABLISHED — updated by Task 0.4D (Milestone 0)**
 
 The commands below have been verified on Godot 4.7.2.stable.official.ed1daf0bf.
 All commands are run from the repository root (`/Applications/garden` or equivalent).
@@ -912,7 +912,7 @@ godot --version
 Verifies that Godot can parse and import project resources successfully.
 
 ```sh
-godot --headless --import
+godot --headless --import --log-file ./.godot/headless.log
 # Exit code 0 = project resources parsed and imported successfully.
 # Exit code must always be checked (must be 0).
 # Project, script, or scene parse/load errors are failures.
@@ -923,7 +923,7 @@ godot --headless --import
 ### Automated test suite
 
 ```sh
-godot --headless --path . --script res://tests/run_tests.gd
+godot --headless --path . --script res://tests/run_tests.gd --log-file ./.godot/headless.log
 # Exit code 0 = all tests passed (zero failures, no FAIL test output).
 # Exit code 1 = one or more tests failed.
 # Human-readable PASS/FAIL summary is printed to stdout.
@@ -934,7 +934,7 @@ godot --headless --path . --script res://tests/run_tests.gd
 Verifies that the configured main scene (`res://scenes/app/main.tscn`) actually loads and the process exits cleanly without manual intervention.
 
 ```sh
-godot --headless --path . --quit-after 2 --verbose
+godot --headless --path . --quit-after 2 --verbose --log-file ./.godot/headless.log
 # Exit code 0 = engine booted, main scene loaded, and process exited cleanly.
 # Verbose output confirms: "Loading resource: res://scenes/app/main.tscn"
 # and "Completed load for: 'res://scenes/app/main.tscn'".
@@ -966,7 +966,7 @@ This section will be updated when the Android toolchain task is completed.
 ### Lint / static checks
 
 **TBD** — No separate static-analysis tool is currently configured.
-The Godot headless import (`godot --headless --import`) acts as the primary
+The Godot headless import (`godot --headless --import --log-file ./.godot/headless.log`) acts as the primary
 parse/type-check step available at this stage.
 
 ---
