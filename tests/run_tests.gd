@@ -22,6 +22,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 	return [
 		TestHarnessSmoke.new(),
 		TestAppRoot.new(),
+		TestGameClock.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────
