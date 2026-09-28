@@ -956,8 +956,15 @@ git diff --cached
 
 ### Android debug export
 
-**TBD** — Android export presets do not yet exist in this repository.
-This section will be updated when the Android toolchain task is completed.
+Exports a debug APK using the standard built-in export template and the tracked "Android Debug" export preset.
+
+```sh
+godot --headless --path . --export-debug "Android Debug" builds/android/Garden-debug.apk --log-file ./.godot/headless.log
+# Exit code 0 = APK exported and signed successfully.
+# Output path: builds/android/Garden-debug.apk
+# Note: The output directory (builds/android) must exist before running.
+# Generated APK artifacts under builds/ are ignored by Git (.gitignore).
+```
 
 ### Android release export
 
