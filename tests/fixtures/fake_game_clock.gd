@@ -47,12 +47,20 @@ func monotonic_milliseconds() -> int:
 ## Moves UTC time forward by the given number of seconds.
 ## delta must be non-negative; use set_utc_seconds() for backward movement.
 func advance_utc_seconds(delta: int) -> void:
+	assert(
+		delta >= 0,
+		"advance_utc_seconds delta must be non-negative; use set_utc_seconds() for rollback"
+	)
 	_utc_seconds += delta
 
 
 ## Moves monotonic time forward by the given number of milliseconds.
 ## delta must be non-negative; monotonic time does not move backward.
 func advance_monotonic_ms(delta: int) -> void:
+	assert(
+		delta >= 0,
+		"advance_monotonic_ms delta must be non-negative; monotonic time cannot move backward"
+	)
 	_monotonic_ms += delta
 
 

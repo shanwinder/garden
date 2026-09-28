@@ -35,7 +35,9 @@ func run_tests() -> void:
 	_test_fake_initial_utc()
 	_test_fake_initial_monotonic()
 	_test_fake_advance_utc()
+	_test_fake_advance_utc_zero_delta()
 	_test_fake_advance_monotonic()
+	_test_fake_advance_monotonic_zero_delta()
 	_test_fake_set_utc_forward()
 	_test_fake_set_utc_backward_rollback()
 	_test_fake_multiple_advances()
@@ -135,6 +137,16 @@ func _test_fake_advance_utc() -> void:
 	)
 
 
+func _test_fake_advance_utc_zero_delta() -> void:
+	describe("FakeGameClock.advance_utc_seconds(0) leaves UTC seconds unchanged")
+	var clock := FakeGameClock.new(1_000_000, 0)
+	clock.advance_utc_seconds(0)
+	assert_eq(
+		clock.utc_now_seconds(), 1_000_000,
+		"advance_utc_seconds(0) must leave UTC unchanged"
+	)
+
+
 func _test_fake_advance_monotonic() -> void:
 	describe("FakeGameClock.advance_monotonic_ms() produces exact expected monotonic value")
 	var clock := FakeGameClock.new(0, 1000)
@@ -147,6 +159,16 @@ func _test_fake_advance_monotonic() -> void:
 	assert_eq(
 		clock.monotonic_milliseconds(), 3500,
 		"After +2000ms more, monotonic_milliseconds() must be 3500"
+	)
+
+
+func _test_fake_advance_monotonic_zero_delta() -> void:
+	describe("FakeGameClock.advance_monotonic_ms(0) leaves monotonic milliseconds unchanged")
+	var clock := FakeGameClock.new(0, 1000)
+	clock.advance_monotonic_ms(0)
+	assert_eq(
+		clock.monotonic_milliseconds(), 1000,
+		"advance_monotonic_ms(0) must leave monotonic unchanged"
 	)
 
 
