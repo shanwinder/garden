@@ -21,6 +21,7 @@ extends SceneTree
 func _register_suites() -> Array[TestSuiteBase]:
 	return [
 		TestHarnessSmoke.new(),
+		TestAppRoot.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────

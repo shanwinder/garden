@@ -14,6 +14,10 @@ config/name="Garden"
 run/main_scene="res://scenes/app/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
+[autoload]
+
+App="*res://src/application/app_root.gd"
+
 [display]
 
 window/size/viewport_width=1080
