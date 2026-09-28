@@ -895,7 +895,7 @@ A normal code task should not be called done until the applicable items below ar
 
 ## 44. Canonical Commands
 
-**Status: PARTIALLY ESTABLISHED — updated by Task 0.4B (Milestone 0)**
+**Status: PARTIALLY ESTABLISHED — updated by Task 0.4C (Milestone 0)**
 
 The commands below have been verified on Godot 4.7.2.stable.official.ed1daf0bf.
 All commands are run from the repository root (`/Applications/garden` or equivalent).
@@ -909,26 +909,37 @@ godot --version
 
 ### Project / import validation
 
+Verifies that Godot can parse and import project resources successfully.
+
 ```sh
 godot --headless --import
-# Exit code 0 = project imported cleanly.
-# Benign errors about editor_settings-4.7.tres in sandbox/CI are expected and ignorable.
+# Exit code 0 = project resources parsed and imported successfully.
+# Exit code must always be checked (must be 0).
+# Project, script, or scene parse/load errors are failures.
+# Environment-specific warnings (such as sandbox/CI editor_settings write errors)
+# must be disclosed rather than silently ignored.
 ```
 
 ### Automated test suite
 
 ```sh
 godot --headless --path . --script res://tests/run_tests.gd
-# Exit code 0 = all tests passed.
+# Exit code 0 = all tests passed (zero failures, no FAIL test output).
 # Exit code 1 = one or more tests failed.
 # Human-readable PASS/FAIL summary is printed to stdout.
 ```
 
 ### Headless application boot smoke check
 
-The main scene is a persistent application scene and does not self-terminate.
-For headless smoke checks, use the import validation above, which verifies that
-all scripts parse and the project loads cleanly.
+Verifies that the configured main scene (`res://scenes/app/main.tscn`) actually loads and the process exits cleanly without manual intervention.
+
+```sh
+godot --headless --path . --quit-after 2 --verbose
+# Exit code 0 = engine booted, main scene loaded, and process exited cleanly.
+# Verbose output confirms: "Loading resource: res://scenes/app/main.tscn"
+# and "Completed load for: 'res://scenes/app/main.tscn'".
+# Exit code must be 0.
+```
 
 ### Git diff validation
 
