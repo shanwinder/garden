@@ -17,6 +17,13 @@
 class_name GodotRandomSource
 extends RandomSource
 
+# 2^32 as a float constant for converting a 32-bit unsigned integer to [0.0, 1.0).
+# Godot's RandomNumberGenerator.randi() returns values in [0, 4294967295] (unsigned).
+# Dividing by 4294967296.0 produces a half-open result:
+#   minimum: float(0) / 4294967296.0 == 0.0
+#   maximum: float(4294967295) / 4294967296.0 < 1.0  (~0.9999999997671694)
+const _UINT32_DOMAIN_SIZE: float = 4294967296.0
+
 # One internal RNG instance per GodotRandomSource. Not exposed publicly.
 var _rng: RandomNumberGenerator
 
@@ -30,23 +37,38 @@ func _init() -> void:
 
 ## Returns a uniformly distributed random float in [0.0, 1.0).
 ##
-## Delegates to RandomNumberGenerator.randf() which returns values in
-## [0.0, 1.0) per Godot 4 documentation.
+## Implementation:
+##   Uses _rng.randi() which returns a 32-bit unsigned integer [0, 4294967295].
+##   Dividing by 4294967296.0 produces a true half-open uniform distribution:
+##     minimum result: 0.0         (when randi() == 0)
+##     maximum result: < 1.0       (when randi() == 4294967295, result ≈ 0.9999999998)
+##
+## Note: RandomNumberGenerator.randf() is NOT used here because the Godot 4.7
+##   documentation states randf() returns values in [0.0, 1.0] INCLUSIVE, which
+##   would violate the half-open [0.0, 1.0) contract required by RandomSource.
+##   Using randi() / 2^32 is the correct way to guarantee strict half-open range.
 func next_float() -> float:
-	return _rng.randf()
+	return float(_rng.randi()) / _UINT32_DOMAIN_SIZE
 
 
 ## Returns a uniformly distributed random integer in [min_value, max_value]
 ## (both endpoints inclusive).
 ##
-## Fails loudly if min_value > max_value rather than silently swapping bounds.
-## Delegates to RandomNumberGenerator.randi_range() for the actual generation.
+## For VALID input (min_value <= max_value):
+##   Delegates to _rng.randi_range() and returns a value in [min_value, max_value].
+##
+## For INVALID input (min_value > max_value):
+##   Emits push_error() with a diagnostic message.
+##   Does NOT call the underlying RNG (no random value is consumed).
+##   Returns min_value as a deterministic failure sentinel.
+##   The fallback min_value is NOT a valid random result; it signals
+##   a programming error that must be fixed by the caller.
 func range_int(min_value: int, max_value: int) -> int:
-	assert(
-		min_value <= max_value,
-		(
-			"GodotRandomSource.range_int: min_value (%d) must be <= max_value (%d)"
+	if min_value > max_value:
+		push_error(
+			"GodotRandomSource.range_int: min_value (%d) must be <= max_value (%d). "
 			% [min_value, max_value]
+			+ "Returning min_value as a deterministic error sentinel (no RNG consumed)."
 		)
-	)
+		return min_value
 	return _rng.randi_range(min_value, max_value)

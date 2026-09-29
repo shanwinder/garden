@@ -20,6 +20,8 @@
 ##   - scripted float values are validated to be in [0.0, 1.0) at construction
 ##   - scripted int values are validated against the requested range at call time
 ##   - float and int streams are fully independent
+##   - caller mutation of the original input arrays after construction does NOT
+##     affect the scripted sequences (independent copies are made at construction)
 ##
 ## This class must exist only under tests/. It must not be used in production.
 class_name FakeRandomSource
@@ -39,6 +41,11 @@ var _int_index: int
 ##   scripted_ints   — values returned sequentially by range_int().
 ##                     Each value is validated against the requested range
 ##                     at call time, not at construction.
+##
+## Independence guarantee:
+##   Independent copies of both arrays are made at construction time.
+##   Mutating the caller's original arrays after construction has no effect
+##   on the scripted sequences returned by this fake.
 func _init(scripted_floats: Array[float], scripted_ints: Array[int]) -> void:
 	# Validate all scripted floats at construction time so a mis-authored
 	# test fails immediately rather than at an unpredictable call site.
@@ -48,8 +55,10 @@ func _init(scripted_floats: Array[float], scripted_ints: Array[int]) -> void:
 			"FakeRandomSource: scripted float %s is outside valid range [0.0, 1.0)" % v
 		)
 
-	_floats = scripted_floats
-	_ints = scripted_ints
+	# Make independent copies so that caller mutation after construction
+	# cannot corrupt the scripted sequence.
+	_floats = scripted_floats.duplicate()
+	_ints = scripted_ints.duplicate()
 	_float_index = 0
 	_int_index = 0
 

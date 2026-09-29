@@ -7,9 +7,11 @@
 ##      production methods return values within specified bounds.
 ##   2. Fake determinism — FakeRandomSource returns exact scripted values in
 ##      order, float and int streams are independent, and bounds are validated.
-##   3. Weighted selection — choose_weighted_index() boundary behavior is
+##   3. FakeRandomSource array isolation — caller mutation of input arrays after
+##      construction does not affect scripted sequences (Severity 4 fix).
+##   4. Weighted selection — choose_weighted_index() boundary behavior is
 ##      verified with exact FakeRandomSource rolls. All tests are deterministic.
-##   4. AppRoot composition — AppRoot exposes a non-null typed RandomSource
+##   5. AppRoot composition — AppRoot exposes a non-null typed RandomSource
 ##      and the instance is a GodotRandomSource.
 ##
 ## Non-flakiness guarantee:
@@ -43,6 +45,10 @@ func run_tests() -> void:
 	_test_fake_ints_consumed_in_order()
 	_test_fake_streams_are_independent()
 	_test_fake_range_int_equal_bounds()
+
+	# FakeRandomSource array isolation (Severity 4 fix)
+	_test_fake_float_array_isolated_from_caller()
+	_test_fake_int_array_isolated_from_caller()
 
 	# AppRoot composition
 	_test_app_root_owns_non_null_random_source()
@@ -157,6 +163,48 @@ func _test_fake_range_int_equal_bounds() -> void:
 	describe("FakeRandomSource.range_int(5, 5) with scripted 5 returns exactly 5")
 	var src := FakeRandomSource.new([], [5])
 	assert_eq(src.range_int(5, 5), 5, "range_int(5, 5) with scripted 5 must return 5")
+
+
+# ── FakeRandomSource array isolation ─────────────────────────────────────────
+#
+# Closes the Severity 4 array-aliasing finding from Task 1.2R.
+# Verifies that mutating the caller's original arrays after FakeRandomSource
+# construction does NOT affect the scripted sequences.
+
+func _test_fake_float_array_isolated_from_caller() -> void:
+	describe("FakeRandomSource float sequence is independent of caller mutation")
+	var caller_floats: Array[float] = [0.3, 0.6]
+	var src := FakeRandomSource.new(caller_floats, [])
+	# Mutate the caller's original array after construction.
+	caller_floats[0] = 0.99
+	caller_floats[1] = 0.01
+	# The scripted sequence must still return the original values.
+	assert_eq(
+		src.next_float(), 0.3,
+		"next_float() must return original scripted 0.3 even after caller mutated input"
+	)
+	assert_eq(
+		src.next_float(), 0.6,
+		"next_float() must return original scripted 0.6 even after caller mutated input"
+	)
+
+
+func _test_fake_int_array_isolated_from_caller() -> void:
+	describe("FakeRandomSource int sequence is independent of caller mutation")
+	var caller_ints: Array[int] = [4, 9]
+	var src := FakeRandomSource.new([], caller_ints)
+	# Mutate the caller's original array after construction.
+	caller_ints[0] = 99
+	caller_ints[1] = 99
+	# The scripted sequence must still return the original values.
+	assert_eq(
+		src.range_int(1, 10), 4,
+		"range_int() must return original scripted 4 even after caller mutated input"
+	)
+	assert_eq(
+		src.range_int(1, 10), 9,
+		"range_int() must return original scripted 9 even after caller mutated input"
+	)
 
 
 # ── AppRoot composition ───────────────────────────────────────────────────────

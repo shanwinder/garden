@@ -39,51 +39,76 @@ func next_float() -> float;
 ## Returns a uniformly distributed random integer in the inclusive range
 ## [min_value, max_value].
 ##
-## Contract:
-##   min_value <= max_value  (reversed ranges must fail loudly)
+## Contract (valid input):
+##   min_value <= max_value
 ##   min_value <= result <= max_value
 ##
-## Invalid reversed ranges must assert/push_error rather than silently
-## swapping the bounds.
+## Contract (invalid reversed input):
+##   Emits push_error() with a diagnostic message.
+##   Returns a deterministic failure sentinel without consuming a random value.
+##   Concrete classes must document their specific sentinel value.
 @abstract
 func range_int(_min_value: int, _max_value: int) -> int;
 
 
 ## Returns the index of a randomly selected entry, weighted proportionally.
 ##
-## Contract:
+## Contract (valid input):
 ##   - weights must not be empty
-##   - every weight must be >= 0.0
-##   - total weight must be > 0.0  (not all-zero)
+##   - every weight must be finite and >= 0.0
+##   - total weight must be finite and > 0.0 (not all-zero)
 ##   - zero-weight entries can never be selected
 ##   - result is a valid index in [0, weights.size() - 1]
 ##   - selection probability is proportional to weight
 ##   - caller's array is never mutated
 ##
+## Contract (invalid input):
+##   Any of the following conditions is invalid:
+##     - empty weights array
+##     - any non-finite weight (NAN, INF, -INF)
+##     - any negative weight
+##     - total weight is zero or non-finite
+##   On any invalid condition:
+##     - push_error() is called with a diagnostic message
+##     - returns -1 as an invalid-index sentinel
+##     - next_float() is NOT called (no random value is consumed)
+##   Callers must treat a result of -1 as a programming error sentinel
+##   and must not use it as a valid selection index.
+##
 ## Algorithm: conventional cumulative-weight walk using next_float().
 ## Because this is implemented once in the base class every concrete
 ## RandomSource automatically shares identical weighted-selection semantics.
 func choose_weighted_index(weights: Array[float]) -> int:
-	assert(
-		not weights.is_empty(),
-		"RandomSource.choose_weighted_index: weights array must not be empty"
-	)
+	# ── Validation (runs in both debug and release builds) ─────────────────
+	# Empty array.
+	if weights.is_empty():
+		push_error(
+			"RandomSource.choose_weighted_index: weights array must not be empty. "
+			+ "Returning -1 as an invalid-index sentinel (no RNG consumed)."
+		)
+		return -1
 
-	# Validate all weights and compute total.
+	# Validate all weights and accumulate total.
 	var total: float = 0.0
 	for w: float in weights:
-		assert(
-			w >= 0.0,
-			"RandomSource.choose_weighted_index: all weights must be >= 0.0, got %s" % w
-		)
+		if not is_finite(w) or w < 0.0:
+			push_error(
+				"RandomSource.choose_weighted_index: each weight must be finite and "
+				+ ">= 0.0, got %s. Returning -1 (no RNG consumed)." % w
+			)
+			return -1
 		total += w
 
-	assert(
-		total > 0.0,
-		"RandomSource.choose_weighted_index: total weight must be > 0.0 (not all-zero)"
-	)
+	# Total must be finite and positive (not all-zero, not corrupted by INF).
+	if not is_finite(total) or total <= 0.0:
+		push_error(
+			"RandomSource.choose_weighted_index: total weight must be finite and "
+			+ "> 0.0 (not all-zero), got %s. Returning -1 (no RNG consumed)." % total
+		)
+		return -1
 
-	# Scaled roll: a value in [0.0, total).
+	# ── Selection (only reached with fully validated weights) ───────────────
+	# Scaled roll: next_float() is in [0.0, 1.0), so roll is in [0.0, total).
 	var roll: float = next_float() * total
 
 	# Cumulative walk: return first index where roll < cumulative sum.
@@ -100,13 +125,12 @@ func choose_weighted_index(weights: Array[float]) -> int:
 		if roll < cumulative:
 			return i
 
-	# Floating-point robustness fallback: if roll landed exactly on the
-	# boundary of the final positive-weight interval (e.g. next_float()
-	# returned a value very close to 1.0), return the last positive index.
-	# This situation should be rare; the assert above guarantees at least
-	# one positive-weight entry exists.
-	assert(
-		last_positive_index >= 0,
-		"RandomSource.choose_weighted_index: internal error — no positive weight found"
-	)
+	# Floating-point robustness fallback.
+	# Validation above guarantees at least one positive-weight entry exists,
+	# so last_positive_index is always a valid index here.
+	# This path is reached only if floating-point accumulation causes the
+	# final cumulative to fall marginally short of total, which is extremely
+	# rare but theoretically possible with many small weights.
+	# With the corrected next_float() producing values in [0.0, 1.0),
+	# roll is strictly < total, so this path is a robustness guard only.
 	return last_positive_index
