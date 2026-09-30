@@ -6,6 +6,7 @@
 ## 2. GameState satisfies its own type contract.
 ## 3. GameState extends RefCounted and is neither Node nor Resource.
 ## 4. Distinct constructions produce distinct instances (no singleton or static instance).
+## 5. GameState owns a typed EconomyState slice with unique instance identity and initial balance 0.
 class_name TestGameState
 extends TestSuiteBase
 
@@ -19,6 +20,7 @@ func run_tests() -> void:
 	_test_type_identity()
 	_test_ref_counted_and_not_node_or_resource()
 	_test_separate_instances()
+	_test_economy_ownership()
 
 
 func _test_construction() -> void:
@@ -49,3 +51,25 @@ func _test_separate_instances() -> void:
 	assert_true(a != null, "Instance 'a' must not be null")
 	assert_true(b != null, "Instance 'b' must not be null")
 	assert_ne(a, b, "Separate GameState instances must not be identical")
+
+
+func _test_economy_ownership() -> void:
+	describe("GameState owns exactly one EconomyState slice with distinct instance per GameState")
+	var state: GameState = GameState.new()
+	assert_true(state.get_economy() != null, "fresh GameState.get_economy() must not be null")
+	assert_true(state.get_economy() is EconomyState, "get_economy() must return an EconomyState")
+	assert_eq(
+		state.get_economy().get_currency(), 0,
+		"fresh GameState economy currency balance must be 0"
+	)
+	assert_eq(
+		state.get_economy(),
+		state.get_economy(),
+		"repeated get_economy() calls must return the same instance"
+	)
+	var other: GameState = GameState.new()
+	assert_ne(
+		state.get_economy(),
+		other.get_economy(),
+		"separate GameState instances must own distinct EconomyState instances"
+	)

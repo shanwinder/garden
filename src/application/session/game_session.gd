@@ -2,7 +2,7 @@
 ## Application-layer runtime coordinator and authoritative state owner.
 ##
 ## GameSession owns exactly one authoritative GameState instance during an
-## active gameplay session.
+## active gameplay session and exposes application-layer operations.
 ##
 ## Architectural rules:
 ## - Belongs to the application layer.
@@ -10,9 +10,11 @@
 ##   or replace it after construction.
 ## - Not a Node, Resource, Autoload, singleton, or manager class.
 ## - Does not expose a generic Variant/Dictionary state bag or direct
-##   state-replacement API in this task.
+##   state-replacement API.
+## - Does not store a second currency balance; delegates economy operations
+##   directly to the authoritative GameState.get_economy().
 ## - Does not take infrastructure dependencies (GameClock, RandomSource,
-##   PersistenceService, etc.) in Task 2.2.
+##   PersistenceService, etc.) in Task 2.3.
 class_name GameSession
 extends RefCounted
 
@@ -29,3 +31,21 @@ func _init(initial_state: GameState = null) -> void:
 ## Returns the authoritative GameState instance owned by this session.
 func get_state() -> GameState:
 	return _state
+
+
+## Convenience application query for current currency balance.
+## Delegates directly to authoritative state; does not cache balance.
+func get_currency() -> int:
+	return _state.get_economy().get_currency()
+
+
+## Application operation to grant currency to the active session.
+## Delegates directly to authoritative state.
+func grant_currency(amount: int) -> bool:
+	return _state.get_economy().grant_currency(amount)
+
+
+## Application operation to spend currency from the active session.
+## Delegates directly to authoritative state.
+func try_spend_currency(amount: int) -> bool:
+	return _state.get_economy().try_spend_currency(amount)

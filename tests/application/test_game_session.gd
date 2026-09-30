@@ -9,6 +9,10 @@
 ## 5. Separate GameSession instances own distinct GameState instances.
 ## 6. Injecting an existing GameState preserves exact object identity.
 ## 7. Explicitly passing null to constructor creates a fresh GameState instance.
+## 8. grant_currency() through GameSession mutates authoritative GameState.
+## 9. try_spend_currency() through GameSession mutates authoritative GameState.
+## 10. Insufficient spend through GameSession returns false and leaves balance unchanged.
+## 11. Injected GameState economy mutations affect original instance without copying.
 class_name TestGameSession
 extends TestSuiteBase
 
@@ -25,6 +29,10 @@ func run_tests() -> void:
 	_test_separate_sessions_have_separate_states()
 	_test_existing_state_injection()
 	_test_null_initial_state_creates_fresh_state()
+	_test_grant_currency_mutates_state()
+	_test_spend_currency_mutates_state()
+	_test_insufficient_spend()
+	_test_injected_game_state_identity_preserves_mutation()
 
 
 func _test_construction() -> void:
@@ -97,3 +105,54 @@ func _test_null_initial_state_creates_fresh_state() -> void:
 		session_fresh.get_state(),
 		"session created with null should own a distinct fresh GameState"
 	)
+
+
+func _test_grant_currency_mutates_state() -> void:
+	describe("grant_currency() through GameSession mutates authoritative GameState")
+	var session: GameSession = GameSession.new()
+	var result: bool = session.grant_currency(5)
+	assert_true(result, "session.grant_currency(5) must return true")
+	assert_eq(session.get_currency(), 5, "session.get_currency() must be 5")
+	assert_eq(
+		session.get_state().get_economy().get_currency(), 5,
+		"authoritative state currency must be 5"
+	)
+
+
+func _test_spend_currency_mutates_state() -> void:
+	describe("try_spend_currency() through GameSession mutates authoritative GameState")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(10)
+	var result: bool = session.try_spend_currency(4)
+	assert_true(result, "session.try_spend_currency(4) must return true")
+	assert_eq(session.get_currency(), 6, "session.get_currency() must be 6 after spend")
+	assert_eq(
+		session.get_state().get_economy().get_currency(), 6,
+		"authoritative state currency must be 6 after spend"
+	)
+
+
+func _test_insufficient_spend() -> void:
+	describe("Insufficient spend returns false and preserves balance unchanged")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(3)
+	var result: bool = session.try_spend_currency(4)
+	assert_false(result, "session.try_spend_currency(4) with balance 3 must return false")
+	assert_eq(session.get_currency(), 3, "session.get_currency() must remain 3")
+	assert_eq(
+		session.get_state().get_economy().get_currency(), 3,
+		"authoritative balance must remain 3"
+	)
+
+
+func _test_injected_game_state_identity_preserves_mutation() -> void:
+	describe("Injected GameState mutates directly without copying")
+	var existing: GameState = GameState.new()
+	var session: GameSession = GameSession.new(existing)
+	var result: bool = session.grant_currency(7)
+	assert_true(result, "session.grant_currency(7) must return true")
+	assert_eq(
+		existing.get_economy().get_currency(), 7,
+		"injected GameState economy must reflect mutation directly"
+	)
+	assert_eq(session.get_currency(), 7, "session.get_currency() must be 7")

@@ -26,6 +26,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestGameClock.new(),
 		TestRandomSource.new(),
 		TestGameState.new(),
+		TestEconomyState.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────
