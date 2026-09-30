@@ -27,6 +27,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestRandomSource.new(),
 		TestGameState.new(),
 		TestEconomyState.new(),
+		TestStableContentId.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────
