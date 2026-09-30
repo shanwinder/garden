@@ -3,8 +3,9 @@
 ##
 ## Verifies:
 ## 1. AppRoot can be instantiated as the expected Node-based composition root.
-## 2. Project has the expected Autoload registration: App -> res://src/application/app_root.gd.
-## 3. There is currently only the intended application Autoload.
+## 2. AppRoot composes GameSession which owns a canonical GameState.
+## 3. Project has the expected Autoload registration: App -> res://src/application/app_root.gd.
+## 4. There is currently only the intended application Autoload.
 class_name TestAppRoot
 extends TestSuiteBase
 
@@ -14,6 +15,7 @@ func _init() -> void:
 
 func run_tests() -> void:
 	_test_instantiation()
+	_test_session_composition()
 	_test_autoload_registration()
 	_test_no_unapproved_autoloads()
 
@@ -25,6 +27,25 @@ func _test_instantiation() -> void:
 	assert_true(root is Node, "AppRoot must extend Node")
 	assert_true(root is AppRoot, "Instance must be of type AppRoot")
 	root.free()
+
+
+func _test_session_composition() -> void:
+	describe("AppRoot composes GameSession owning GameState with distinct instances")
+	var root_a: AppRoot = AppRoot.new()
+	assert_true(root_a.game_session != null, "AppRoot.game_session should not be null")
+	assert_true(root_a.game_session is GameSession, "game_session must be of type GameSession")
+	assert_true(root_a.game_session.get_state() != null, "game_session.get_state() must not be null")
+	assert_true(root_a.game_session.get_state() is GameState, "game_session.get_state() must be of type GameState")
+
+	var root_b: AppRoot = AppRoot.new()
+	assert_ne(root_a.game_session, root_b.game_session, "Separate AppRoot instances must not share GameSession")
+	assert_ne(
+		root_a.game_session.get_state(),
+		root_b.game_session.get_state(),
+		"Separate AppRoot instances must not share GameState"
+	)
+	root_a.free()
+	root_b.free()
 
 
 func _test_autoload_registration() -> void:
