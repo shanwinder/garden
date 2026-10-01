@@ -7,6 +7,7 @@
 ## 3. GameState extends RefCounted and is neither Node nor Resource.
 ## 4. Distinct constructions produce distinct instances (no singleton or static instance).
 ## 5. GameState owns a typed EconomyState slice with unique instance identity and initial balance 0.
+## 6. GameState owns a typed PlantCollectionState slice with unique instance identity and initial count 0.
 class_name TestGameState
 extends TestSuiteBase
 
@@ -21,6 +22,7 @@ func run_tests() -> void:
 	_test_ref_counted_and_not_node_or_resource()
 	_test_separate_instances()
 	_test_economy_ownership()
+	_test_plant_collection_ownership()
 
 
 func _test_construction() -> void:
@@ -72,4 +74,38 @@ func _test_economy_ownership() -> void:
 		state.get_economy(),
 		other.get_economy(),
 		"separate GameState instances must own distinct EconomyState instances"
+	)
+
+
+func _test_plant_collection_ownership() -> void:
+	describe("GameState owns exactly one PlantCollectionState slice with distinct instance per GameState")
+	var state: GameState = GameState.new()
+	assert_true(state.get_plants() != null, "fresh GameState.get_plants() must not be null")
+	assert_true(state.get_plants() is PlantCollectionState, "get_plants() must return a PlantCollectionState")
+	assert_eq(
+		state.get_plants().get_count(), 0,
+		"fresh GameState plant collection count must be 0"
+	)
+	assert_eq(
+		state.get_plants(),
+		state.get_plants(),
+		"repeated get_plants() calls must return the same instance"
+	)
+	var other: GameState = GameState.new()
+	assert_ne(
+		state.get_plants(),
+		other.get_plants(),
+		"separate GameState instances must own distinct PlantCollectionState instances"
+	)
+
+	var plant: PlantState = PlantState.new("plant-001", "plant.holy_basil", 1000)
+	var added: bool = state.get_plants().try_add_plant(plant)
+	assert_true(added, "try_add_plant via game_state.get_plants() should succeed")
+	assert_eq(
+		state.get_plants().get_count(), 1,
+		"owned PlantCollectionState reflects added plant"
+	)
+	assert_eq(
+		other.get_plants().get_count(), 0,
+		"other GameState PlantCollectionState remains unaffected"
 	)

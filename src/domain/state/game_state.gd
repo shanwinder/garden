@@ -2,7 +2,8 @@
 ## Authoritative domain root for Garden's persistent runtime state.
 ##
 ## GameState is the single authoritative persistent runtime model for Garden.
-## It owns all persistent state slices, beginning with EconomyState in Milestone 2.
+## It owns all persistent state slices, beginning with EconomyState in Milestone 2
+## and PlantCollectionState in Milestone 3.
 ##
 ## Architectural rules:
 ## - Nodes and scenes are visual representations (views/controllers) and must
@@ -11,6 +12,7 @@
 ##   and persistence boundaries belong to the infrastructure/persistence layer.
 ## - State slices are owned directly by GameState as typed domain objects.
 ## - GameState owns exactly one typed EconomyState instance.
+## - GameState owns exactly one typed PlantCollectionState instance.
 ## - Does not expose state replacement or setters for owned slices.
 ##
 ## Object contract:
@@ -22,12 +24,19 @@ class_name GameState
 extends RefCounted
 
 var _economy: EconomyState
+var _plants: PlantCollectionState
 
 
 func _init() -> void:
 	_economy = EconomyState.new()
+	_plants = PlantCollectionState.new()
 
 
 ## Returns the authoritative EconomyState slice owned by this GameState.
 func get_economy() -> EconomyState:
 	return _economy
+
+
+## Returns the authoritative PlantCollectionState slice owned by this GameState.
+func get_plants() -> PlantCollectionState:
+	return _plants
