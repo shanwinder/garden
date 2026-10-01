@@ -10,6 +10,12 @@
 ## 6. Alternate definition thresholds verification (non-hardcoded behavior).
 ## 7. Large elapsed seconds and INT_MAX verification (O(1) execution, no overflow).
 ## 8. Purity and idempotence (definition unmutated, no global state dependencies).
+## 9. stage_for_state_at input validation (null/invalid state, null/invalid definition, definition mismatch).
+## 10. stage_for_state_at basic timestamp boundaries (elapsed = now - planted_at).
+## 11. stage_for_state_at clock rollback and negative now (clamped to PLANTED without subtraction).
+## 12. stage_for_state_at 64-bit integer extremes (INT_MIN, INT_MAX, safe arithmetic).
+## 13. stage_for_state_at alternate definition data-driven delegation.
+## 14. stage_for_state_at purity and fact preservation across repeated calls.
 class_name TestPlantGrowth
 extends TestSuiteBase
 
@@ -28,6 +34,12 @@ func run_tests() -> void:
 	_test_mature_boundary()
 	_test_alternate_definition()
 	_test_purity_and_idempotence()
+	_test_state_at_input_validation()
+	_test_state_at_basic_timestamp_boundaries()
+	_test_state_at_clock_rollback()
+	_test_state_at_extreme_integers()
+	_test_state_at_alternate_definition()
+	_test_state_at_purity_and_idempotence()
 
 
 func _create_valid_definition(
@@ -42,6 +54,14 @@ func _create_valid_definition(
 	def.growing_after_seconds = growing
 	def.mature_after_seconds = mature
 	return def
+
+
+func _create_valid_state(
+	instance_id: String = "plant-instance-001",
+	def_id: String = "plant.holy_basil",
+	planted_at: int = 1000
+) -> PlantState:
+	return PlantState.new(instance_id, def_id, planted_at)
 
 
 func _test_type_and_enum_contract() -> void:
@@ -252,6 +272,266 @@ func _test_purity_and_idempotence() -> void:
 		)
 
 	assert_eq(def.id, "plant.holy_basil", "id must remain unchanged")
+	assert_eq(def.sprout_after_seconds, 60, "sprout_after_seconds must remain unchanged")
+	assert_eq(def.growing_after_seconds, 300, "growing_after_seconds must remain unchanged")
+	assert_eq(def.mature_after_seconds, 900, "mature_after_seconds must remain unchanged")
+
+
+func _test_state_at_input_validation() -> void:
+	describe("stage_for_state_at returns Stage.INVALID on null, invalid, or mismatched inputs")
+	var valid_def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var valid_state: PlantState = _create_valid_state("plant-inst-001", "plant.holy_basil", 1000)
+
+	# 1. Null state
+	assert_eq(
+		PlantGrowth.stage_for_state_at(null, valid_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Null state must return Stage.INVALID"
+	)
+
+	# 2. Null definition
+	assert_eq(
+		PlantGrowth.stage_for_state_at(valid_state, null, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Null definition must return Stage.INVALID"
+	)
+
+	# 3. Both null
+	assert_eq(
+		PlantGrowth.stage_for_state_at(null, null, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Both null must return Stage.INVALID"
+	)
+
+	# 4. Invalid PlantState: empty instance_id
+	var empty_inst_state: PlantState = PlantState.new("", "plant.holy_basil", 1000)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(empty_inst_state, valid_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"State with empty instance_id must return Stage.INVALID"
+	)
+
+	# 5. Invalid PlantState: wrong namespace
+	var wrong_ns_state: PlantState = PlantState.new("plant-inst-001", "visitor.butterfly", 1000)
+	var wrong_ns_def: PlantDefinition = PlantDefinition.new()
+	wrong_ns_def.id = "visitor.butterfly"
+	wrong_ns_def.sprout_after_seconds = 60
+	wrong_ns_def.growing_after_seconds = 300
+	wrong_ns_def.mature_after_seconds = 900
+	assert_eq(
+		PlantGrowth.stage_for_state_at(wrong_ns_state, wrong_ns_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"State with wrong namespace must return Stage.INVALID"
+	)
+
+	# 6. Invalid PlantState: negative planted_at
+	var neg_planted_state: PlantState = PlantState.new("plant-inst-001", "plant.holy_basil", -1)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(neg_planted_state, valid_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"State with negative planted_at must return Stage.INVALID"
+	)
+
+	# 7. Invalid PlantDefinition: default uninitialized
+	var default_def: PlantDefinition = PlantDefinition.new()
+	assert_eq(
+		PlantGrowth.stage_for_state_at(valid_state, default_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Default uninitialized definition must return Stage.INVALID"
+	)
+
+	# 8. Invalid PlantDefinition: invalid thresholds (equal thresholds)
+	var invalid_thresh_def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 60, 900)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(valid_state, invalid_thresh_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Definition with invalid thresholds must return Stage.INVALID"
+	)
+
+	# 9. Definition-ID mismatch: holy_basil state vs chili definition
+	var chili_def: PlantDefinition = _create_valid_definition("plant.chili", 60, 300, 900)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(valid_state, chili_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Mismatched definition_id (holy_basil vs chili) must return Stage.INVALID"
+	)
+
+	# 10. Definition-ID mismatch: chili state vs holy_basil definition
+	var chili_state: PlantState = _create_valid_state("plant-inst-002", "plant.chili", 1000)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(chili_state, valid_def, 1000),
+		PlantGrowth.Stage.INVALID,
+		"Mismatched definition_id (chili vs holy_basil) must return Stage.INVALID"
+	)
+
+	# 11. Matching IDs return valid stage
+	assert_eq(
+		PlantGrowth.stage_for_state_at(valid_state, valid_def, 1000),
+		PlantGrowth.Stage.PLANTED,
+		"Matching valid state and definition return valid stage"
+	)
+
+
+func _test_state_at_basic_timestamp_boundaries() -> void:
+	describe("stage_for_state_at exact timestamp boundaries (planted_at=1000, thresholds 60/300/900)")
+	var def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var state: PlantState = _create_valid_state("plant-inst-001", "plant.holy_basil", 1000)
+
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1000),
+		PlantGrowth.Stage.PLANTED,
+		"now 1000 (elapsed 0) must return Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1059),
+		PlantGrowth.Stage.PLANTED,
+		"now 1059 (elapsed 59) must return Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1060),
+		PlantGrowth.Stage.SPROUT,
+		"now 1060 (elapsed 60) must transition immediately to Stage.SPROUT"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1299),
+		PlantGrowth.Stage.SPROUT,
+		"now 1299 (elapsed 299) must return Stage.SPROUT"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1300),
+		PlantGrowth.Stage.GROWING,
+		"now 1300 (elapsed 300) must transition immediately to Stage.GROWING"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1899),
+		PlantGrowth.Stage.GROWING,
+		"now 1899 (elapsed 899) must return Stage.GROWING"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 1900),
+		PlantGrowth.Stage.MATURE,
+		"now 1900 (elapsed 900) must transition immediately to Stage.MATURE"
+	)
+
+
+func _test_state_at_clock_rollback() -> void:
+	describe("stage_for_state_at clock rollback and negative now clamp to Stage.PLANTED")
+	var def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var state: PlantState = _create_valid_state("plant-inst-001", "plant.holy_basil", 1000)
+
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 999),
+		PlantGrowth.Stage.PLANTED,
+		"now 999 (earlier than planted_at 1000) must clamp to Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 0),
+		PlantGrowth.Stage.PLANTED,
+		"now 0 must clamp to Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, -1),
+		PlantGrowth.Stage.PLANTED,
+		"now -1 must clamp to Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, -100),
+		PlantGrowth.Stage.PLANTED,
+		"now -100 must clamp to Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, -9223372036854775807 - 1),
+		PlantGrowth.Stage.PLANTED,
+		"now INT_MIN must clamp to Stage.PLANTED without overflow"
+	)
+
+	assert_eq(state.get_runtime_instance_id(), "plant-inst-001", "instance_id must not be mutated")
+	assert_eq(state.get_definition_id(), "plant.holy_basil", "definition_id must not be mutated")
+	assert_eq(state.get_planted_at(), 1000, "planted_at must not be mutated by rollback")
+
+
+func _test_state_at_extreme_integers() -> void:
+	describe("stage_for_state_at safe execution at 64-bit integer extremes")
+	var holy_basil_def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var chili_def: PlantDefinition = _create_valid_definition("plant.chili", 1, 2, 3)
+
+	# A. planted_at = 0, now = INT_MAX => MATURE
+	var state_zero: PlantState = _create_valid_state("inst-zero", "plant.holy_basil", 0)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state_zero, holy_basil_def, 9223372036854775807),
+		PlantGrowth.Stage.MATURE,
+		"planted_at 0, now INT_MAX must return Stage.MATURE"
+	)
+
+	# B. planted_at = INT_MAX, now = INT_MAX => PLANTED
+	var state_max: PlantState = _create_valid_state("inst-max", "plant.holy_basil", 9223372036854775807)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state_max, holy_basil_def, 9223372036854775807),
+		PlantGrowth.Stage.PLANTED,
+		"planted_at INT_MAX, now INT_MAX must return Stage.PLANTED"
+	)
+
+	# C. planted_at = INT_MAX - 1, now = INT_MAX, def 1/2/3 => SPROUT (elapsed = 1)
+	var state_near_max: PlantState = _create_valid_state("inst-near-max", "plant.chili", 9223372036854775806)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state_near_max, chili_def, 9223372036854775807),
+		PlantGrowth.Stage.SPROUT,
+		"planted_at INT_MAX-1, now INT_MAX with thresholds 1/2/3 must return Stage.SPROUT"
+	)
+
+	# D. planted_at = 0, now = INT_MIN => PLANTED
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state_zero, holy_basil_def, -9223372036854775807 - 1),
+		PlantGrowth.Stage.PLANTED,
+		"planted_at 0, now INT_MIN must return Stage.PLANTED"
+	)
+
+
+func _test_state_at_alternate_definition() -> void:
+	describe("stage_for_state_at with alternate definition (chili 1/2/3) confirms data-driven delegation")
+	var def: PlantDefinition = _create_valid_definition("plant.chili", 1, 2, 3)
+	var state: PlantState = _create_valid_state("plant-inst-chili", "plant.chili", 500)
+
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 500),
+		PlantGrowth.Stage.PLANTED,
+		"now 500 (elapsed 0) must return Stage.PLANTED"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 501),
+		PlantGrowth.Stage.SPROUT,
+		"now 501 (elapsed 1) must transition immediately to Stage.SPROUT"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 502),
+		PlantGrowth.Stage.GROWING,
+		"now 502 (elapsed 2) must transition immediately to Stage.GROWING"
+	)
+	assert_eq(
+		PlantGrowth.stage_for_state_at(state, def, 503),
+		PlantGrowth.Stage.MATURE,
+		"now 503 (elapsed 3) must transition immediately to Stage.MATURE"
+	)
+
+
+func _test_state_at_purity_and_idempotence() -> void:
+	describe("stage_for_state_at is pure, stateless, and idempotent across repeated calls")
+	var def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var state: PlantState = _create_valid_state("plant-purity-001", "plant.holy_basil", 1000)
+
+	for i: int in range(5):
+		var stage: PlantGrowth.Stage = PlantGrowth.stage_for_state_at(state, def, 1300)
+		assert_eq(
+			stage,
+			PlantGrowth.Stage.GROWING,
+			"Repeated stage_for_state_at call %d must return Stage.GROWING" % i
+		)
+
+	assert_eq(state.get_runtime_instance_id(), "plant-purity-001", "instance_id must remain unchanged")
+	assert_eq(state.get_definition_id(), "plant.holy_basil", "definition_id must remain unchanged")
+	assert_eq(state.get_planted_at(), 1000, "planted_at must remain unchanged")
+
+	assert_eq(def.id, "plant.holy_basil", "definition id must remain unchanged")
 	assert_eq(def.sprout_after_seconds, 60, "sprout_after_seconds must remain unchanged")
 	assert_eq(def.growing_after_seconds, 300, "growing_after_seconds must remain unchanged")
 	assert_eq(def.mature_after_seconds, 900, "mature_after_seconds must remain unchanged")
