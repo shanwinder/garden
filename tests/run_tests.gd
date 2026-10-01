@@ -29,6 +29,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestEconomyState.new(),
 		TestStableContentId.new(),
 		TestPlantDefinition.new(),
+		TestPlantGrowth.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────
