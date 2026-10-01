@@ -39,21 +39,32 @@ Following the discipline established in `GAME_DESIGN.md` and `ARCHITECTURE.md`, 
 - **PROVISIONAL VISUAL DIRECTION:** The current preferred visual approach, suitable for concept art, mockups, and prototyping, but subject to refinement during visual milestone reviews.
 - **TBD (TO BE DECIDED):** Intentionally open. Must be resolved during downstream pipeline tasks (e.g., Task 4.2 style selection or Task 4.3 asset technical specifications) without making silent assumptions today.
 
-### Visual Decision Audit Table
+### 2.1 Status Promotion Rule
+
+A PROVISIONAL visual decision may become LOCKED only when:
+
+1. higher-level authoritative documents (`PROJECT_RULES.md`, `ARCHITECTURE.md`, `GAME_DESIGN.md`) already lock it, OR
+2. the project owner explicitly approves/promotes it after visual review (e.g., following Task 4.2 prototype evaluation).
+
+A generated image, agent preference, or one successful mockup does NOT by itself promote a decision to LOCKED.
+
+### 2.2 Visual Decision Audit Table
 
 | Topic / Decision Area | Status | Authority & Notes |
 |---|---|---|
-| 2D Soft Hand-Painted Storybook Art Style | **LOCKED** | Aligned with `GAME_DESIGN.md` §27 |
-| Thai-Inspired Everyday Domestic Home Garden | **LOCKED** | Aligned with `GAME_DESIGN.md` §6 |
-| Android Portrait-First Composition (1080 × 1920 Target) | **LOCKED** | Aligned with `ARCHITECTURE.md` §3 |
-| Calm, Lived-In, Low-Pressure Tone | **LOCKED** | Aligned with `GAME_DESIGN.md` §4 |
-| No Glossy 3D / No Pixel Art / No Heavy Chibi Mascots | **LOCKED** | Explicit project constraint |
-| MVP Vertical Slice Entity Roster | **LOCKED** | 2 plants, 2 visitors, 2 decors, 3 weather/lighting states |
-| Value / Contrast Hierarchy Tiers | **LOCKED** | Focal interactable > plants/decor > environment |
+| 2D Game Presentation | **LOCKED** | `ARCHITECTURE.md` §3 (Compatibility 2D renderer) |
+| Android-First / Portrait / 1080 × 1920 Reference Canvas | **LOCKED** | `ARCHITECTURE.md` §3 (Mobile portrait target) |
+| Calm, Low-Pressure Visual Experience Goal | **LOCKED PRODUCT GOAL** | `GAME_DESIGN.md` §4 (Pillars 4.1 & 4.2; low-pressure living garden) |
+| Soft Hand-Painted / Storybook Visual Treatment | **PROVISIONAL** | Preferred direction in `GAME_DESIGN.md` §27; pending prototype review |
+| Thai-Inspired Everyday Domestic Garden Identity | **PROVISIONAL** | Preferred identity in `GAME_DESIGN.md` §6; pending visual validation |
+| Avoidance of Pixel Art | **PROVISIONAL** | `GAME_DESIGN.md` §27: not currently preferred, not locked until prototypes reviewed |
+| Avoidance of Glossy 3D / Heavy Chibi Mascots | **PROVISIONAL VISUAL DIRECTION** | Aesthetic guardrails for Task 4.2 exploration; not locked in root docs |
+| Three-Tier Value & Contrast Hierarchy Implementation | **PROVISIONAL** | Visual method serving locked accessibility goal (`GAME_DESIGN.md` §29) |
+| MVP Vertical Slice Entity Validation Roster | **PROVISIONAL VALIDATION SCOPE** | Planned mockup validation set (2 plants, 2 visitors, 2 decors, 3 env states) |
 | Provisional Color Palette HEX References | **PROVISIONAL** | Reference guides by role; not locked final asset colors |
-| Exact Brush Grain & Canvas Texture Grain | **PROVISIONAL** | To be proven through Task 4.2 mockups |
-| Exact Edge Softness & Outline Thresholds | **PROVISIONAL** | To be evaluated across phone displays |
-| UI Surface Card Texture & Panel Rounding Radii | **PROVISIONAL** | Subject to UI layout prototyping |
+| Exact Brush Grain & Canvas Texture Grain | **PROVISIONAL** | To be evaluated and proven through Task 4.2 mockups |
+| Exact Edge Softness & Outline Thresholds | **PROVISIONAL** | To be evaluated across phone displays in Task 4.2 |
+| UI Surface Card Texture & Panel Rounding Radii | **PROVISIONAL** | Subject to UI layout prototyping; UI implementation out of scope |
 | Specific Font Families (Thai & Latin) | **TBD** | Evaluation criteria set; no font binaries committed |
 | Exact Sprite Pixel Dimensions & PPU | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
 | Animation Frame Rates & Sprite Sheet Layouts | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
@@ -63,7 +74,7 @@ Following the discipline established in `GAME_DESIGN.md` and `ARCHITECTURE.md`, 
 
 ## 3. Visual North Star
 
-**Status: LOCKED**
+**Status: PROVISIONAL VISUAL DIRECTION — grounded in LOCKED product pillars**
 
 > ### "A quiet, living Thai home garden that breathes softly and gently welcomes you home."
 
@@ -80,7 +91,7 @@ The Visual North Star encapsulates the core identity of *Garden*:
 
 ## 4. Cultural Direction and Authenticity Guardrails
 
-**Status: LOCKED**
+**Status: PROVISIONAL VISUAL DIRECTION — guardrails apply while evaluating the Thai-inspired direction**
 
 *Garden* derives its soul from the authentic atmosphere of an ordinary Thai residential garden (*สวนกระถางหน้าบ้าน / สวนข้างบ้าน*). It celebrates the modest beauty of everyday domestic life in a tropical climate.
 
@@ -120,9 +131,9 @@ DO NOT:
 
 ## 5. Core Art Style and Visual Vocabulary
 
-**Status: LOCKED**
+**Status: LOCKED 2D Technical Direction (ARCHITECTURE.md §3); PROVISIONAL Soft Hand-Painted Storybook Treatment (GAME_DESIGN.md §27)**
 
-The visual style of *Garden* is **2D soft hand-painted storybook illustration**. It bridges cozy warmth and clear mobile readability.
+The technical foundation of *Garden* is **2D** (LOCKED by `ARCHITECTURE.md` §3), and the preferred artistic direction is **soft hand-painted storybook illustration** (PROVISIONAL per `GAME_DESIGN.md` §27, pending Task 4.2 prototype review). It bridges cozy warmth and clear mobile readability.
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -176,9 +187,9 @@ ILLUSTRATIVE EDGE PRINCIPLES:
 
 ## 6. Camera and Composition Direction
 
-**Status: LOCKED Principles; PROVISIONAL Framing Values**
+**Status: LOCKED Technical Canvas (Android-First Portrait 1080×1920); PROVISIONAL Framing & Composition**
 
-*Garden* is designed exclusively as an **Android-First Portrait** experience.
+*Garden* is designed as an **Android-First Portrait** experience (LOCKED by `ARCHITECTURE.md` §3).
 
 ### 6.1 Reference Canvas and Aspect Flexibility
 
@@ -263,9 +274,9 @@ Visitors must be visually discoverable through silhouette and gentle idle motion
 
 ## 8. Shape Language
 
-**Status: LOCKED Principles; PROVISIONAL Application**
+**Status: PROVISIONAL Visual Direction (grounded in locked calm/low-pressure product pillar)**
 
-Shape language establishes the emotional tone of safety, warmth, and relaxation.
+Shape language establishes the emotional tone of safety, warmth, and relaxation, supporting the locked low-pressure pillar (`GAME_DESIGN.md` §4.1). Specific shape rules remain provisional for Task 4.2 prototype evaluation.
 
 ```text
 ROUNDED & ORGANIC                SOFT GEOMETRY                 SHARP & AGGRESSIVE
@@ -377,9 +388,9 @@ The HEX values below represent mood and value anchors for concept exploration.
 
 ## 12. Value and Contrast Hierarchy
 
-**Status: LOCKED Hierarchy; PROVISIONAL Balance Values**
+**Status: PROVISIONAL Visual Method (serving locked readability and accessibility goals)**
 
-To ensure immediate readability on phone displays, contrast is managed in three distinct tiers:
+To serve the locked accessibility goal of adequate visual readability on phone displays (`GAME_DESIGN.md` §29), contrast is managed through a provisional three-tier hierarchy:
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -403,9 +414,9 @@ To ensure immediate readability on phone displays, contrast is managed in three 
 
 ## 13. Lighting and Atmospheric Conditions
 
-**Status: LOCKED Principles; PROVISIONAL Shading Profiles**
+**Status: PROVISIONAL Visual Direction (aligned with provisional GAME_DESIGN.md §13 & §14)**
 
-Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of the tropics.
+Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of the tropics, aligning with the provisional time-of-day and weather frameworks in `GAME_DESIGN.md` §13 and §14.
 
 ### 13.1 Lighting Condition Profiles
 
@@ -448,7 +459,7 @@ Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of 
 
 ## 14. Plant Visual Language
 
-**Status: LOCKED Principles; PROVISIONAL Entity Profiles**
+**Status: LOCKED Gameplay Growth Stages (GAME_DESIGN.md §10); PROVISIONAL Visual Differentiation Methods**
 
 Plants are living, persistent members of the garden. They grow through four clearly readable stages:
 
@@ -459,7 +470,7 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ### 14.1 General Growth Stage Rules
 
-1. **Stage Distinguishability:** The player must distinguish plant stages primarily by **silhouette, height, and foliage mass**, never by reading small text labels alone.
+1. **Stage Distinguishability:** The player must distinguish plant stages primarily by **silhouette, height, and foliage mass**, never by reading small text labels alone. Growth stages (`planted -> sprout -> growing -> mature/harvestable`) and persistence after harvest are LOCKED gameplay contracts (`GAME_DESIGN.md` §10); the visual differentiation methods (silhouette mass, leaf density, painted treatment) are PROVISIONAL visual directions for Task 4.2 prototype testing.
 2. **Persistence After Maturity:** Reaching maturity produces flowers or harvestable goods. In accordance with `GAME_DESIGN.md` §10, mature plants remain in the garden after harvest rather than vanishing.
 3. **Organic Identity:** Plants retain clear botanical character (leaf shapes, branch structure) without requiring dry botanical textbook realism.
 
@@ -497,13 +508,13 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ## 15. Visitor Visual Language
 
-**Status: LOCKED Principles; PROVISIONAL Entity Profiles**
+**Status: LOCKED Behavioral Rules (GAME_DESIGN.md §11); PROVISIONAL Visual Profiles**
 
 Visitors are wild or domestic creatures that choose to visit the garden because of the conditions created by the player.
 
 ### 15.1 Core Visitor Principles
 
-- **Autonomous Guests, Not Collectible Tokens:** Visitors must feel like living creatures entering, resting, and leaving naturally.
+- **Autonomous Guests, Not Collectible Tokens:** Visitors must feel like living creatures entering, resting, and leaving naturally. Core visitor behavior is LOCKED by `GAME_DESIGN.md` §11; visual execution choices (proportions, stylized poses, edge softness) are PROVISIONAL directions for prototype testing.
 - **Readable Natural Anatomy:** Silhouettes reflect believable animal proportions softened by storybook illustration. No oversized chibi heads, giant anime eyes, or cartoon hands.
 - **Environmental Grounding:** Visitors physically interact with the garden (e.g., cat sleeps on bench, butterfly hovers near marigold blossoms, frog rests near the water jar).
 - **Subtle Idle Life:** Breathing motion, occasional ear twitch, wing flutter, or head turn. Visitors do not constantly bounce or loop hyperactive animations.
@@ -537,13 +548,13 @@ Visitors are wild or domestic creatures that choose to visit the garden because 
 
 ## 16. Decoration Visual Language
 
-**Status: LOCKED Principles; PROVISIONAL Entity Profiles**
+**Status: LOCKED Purpose Principles (GAME_DESIGN.md §15); PROVISIONAL Visual Profiles**
 
 Garden decorations are practical, cherished household items that have accumulated over time. They reflect domestic hospitality and natural utility.
 
 ### 16.1 Decoration Principles
 
-- **Believable Utility:** Objects look functional and meaningful (a jar holds cooling water, a bench provides rest, a pot holds an herb).
+- **Believable Utility:** Objects look functional and meaningful (a jar holds cooling water, a bench provides rest, a pot holds an herb). The dual purpose of decorations (visual self-expression and systemic traits) is LOCKED by `GAME_DESIGN.md` §15; visual styling and weathering levels are PROVISIONAL directions for prototype testing.
 - **Subtle Weathering:** Surfaces show sun-faded paint, softened timber edges, moss traces at soil level, or gentle water marks.
 - **No Luxury Showroom Polish:** Objects are not pristine chrome, plastic, or high-end theme-park collectibles.
 - **Personal Arrangement:** Objects feel naturally set down by a caring homeowner.
@@ -577,7 +588,7 @@ Garden decorations are practical, cherished household items that have accumulate
 
 ## 17. Environment Layering and Composition
 
-**Status: LOCKED Principles; PROVISIONAL Layout Margins**
+**Status: PROVISIONAL Composition (serving locked touch clearance and readability goals)**
 
 The garden scene is composed in three distinct visual depth planes to create richness without visual clutter:
 
@@ -592,7 +603,7 @@ The garden scene is composed in three distinct visual depth planes to create ric
 
 ### 17.1 Layering Rules
 
-1. **Unobstructed Play Area:** Interactive plants, pots, and visitors must never be obscured by foreground framing elements or heavy UI overlays.
+1. **Unobstructed Play Area:** Interactive plants, pots, and visitors must never be obscured by foreground framing elements or heavy UI overlays (serving locked touch and readability goals in `GAME_DESIGN.md` §26.3 and §29). Specific framing margins and composition percentages remain PROVISIONAL.
 2. **Clear Depth Cues:** Depth is created through value atmosphere, slight overlap of objects, and soft contact shadows on the ground plane.
 3. **No Parallax Disorientation:** Background elements remain stable to prevent disorientation on mobile portrait screens.
 
@@ -600,9 +611,9 @@ The garden scene is composed in three distinct visual depth planes to create ric
 
 ## 18. "Lived-In" Detail Rule (Controlled Storytelling)
 
-**Status: LOCKED**
+**Status: PROVISIONAL Visual Guideline (grounded in locked small-world detail pillar)**
 
-A home garden feels alive because of small, authentic imperfections. However, excessive detailing on mobile screens causes high-frequency visual noise.
+A home garden feels alive because of small, authentic imperfections. Grounded in the locked design pillar of "small world, dense detail" (`GAME_DESIGN.md` §4.5) and calm play (`GAME_DESIGN.md` §4.1), this visual guideline controls detail density to avoid mobile noise:
 
 ```text
 THE "ONE-OR-TWO DETAILS" RULE:
@@ -650,7 +661,7 @@ The user interface must remain a gentle, supportive companion to the garden, nev
 
 ## 20. Typography Criteria
 
-**Status: TBD Font Selection; LOCKED Functional Criteria**
+**Status: TBD Font Selection; LOCKED Accessibility & Readability Goals (GAME_DESIGN.md §29)**
 
 *No font binary files are bundled or committed in this milestone.* Font families will be evaluated and integrated in a future UI asset task according to the following strict criteria:
 
@@ -677,9 +688,9 @@ The Journal (*สมุดบ้านสวน / สมุดบันทึก
 
 ## 22. Animation and Motion Principles
 
-**Status: LOCKED Principles; PROVISIONAL Tuning**
+**Status: PROVISIONAL Motion Guidance (grounded in locked living-garden design pillar)**
 
-Animation brings the garden to life through gentle, asynchronous breathing rather than cinematic spectacle.
+Animation brings the garden to life through gentle, asynchronous breathing rather than cinematic spectacle, supporting the locked living-garden design pillar (`GAME_DESIGN.md` §4.2) and the provisional gentle-motion art direction (`GAME_DESIGN.md` §27).
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -709,9 +720,9 @@ Animation brings the garden to life through gentle, asynchronous breathing rathe
 
 ## 23. Motion Density Budget
 
-**Status: LOCKED**
+**Status: PROVISIONAL Production Guidance**
 
-To preserve the calm aesthetic and protect mobile battery life, the screen operates under a strict **Motion Density Budget**:
+To preserve the calm aesthetic and protect mobile battery life, the screen operates under a provisional **Motion Density Budget** to be evaluated in prototypes:
 
 ```text
 MOTION DENSITY BUDGET RULE:
@@ -727,9 +738,9 @@ ambient motions should be active simultaneously on the screen.
 
 ## 24. Effects and Particles Policy
 
-**Status: LOCKED**
+**Status: PROVISIONAL Production Guidance**
 
-Visual effects (*VFX*) must remain delicate, naturalistic, and understated.
+Visual effects (*VFX*) must remain delicate, naturalistic, and understated, supporting the calm, low-pressure tone of the game.
 
 ### 24.1 Permitted Effects
 
@@ -749,9 +760,9 @@ Visual effects (*VFX*) must remain delicate, naturalistic, and understated.
 
 ## 25. Mobile Readability Rules
 
-**Status: LOCKED**
+**Status: LOCKED Accessibility Goals (GAME_DESIGN.md §26, §29); PROVISIONAL Implementation Rules**
 
-Artwork must maintain flawless legibility on real Android hardware across various screen sizes:
+To satisfy locked touch and accessibility goals (`GAME_DESIGN.md` §26.3, §29), artwork must maintain flawless legibility on real Android hardware across various screen sizes:
 
 1. **Silhouette Readability:** Core entities (mature basil, sprout, cat, jar) must be immediately identifiable at gameplay resolution without zooming.
 2. **No Single-Pixel Dependency:** No vital visual clue (such as whether a plant is harvestable or a flower has bloomed) may rely on a 1-pixel detail.
@@ -763,7 +774,7 @@ Artwork must maintain flawless legibility on real Android hardware across variou
 
 ## 26. Performance-Aware Art Rules
 
-**Status: LOCKED Principles; PROVISIONAL Technical Bounds**
+**Status: LOCKED Platform Constraints (ARCHITECTURE.md §3); PROVISIONAL Art Guidelines**
 
 While detailed technical asset specifications belong to Task 4.3, art direction must respect mobile hardware constraints from day one:
 
@@ -776,9 +787,9 @@ While detailed technical asset specifications belong to Task 4.3, art direction 
 
 ## 27. Vertical Slice Visual Target
 
-**Status: LOCKED Entity Target; PROVISIONAL Scene Composition**
+**Status: PROVISIONAL VALIDATION SCOPE**
 
-To prove the visual direction before launching full-scale content production, the project defines an initial **Vertical Slice Visual Target**. This represents the minimum representative asset set required to validate the style.
+To prove the visual direction before launching full-scale content production, the project defines an initial **Vertical Slice Visual Target**. This represents a provisional mockup validation set to test hypotheses in Task 4.2, not a new permanent gameplay commitment.
 
 ### 27.1 Vertical Slice Visual Roster
 
@@ -814,9 +825,9 @@ To prove the visual direction before launching full-scale content production, th
 
 ## 28. Future Concept Mockup Plan (Task 4.2 Preparation)
 
-**Status: LOCKED Plan (Mockup Generation is Out of Scope for Task 4.1)**
+**Status: PROVISIONAL Mockup Plan (Evaluation Scope for Task 4.2)**
 
-Following approval of this Visual Style Bible, Task 4.2 will generate **5 targeted visual mockups** to validate the direction.
+Following approval of this Visual Style Bible, Task 4.2 will generate **5 targeted visual mockups** to evaluate visual hypotheses and select a master style.
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -853,19 +864,19 @@ Following approval of this Visual Style Bible, Task 4.2 will generate **5 target
 
 ## 29. Master Style Selection Process
 
-**Status: LOCKED**
+**Status: LOCKED Process**
 
 To ensure cohesive art direction and prevent style fragmentation, the project follows an explicit **Master Style Selection Process**:
 
 ```text
 +-----------------------------+
-| Step 1: Bible Approved      |  VISUAL_STYLE_BIBLE.md is verified and committed.
-+--------------+--------------+
+| Step 1: Bible Hypotheses    |  VISUAL_STYLE_BIBLE.md defines preferred visual
++--------------+--------------+  hypotheses with correct decision statuses.
                |
                v
 +-----------------------------+
-| Step 2: Generate Mockups    |  Generate 3-5 concept mockups guided strictly
-+--------------+--------------+  by Bible criteria (Task 4.2).
+| Step 2: Generate Mockups    |  Generate concept mockups guided strictly
++--------------+--------------+  by Bible hypotheses (Task 4.2).
                |
                v
 +-----------------------------+
@@ -879,8 +890,8 @@ To ensure cohesive art direction and prevent style fragmentation, the project fo
                |
                v
 +-----------------------------+
-| Step 5: Lock Master Anchor  |  Select ONE single master image as the definitive
-+--------------+--------------+  visual benchmark for all production assets.
+| Step 5: Owner Review & Lock |  Project owner explicitly approves ONE single
++--------------+--------------+  Master Style Anchor; provisional choices promoted.
                |
                v
 +-----------------------------+
@@ -888,7 +899,7 @@ To ensure cohesive art direction and prevent style fragmentation, the project fo
 +-----------------------------+  and Godot import presets (Task 4.3).
 ```
 
-*Crucial Rule:* An individual generated image must never silently redefine the project style. The Style Bible remains the authoritative anchor until intentionally revised.
+*Crucial Governance Rule:* An individual generated image, agent preference, or single successful mockup must never silently promote a visual direction to LOCKED. The Visual Style Bible's aesthetic directions remain PROVISIONAL until the project owner explicitly approves the Master Style Anchor following Task 4.2 review. Only after that explicit owner approval may provisional aesthetic decisions be promoted to LOCKED VISUAL DIRECTION.
 
 ---
 
@@ -923,7 +934,7 @@ no watermarks, no framing borders.
 
 ## 31. Negative Visual Rules ("Do Not Drift Toward")
 
-**Status: LOCKED**
+**Status: PROVISIONAL Visual Guardrails (grounded in locked design pillars & provisional art direction)**
 
 To preserve the unique soul of *Garden*, visual artists and generation workflows must vigilantly avoid drifting toward the following visual tropes:
 
@@ -946,7 +957,7 @@ To preserve the unique soul of *Garden*, visual artists and generation workflows
 
 ## 32. Asset Consistency Checklist
 
-**Status: LOCKED Checklist**
+**Status: PROVISIONAL Review Checklist (Evaluation criteria for Task 4.2 mockups)**
 
 Every new concept art piece, mockup, environment sprite, plant stage, visitor pose, decoration, or UI component must pass this 11-point review checklist before acceptance:
 
