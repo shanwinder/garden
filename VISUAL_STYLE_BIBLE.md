@@ -1,6 +1,6 @@
 # Garden Visual Style Bible
 
-> Status: **Draft v0.1 — Milestone 4 (Task 4.1)**
+> Status: **Authoritative Visual Style Bible — Milestone 4 (Task 4.2C Owner Approved Master Style)**
 >
 > Reference Target: **Android Portrait (1080 × 1920 Responsive)**
 >
@@ -37,16 +37,16 @@ Following the discipline established in `GAME_DESIGN.md` and `ARCHITECTURE.md`, 
 
 - **LOCKED VISUAL DIRECTION:** Approved and binding for the project. May only be changed with explicit owner approval.
 - **PROVISIONAL VISUAL DIRECTION:** The current preferred visual approach, suitable for concept art, mockups, and prototyping, but subject to refinement during visual milestone reviews.
-- **TBD (TO BE DECIDED):** Intentionally open. Must be resolved during downstream pipeline tasks (e.g., Task 4.2 style selection or Task 4.3 asset technical specifications) without making silent assumptions today.
+- **TBD (TO BE DECIDED):** Intentionally open. Must be resolved during downstream pipeline tasks (e.g., Task 4.3 asset technical specifications) without making silent assumptions today.
 
 ### 2.1 Status Promotion Rule
 
 A PROVISIONAL visual decision may become LOCKED only when:
 
 1. higher-level authoritative documents (`PROJECT_RULES.md`, `ARCHITECTURE.md`, `GAME_DESIGN.md`) already lock it, OR
-2. the project owner explicitly approves/promotes it after visual review (e.g., following Task 4.2 prototype evaluation).
+2. the project owner explicitly approves/promotes it after visual review (e.g., following Task 4.2 candidate evaluation).
 
-A generated image, agent preference, or one successful mockup does NOT by itself promote a decision to LOCKED.
+*Governance Event (Task 4.2C):* Condition 2 has occurred. Following visual review of Round-A candidates (A, B, C), the Project Owner has explicitly approved the synthesized Master Style direction (Candidate C foundation + Candidate A atmosphere + Candidate B readability). Approved aesthetic directions and qualitative hierarchies are now **LOCKED VISUAL DIRECTION**. Unrelated technical asset specifications remain **TBD**.
 
 ### 2.2 Visual Decision Audit Table
 
@@ -55,30 +55,36 @@ A generated image, agent preference, or one successful mockup does NOT by itself
 | 2D Game Presentation | **LOCKED** | `ARCHITECTURE.md` §3 (Compatibility 2D renderer) |
 | Android-First / Portrait / 1080 × 1920 Reference Canvas | **LOCKED** | `ARCHITECTURE.md` §3 (Mobile portrait target) |
 | Calm, Low-Pressure Visual Experience Goal | **LOCKED PRODUCT GOAL** | `GAME_DESIGN.md` §4 (Pillars 4.1 & 4.2; low-pressure living garden) |
-| Soft Hand-Painted / Storybook Visual Treatment | **PROVISIONAL** | Preferred direction in `GAME_DESIGN.md` §27; pending prototype review |
-| Thai-Inspired Everyday Domestic Garden Identity | **PROVISIONAL** | Preferred identity in `GAME_DESIGN.md` §6; pending visual validation |
-| Avoidance of Pixel Art | **PROVISIONAL** | `GAME_DESIGN.md` §27: not currently preferred, not locked until prototypes reviewed |
-| Avoidance of Glossy 3D / Heavy Chibi Mascots | **PROVISIONAL VISUAL DIRECTION** | Aesthetic guardrails for Task 4.2 exploration; not locked in root docs |
-| Three-Tier Value & Contrast Hierarchy Implementation | **PROVISIONAL** | Visual method serving locked accessibility goal (`GAME_DESIGN.md` §29) |
+| Soft Hand-Painted / Storybook Visual Treatment | **LOCKED VISUAL DIRECTION — OWNER APPROVED MASTER STYLE SYNTHESIS** | Synthesized Master Style foundation (Candidate C core + Candidate A atmosphere + Candidate B readability); Owner Approved (Task 4.2C) |
+| Everyday Thai-Inspired Domestic Garden Identity | **LOCKED VISUAL DIRECTION — OWNER APPROVED** | Authentic residential home-garden setting; modest, lived-in, humid tropical climate without tourist or temple tropes; Owner Approved (Task 4.2C) |
+| Watercolor vs. Gouache Execution Hierarchy | **LOCKED VISUAL DIRECTION** | Balanced Storybook Hybrid: watercolor softness for atmospheric depth; gouache clarity for important gameplay entities; Owner Approved (Task 4.2C) |
+| Edge Treatment Hierarchy | **LOCKED QUALITATIVE HIERARCHY** | Firmer painted outer edges on important gameplay entities; softer edges on background/atmosphere; no universal heavy black outline; exact pixel thickness TBD |
+| Texture Treatment Strategy | **LOCKED QUALITATIVE HIERARCHY** | Restrained handmade paper/brush character; clear readable entity shapes; zero high-frequency noise that harms phone readability; exact texture assets TBD |
+| Silhouette Treatment & Mobile Readability | **LOCKED QUALITATIVE HIERARCHY** | Gameplay-relevant plants, visitors, and decors must be recognizable by silhouette at phone scale; natural visitor proportions; exact asset-size rules TBD |
+| Color Palette Character vs. Numerical Values | **LOCKED BROAD CHARACTER / PROVISIONAL VALUES** | Warm, natural, restrained, slightly earthy palette character is LOCKED; exact digital HEX values remain PROVISIONAL / TBD for Task 4.3 |
+| Avoidance of Pixel Art | **LOCKED VISUAL DIRECTION** | Consequence of approved painterly Master Style; retro grid pixel art strictly rejected |
+| Avoidance of Glossy 3D / Heavy Chibi Mascots | **LOCKED VISUAL DIRECTION** | Consequence of approved storybook Master Style; natural animal proportions and matte painted rendering locked |
+| Three-Tier Value & Contrast Hierarchy Implementation | **LOCKED QUALITATIVE HIERARCHY** | Visual method serving locked accessibility goal (`GAME_DESIGN.md` §29); Tier 1 (focal) > Tier 2 (supporting) > Tier 3 (background) |
 | MVP Vertical Slice Entity Validation Roster | **PROVISIONAL VALIDATION SCOPE** | Planned mockup validation set (2 plants, 2 visitors, 2 decors, 3 env states) |
-| Provisional Color Palette HEX References | **PROVISIONAL** | Reference guides by role; not locked final asset colors |
-| Exact Brush Grain & Canvas Texture Grain | **PROVISIONAL** | To be evaluated and proven through Task 4.2 mockups |
-| Exact Edge Softness & Outline Thresholds | **PROVISIONAL** | To be evaluated across phone displays in Task 4.2 |
+| Lighting & Weather Conditions Execution Profiles | **PROVISIONAL (Pending Round-B Validation)** | Master Style is LOCKED; exact rain, night, and weather color shift profiles remain PROVISIONAL pending Task 4.2D Round B |
 | UI Surface Card Texture & Panel Rounding Radii | **PROVISIONAL** | Subject to UI layout prototyping; UI implementation out of scope |
-| Specific Font Families (Thai & Latin) | **TBD** | Evaluation criteria set; no font binaries committed |
+| Specific Font Families (Thai & Latin) | **TBD** | Evaluation criteria set; font selection belongs to future UI asset task |
 | Exact Sprite Pixel Dimensions & PPU | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
 | Animation Frame Rates & Sprite Sheet Layouts | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
 | Texture Compression & Atlas Allocation | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
+| Final Production HEX Values | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
+| Exact Brush & Paper Texture Assets | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
+| Shader Architecture & Technical Export Presets | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
 
 ---
 
 ## 3. Visual North Star
 
-**Status: PROVISIONAL VISUAL DIRECTION — grounded in LOCKED product pillars**
+**Status: LOCKED VISUAL DIRECTION — OWNER APPROVED**
 
 > ### "A quiet, living Thai home garden that breathes softly and gently welcomes you home."
 
-The Visual North Star encapsulates the core identity of *Garden*:
+The Visual North Star encapsulates the core identity of *Garden*, formally approved by the Project Owner in Task 4.2C as the synthesized Balanced Storybook Hybrid:
 
 - **Warm & Intimate:** The garden is a small personal sanctuary, not a public park or commercial plantation. It feels embraced by natural shade, domestic warmth, and calm breeze.
 - **Lived-In & Everyday:** It reflects gentle daily care—clay pots arranged over time, wooden furniture softened by weather, a water jar standing ready by the path, lush herbs grown for household cooking.
@@ -91,9 +97,9 @@ The Visual North Star encapsulates the core identity of *Garden*:
 
 ## 4. Cultural Direction and Authenticity Guardrails
 
-**Status: PROVISIONAL VISUAL DIRECTION — guardrails apply while evaluating the Thai-inspired direction**
+**Status: LOCKED VISUAL DIRECTION — OWNER APPROVED**
 
-*Garden* derives its soul from the authentic atmosphere of an ordinary Thai residential garden (*สวนกระถางหน้าบ้าน / สวนข้างบ้าน*). It celebrates the modest beauty of everyday domestic life in a tropical climate.
+*Garden* derives its soul from the authentic atmosphere of an ordinary Thai residential garden (*สวนกระถางหน้าบ้าน / สวนข้างบ้าน*). Following explicit Project Owner review, this everyday domestic direction is locked as the authoritative cultural grounding for Milestone 4 onward.
 
 ### 4.1 Authentic Everyday Cultural Cues
 
@@ -105,7 +111,7 @@ Visual design should consistently incorporate ordinary, recognizable elements:
 - **Pots and Planters:** Terracotta pots of various sizes, glazed ceramic planters with gentle patina, reused household tins, and hanging baskets.
 - **Ground and Paving Transitions:** Organic mixtures of moist packed earth, worn gravel paths, moss-softened concrete pavers, and patches of resilient clover or tropical groundcover.
 - **Shaded Tropical Microclimate:** Dappled shadows cast by broad leaves, roof eaves offering shelter from monsoon rain, bamboo or wooden trellises giving light shade.
-- **Everyday Yard Objects:** A metal or plastic watering can placed beside a jar, simple wooden garden fences (*รั้วไม้ระแนง*), small clay saucers holding water for birds.
+- **Everyday Yard Objects:** A metal or practical watering can placed beside a jar, simple wooden garden fences (*รั้วไม้ระแนง*), small clay saucers holding water for birds.
 
 ### 4.2 Cultural Authenticity Guardrails
 
@@ -125,40 +131,52 @@ DO NOT:
 ✗ Resort to tourist-kitsch shorthand (tuk-tuks, boxing gloves, tourist souvenirs).
 ✗ Present an exaggerated, neon "exotic tropical jungle" fantasy.
 ✗ Add ceremonial or ritual imagery that has no place in an ordinary residential garden.
+✗ Interpret the garden as a luxury themed resort or hotel landscape.
 ```
+
+> **Important Boundary:** This locks the approved visual-cultural execution, **not** every specific object appearing in generated concept art. It does **not** create new gameplay commitments.
 
 ---
 
 ## 5. Core Art Style and Visual Vocabulary
 
-**Status: LOCKED 2D Technical Direction (ARCHITECTURE.md §3); PROVISIONAL Soft Hand-Painted Storybook Treatment (GAME_DESIGN.md §27)**
+**Status: LOCKED 2D Technical Direction (ARCHITECTURE.md §3); LOCKED VISUAL DIRECTION — OWNER APPROVED MASTER STYLE SYNTHESIS (Task 4.2C)**
 
-The technical foundation of *Garden* is **2D** (LOCKED by `ARCHITECTURE.md` §3), and the preferred artistic direction is **soft hand-painted storybook illustration** (PROVISIONAL per `GAME_DESIGN.md` §27, pending Task 4.2 prototype review). It bridges cozy warmth and clear mobile readability.
+The technical foundation of *Garden* is **2D** (LOCKED by `ARCHITECTURE.md` §3). Following visual evaluation of Round-A candidates in Task 4.2B, the Project Owner explicitly approved the synthesized **Balanced Storybook Hybrid** as the project's Master Style (LOCKED VISUAL DIRECTION — Task 4.2C).
+
+The approved Master Style synthesizes traits across the experimental candidates into one coherent illustrated world:
+- **Core Foundation (Candidate C):** Balanced storybook painterly hybrid providing unified harmony between subjects and environment.
+- **Atmospheric Borrowing (Candidate A):** Soft, airy watercolor wash transitions across background foliage, ground planes, and sky gradients.
+- **Readability Borrowing (Candidate B):** Gouache-like body color opacity, firm local value separation, and clear silhouette grouping on gameplay-relevant entities.
 
 ```text
 +-------------------------------------------------------------------------------+
-|                             CORE ART STYLE PILLARS                            |
+|                       APPROVED MASTER STYLE SYNTHESIS                         |
 +-----------------------+-------------------------------+-----------------------+
-| 2D Hand-Painted       | Organic Softness              | Restrained Tactility  |
-| Storybook warmth with | Curved, imperfect silhouettes | Subtle paper/canvas   |
-| visible brush craft   | without harsh outlines        | grain; zero visual    |
-| and gentle gradients  | or rigid CAD geometry         | digital noise         |
+| 2D Storybook Hybrid   | Atmospheric Softness          | Gameplay Readability  |
+| Candidate C Core:     | Borrowed from Candidate A:    | Borrowed from Cand. B:|
+| Tactile, organic,     | Watercolor transitions,       | Firm silhouettes,     |
+| living storybook      | gentle environmental depth,   | gouache body colors,  |
+| illustration          | airy breathable background    | selective edge clarity|
 +-----------------------+-------------------------------+-----------------------+
 ```
 
 ### 5.1 Shape Language
 
-- **Softened Organic Volumes:** Shapes favor rounded contours, gentle ellipses, and softened corners. Straight lines are subtly bowed to convey handmade warmth.
-- **Gentle Asymmetry:** In nature and hand-crafted goods, no two leaves or clay pots are identical. Subtle asymmetry breathes life into objects without making them misshapen.
-- **Readable Silhouettes:** On a mobile display, an object must be instantly recognizable from its outer silhouette alone before interior details are registered.
-- **Architectural Elements:** Built structures (house walls, fence slats, concrete benches) retain stable architectural foundations, but their corners, timber grains, and edges are softly rounded and weathered.
+- **LOCKED PRINCIPLE — Softened Organic Volumes:** Shapes favor rounded contours, gentle ellipses, and softened corners to convey safety, calm, and handmade warmth.
+- **LOCKED PRINCIPLE — Mobile Silhouette Readability:** Every gameplay-relevant plant, visitor, and decoration must possess an instantly readable exterior contour at reduced phone display scale.
+- **LOCKED PRINCIPLE — Natural Domestic Proportions:** Visiting creatures retain natural animal anatomy and dignity; oversized chibi heads, giant anime eyes, and cartoon mascot distortions are strictly prohibited.
+- **PROVISIONAL IMPLEMENTATION DETAIL — Architectural Contours:** Built structures (house walls, fence slats, concrete benches) have softly rounded and weathered corners, with exact curvature tuned per asset during production.
 
 ### 5.2 Line and Edge Policy
 
-- **No Heavy Comic Outlines:** Do not use continuous thick black ink outlines around entire assets. Forms should breathe.
-- **Value and Hue Separation:** Adjacent elements are separated primarily through shifts in color value, temperature, and soft painted transitions.
-- **Selective Soft Line Accents:** Where definition is required for clarity (e.g., overlapping flower petals, pot rim lips, cat paws), use muted, warm tinted contours (e.g., deep olive, warm sepia, soft umber) rather than pure black.
-- **Strongest Edges on Interactables:** Interactive objects and focal visitors possess crisper silhouette contrast than background elements.
+- **LOCKED PRINCIPLE — No Universal Heavy Black Outlines:** Do not use continuous thick black ink outlines around assets. Forms must breathe.
+- **LOCKED QUALITATIVE HIERARCHY — Edge Hierarchy:**
+  1. *Focal Interactive Edge:* Important gameplay entities receive moderately clear painted outer edges with selective clarity on focal zones.
+  2. *Midground Support Edge:* Passive beds, resting pots, and fence slats have painterly edges with slight texture bleed.
+  3. *Background & Atmosphere Edge:* Distant foliage clusters, distant eaves, sky clouds, and nighttime ambient shadows use softer watercolor-like edges.
+- **LOCKED PRINCIPLE — Internal Detail Softness:** Interior details within an entity must remain softer than the outer silhouette to preserve mobile readability.
+- **TBD — Exact Line Thickness:** Exact pixel outline thickness belongs to Task 4.3.
 
 ```text
 ILLUSTRATIVE EDGE PRINCIPLES:
@@ -171,17 +189,19 @@ ILLUSTRATIVE EDGE PRINCIPLES:
 
 ### 5.3 Brush and Texture Character
 
-- **Handmade Touch:** Surfaces display subtle brush marks, dry-brush edge accents, and gentle gouache- or watercolor-inspired color blooming.
-- **Restrained Grain:** Textures should suggest physical paper, terracotta clay grain, and timber fiber, but must remain low-frequency to avoid shimmering or aliasing on high-DPI Android screens.
-- **Simplified Detail Density:** Detail is focused at primary focal points (flower centers, eyes of visitors, jar rims). Large surfaces (walls, soil patches, broad leaves) remain restful, uncluttered fields.
+- **LOCKED QUALITATIVE HIERARCHY — Restrained Handmade Texture:** Surfaces display restrained handmade paper and brush character with organic warmth. High-frequency texture noise, harsh grain, or sparkling that harms phone readability is strictly prohibited.
+- **LOCKED PRINCIPLE — Selective Detail Density:** Detail is concentrated at primary focal points (flower centers, visitor eyes, jar rims). Large surfaces (walls, soil patches, broad leaves) remain restful, uncluttered fields.
+- **TBD — Texture Assets & Engine:** Exact paper texture file, grain percentage, brush engine presets, and texture resolutions belong to Task 4.3.
 
 ### 5.4 What to Avoid (Negative Visual Style Bounds)
 
+Following the Master Style decision, the project strictly rejects:
 - **No Flat Corporate Vector Art:** No clinical, razor-sharp geometric bezier curves devoid of warmth.
 - **No Pixel Art:** The project aesthetic is painterly illustration, not retro grid pixels.
 - **No Photorealism:** Avoid phototextures, raw scans, or ray-traced lighting models.
 - **No Glossy 3D Mobile-Game Look:** Avoid plastic specular highlights, candy-gloss shaders, and spherical bulbous mobile-ad models.
 - **No Chibi/Anime Mascot Distortion:** Characters and animals must have believable, gentle anatomy rather than oversized heads and giant cartoon eyes.
+- **No White Concept Presentation Border in Game:** The in-game presentation must **NOT** use the decorative white paper border seen around Candidate C's generated concept image. That border is a stochastic concept-art presentation artifact, not part of the approved gameplay presentation.
 
 ---
 
@@ -274,9 +294,9 @@ Visitors must be visually discoverable through silhouette and gentle idle motion
 
 ## 8. Shape Language
 
-**Status: PROVISIONAL Visual Direction (grounded in locked calm/low-pressure product pillar)**
+**Status: LOCKED QUALITATIVE PRINCIPLES (grounded in locked calm/low-pressure product pillar & owner approval); PROVISIONAL IMPLEMENTATION DETAILS**
 
-Shape language establishes the emotional tone of safety, warmth, and relaxation, supporting the locked low-pressure pillar (`GAME_DESIGN.md` §4.1). Specific shape rules remain provisional for Task 4.2 prototype evaluation.
+Shape language establishes the emotional tone of safety, warmth, and relaxation, supporting the locked low-pressure pillar (`GAME_DESIGN.md` §4.1) and the Owner-approved Master Style synthesis.
 
 ```text
 ROUNDED & ORGANIC                SOFT GEOMETRY                 SHARP & AGGRESSIVE
@@ -287,23 +307,28 @@ cats, petals, soil mounds        paving tiles, window frames    no harsh spikes,
 → Conveys calm and comfort.     → Softened handmade edges.     → Causes visual stress.
 ```
 
-- **Dominant Organic Forms:** Leaves, flower petals, earthen mounds, clouds, water droplets, and visiting animals are defined by continuous smooth curves and organic convex forms.
-- **Softened Geometry for Built Items:** Man-made objects (wooden benches, fences, square planters, ceramic tiles) avoid clinical 90-degree corners. Edges exhibit subtle bevels, hand-carved waviness, and worn corners.
-- **Silhouette Mobile Rule:** Every entity must possess a unique exterior contour. If filled completely with solid black, a player should still instantly distinguish holy basil from marigold, a cat from a frog, and a water jar from a plant pot.
+- **LOCKED PRINCIPLE — Dominant Organic Forms:** Leaves, flower petals, earthen mounds, clouds, water droplets, and visiting animals are defined by continuous smooth curves and organic convex forms.
+- **LOCKED PRINCIPLE — Softened Geometry for Built Items:** Man-made objects (wooden benches, fences, square planters, ceramic tiles) avoid clinical 90-degree corners. Edges exhibit subtle bevels, hand-carved waviness, and worn corners.
+- **LOCKED PRINCIPLE — Silhouette Mobile Rule:** Every entity must possess a unique exterior contour. Silhouette and local value separation strictly outrank tiny decorative interior detail at mobile screen scale. If filled completely with solid black, a player should still instantly distinguish holy basil from marigold, a cat from a frog, and a water jar from a plant pot.
+- **LOCKED PRINCIPLE — Natural Domestic Proportions:** Visiting creatures retain natural animal proportions and domestic dignity; oversized chibi heads, giant cartoon eyes, and mascot caricatures are strictly barred.
+- **PROVISIONAL IMPLEMENTATION DETAIL — Asset-Specific Contours:** Exact curve radii, bevel angles, and polygon silhouette counts per individual sprite remain provisional for Task 4.3 pipeline testing.
 
 ---
 
 ## 9. Line and Edge Policy
 
-**Status: PROVISIONAL**
+**Status: LOCKED QUALITATIVE HIERARCHY (Exact pixel thickness TBD)**
 
 *Garden* does not use heavy black ink outlines, nor does it use borderless flat vector blobs. It employs a **painterly edge hierarchy**:
 
 ### 9.1 The Edge Hierarchy
 
-1. **Focal Interactive Edge (Crispest):** Active harvestable plants, newly arrived visitors, and selected garden decorations have defined, clean-painted contours with subtle warm-tone edge accents.
-2. **Midground Support Edge (Medium Soft):** Passive soil beds, background foliage, resting garden pots, and fence slats have painterly edges with slight texture bleed into neighbors.
-3. **Background & Atmosphere Edge (Softest):** Distant foliage clusters, distant roof eaves, sky clouds, and nighttime ambient shadows use soft-edge gradients with minimal internal detail.
+1. **LOCKED — Focal Interactive Edge (Moderately Clear / Firmer):** Active harvestable plants, newly arrived visitors, and selected garden decorations have clearly defined, firmly painted outer contours with selective edge clarity on focal zones and subtle warm-tone edge accents.
+2. **LOCKED — Midground Support Edge (Medium Soft):** Passive soil beds, background foliage, resting garden pots, and fence slats have painterly edges with slight texture bleed into neighbors.
+3. **LOCKED — Background & Atmosphere Edge (Softest):** Distant foliage clusters, distant roof eaves, sky clouds, and nighttime ambient shadows use soft watercolor-like edge gradients with minimal internal detail.
+4. **LOCKED PRINCIPLE — Internal Detail Softness:** Interior details within an entity must remain softer than the outer silhouette to preserve mobile readability.
+5. **LOCKED VISUAL DIRECTION — No Heavy Comic Outlines:** No continuous heavy black outlines around entire assets; sharpness follows hierarchy rather than being uniform.
+6. **TBD — Pixel Outline Thickness:** Exact pixel outline thickness per sprite remains TBD for Task 4.3.
 
 ### 9.2 Word Examples of Edge Application
 
@@ -331,9 +356,15 @@ EXAMPLE C (Cat Visitor):
 
 ## 10. Texture and Material Language
 
-**Status: PROVISIONAL**
+**Status: LOCKED QUALITATIVE HIERARCHY (Exact texture assets TBD)**
 
-Materials in *Garden* look tactile, natural, and weathered by tropical air.
+Materials in *Garden* look tactile, natural, and weathered by tropical air, following the approved qualitative texture strategy:
+
+- **LOCKED PRINCIPLE — Restrained Handmade Texture:** Restrained handmade paper and brush character is locked; environmental watercolor wash variation may be visible in broad fields, while important objects retain clean readable shapes.
+- **LOCKED PRINCIPLE — Zero Mobile Noise:** Textures must strictly avoid high-frequency grit, pixel noise, or sparkling that harms phone readability.
+- **TBD — Asset Specifications:** Exact paper texture asset file, grain percentage, brush engine presets, and texture resolutions belong to Task 4.3.
+
+### 10.1 Material Rendering Profiles
 
 - **Foliage:** Semi-matte, waxy tropical leaf finish. Light penetrates thin leaves (subtle translucency). Clusters show broad value planes rather than individual leaf veins.
 - **Soil & Earth:** Rich, moist tropical garden soil. Slightly clumpy and textured with warm brown and umber tones; damp patches after rainfall.
@@ -354,9 +385,12 @@ high-frequency pixel noise or sparkling when scaled down on smaller screens.
 
 ## 11. Color System (By Role)
 
-**Status: PROVISIONAL VISUAL REFERENCES — NOT LOCKED FINAL ASSET COLORS**
+**Status: LOCKED BROAD PALETTE CHARACTER; PROVISIONAL REFERENCE HEX VALUES (NOT LOCKED FINAL ASSET COLORS)**
 
 The color palette of *Garden* is warm, organic, and grounded in tropical Southeast Asian nature. Saturation is disciplined to maintain a restful, low-pressure ambiance. Neon, fluorescent, and casino-like color ramps are strictly prohibited.
+
+- **LOCKED BROAD CHARACTER:** The broad palette character is warm, natural, restrained, and slightly earthy, featuring varied tropical greens, terracotta, weathered wood, warm earth, moss, muted concrete, and controlled warm flower/visitor accents.
+- **PROVISIONAL / TBD VALUES:** The exact numerical HEX values below represent provisional reference anchors for concept exploration. Final production color values belong to Task 4.3 (Asset Technical Pipeline). Do not lock final numerical colors today.
 
 ```text
 ================================================================================
@@ -388,9 +422,9 @@ The HEX values below represent mood and value anchors for concept exploration.
 
 ## 12. Value and Contrast Hierarchy
 
-**Status: PROVISIONAL Visual Method (serving locked readability and accessibility goals)**
+**Status: LOCKED QUALITATIVE HIERARCHY (serving locked readability and accessibility goals)**
 
-To serve the locked accessibility goal of adequate visual readability on phone displays (`GAME_DESIGN.md` §29), contrast is managed through a provisional three-tier hierarchy:
+To serve the locked accessibility goal of adequate visual readability on phone displays (`GAME_DESIGN.md` §29), contrast is managed through a locked three-tier hierarchy where silhouette and value separation strictly outrank tiny decorative detail:
 
 ```text
 +-------------------------------------------------------------------------------+
@@ -414,7 +448,9 @@ To serve the locked accessibility goal of adequate visual readability on phone d
 
 ## 13. Lighting and Atmospheric Conditions
 
-**Status: PROVISIONAL Visual Direction (aligned with provisional GAME_DESIGN.md §13 & §14)**
+**Status: PROVISIONAL Visual Direction (Pending Round-B Validation in Task 4.2D)**
+
+*Master Style Status:* While the core Master Style is **LOCKED**, the exact visual implementation profiles for Day, Night, Cloudy, and Rain conditions remain **PROVISIONAL**. Round B (Task 4.2D) exists specifically to validate the approved Master Style under these diverse environmental conditions before final asset locking.
 
 Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of the tropics, aligning with the provisional time-of-day and weather frameworks in `GAME_DESIGN.md` §13 and §14.
 
@@ -459,7 +495,9 @@ Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of 
 
 ## 14. Plant Visual Language
 
-**Status: LOCKED Gameplay Growth Stages (GAME_DESIGN.md §10); PROVISIONAL Visual Differentiation Methods**
+**Status: LOCKED Gameplay Growth Stages (GAME_DESIGN.md §10); LOCKED Silhouette Principles; PROVISIONAL Implementation Details**
+
+> **Stochastic Detail Notice:** The visual principles of clear 4-stage silhouette differentiation, mass distinction, and botanical plausibility are **LOCKED**. Stochastic details appearing in concept mockups (such as exact leaf counts, branch counts, or exact flower petal counts) are non-authoritative and not locked.
 
 Plants are living, persistent members of the garden. They grow through four clearly readable stages:
 
@@ -470,7 +508,7 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ### 14.1 General Growth Stage Rules
 
-1. **Stage Distinguishability:** The player must distinguish plant stages primarily by **silhouette, height, and foliage mass**, never by reading small text labels alone. Growth stages (`planted -> sprout -> growing -> mature/harvestable`) and persistence after harvest are LOCKED gameplay contracts (`GAME_DESIGN.md` §10); the visual differentiation methods (silhouette mass, leaf density, painted treatment) are PROVISIONAL visual directions for Task 4.2 prototype testing.
+1. **Stage Distinguishability:** The player must distinguish plant stages primarily by **silhouette, height, and foliage mass**, never by reading small text labels alone. Growth stages (`planted -> sprout -> growing -> mature/harvestable`) and persistence after harvest are LOCKED gameplay contracts (`GAME_DESIGN.md` §10); the visual differentiation principles (silhouette mass, leaf clump density, painted gouache-like clarity) are LOCKED visual principles, while exact sprite dimensions and PPU belong to Task 4.3.
 2. **Persistence After Maturity:** Reaching maturity produces flowers or harvestable goods. In accordance with `GAME_DESIGN.md` §10, mature plants remain in the garden after harvest rather than vanishing.
 3. **Organic Identity:** Plants retain clear botanical character (leaf shapes, branch structure) without requiring dry botanical textbook realism.
 
@@ -508,13 +546,15 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ## 15. Visitor Visual Language
 
-**Status: LOCKED Behavioral Rules (GAME_DESIGN.md §11); PROVISIONAL Visual Profiles**
+**Status: LOCKED Behavioral Rules (GAME_DESIGN.md §11); LOCKED Anatomy & Dignity Principles; PROVISIONAL Profiles**
+
+> **Stochastic Detail Notice:** The visual principles of believable domestic anatomy, natural restful postures, and dignity without caricature or chibi mascots are **LOCKED**. Stochastic details appearing in concept mockups (such as specific cat coat markings, fur patches, or exact butterfly wing patterns) are non-authoritative and not locked.
 
 Visitors are wild or domestic creatures that choose to visit the garden because of the conditions created by the player.
 
 ### 15.1 Core Visitor Principles
 
-- **Autonomous Guests, Not Collectible Tokens:** Visitors must feel like living creatures entering, resting, and leaving naturally. Core visitor behavior is LOCKED by `GAME_DESIGN.md` §11; visual execution choices (proportions, stylized poses, edge softness) are PROVISIONAL directions for prototype testing.
+- **Autonomous Guests, Not Collectible Tokens:** Visitors must feel like living creatures entering, resting, and leaving naturally. Core visitor behavior is LOCKED by `GAME_DESIGN.md` §11; visual execution principles (natural proportions, dignified resting postures, soft gouache body clarity) are LOCKED visual directions, while exact animation sprite sheets belong to Task 4.3.
 - **Readable Natural Anatomy:** Silhouettes reflect believable animal proportions softened by storybook illustration. No oversized chibi heads, giant anime eyes, or cartoon hands.
 - **Environmental Grounding:** Visitors physically interact with the garden (e.g., cat sleeps on bench, butterfly hovers near marigold blossoms, frog rests near the water jar).
 - **Subtle Idle Life:** Breathing motion, occasional ear twitch, wing flutter, or head turn. Visitors do not constantly bounce or loop hyperactive animations.
@@ -548,13 +588,15 @@ Visitors are wild or domestic creatures that choose to visit the garden because 
 
 ## 16. Decoration Visual Language
 
-**Status: LOCKED Purpose Principles (GAME_DESIGN.md §15); PROVISIONAL Visual Profiles**
+**Status: LOCKED Purpose Principles (GAME_DESIGN.md §15); LOCKED Qualitative Styling Principles; PROVISIONAL Profiles**
+
+> **Stochastic Detail Notice:** The visual principles of authentic domestic utility, lived-in weathering, and rounded earthenware/timber silhouettes are **LOCKED**. Stochastic details appearing in concept mockups (such as exact pot rim curvature, bench slat counts, or specific kiln markings) are non-authoritative and not locked.
 
 Garden decorations are practical, cherished household items that have accumulated over time. They reflect domestic hospitality and natural utility.
 
 ### 16.1 Decoration Principles
 
-- **Believable Utility:** Objects look functional and meaningful (a jar holds cooling water, a bench provides rest, a pot holds an herb). The dual purpose of decorations (visual self-expression and systemic traits) is LOCKED by `GAME_DESIGN.md` §15; visual styling and weathering levels are PROVISIONAL directions for prototype testing.
+- **Believable Utility:** Objects look functional and meaningful (a jar holds cooling water, a bench provides rest, a pot holds an herb). The dual purpose of decorations (visual self-expression and systemic traits) is LOCKED by `GAME_DESIGN.md` §15; visual styling and weathering principles are LOCKED qualitative directions, while exact 2D asset dimensions belong to Task 4.3.
 - **Subtle Weathering:** Surfaces show sun-faded paint, softened timber edges, moss traces at soil level, or gentle water marks.
 - **No Luxury Showroom Polish:** Objects are not pristine chrome, plastic, or high-end theme-park collectibles.
 - **Personal Arrangement:** Objects feel naturally set down by a caring homeowner.
@@ -823,39 +865,38 @@ To prove the visual direction before launching full-scale content production, th
 
 ---
 
-## 28. Future Concept Mockup Plan (Task 4.2 Preparation)
+## 28. Concept Mockup Experiment Plan (Task 4.2 Sequence)
 
-**Status: PROVISIONAL Mockup Plan (Evaluation Scope for Task 4.2)**
+**Status: TASK 4.2C COMPLETED (Master Style Locked); TASK 4.2D NEXT (Validation)**
 
-Following approval of this Visual Style Bible, Task 4.2 will generate **5 targeted visual mockups** to evaluate visual hypotheses and select a master style.
+Task 4.2 evaluates visual hypotheses through a controlled two-round experiment sequence:
+- **Task 4.2A:** Controlled concept mockup experiment specification (`VISUAL_MOCKUP_PLAN.md`). [COMPLETED]
+- **Task 4.2B:** Round-A style comparison generating Candidates A, B, and C. [COMPLETED]
+- **Task 4.2C:** Record Project Owner approved Master Style synthesis decision. [COMPLETED]
+- **Task 4.2D:** Round-B Master Style validation across 4 targeted scenarios. [AUTHORIZED / NEXT]
 
 ```text
 +-------------------------------------------------------------------------------+
-|                         PLANNED CONCEPT MOCKUPS (5)                           |
+|                      TASK 4.2D ROUND-B VALIDATION MOCKUPS (4)                 |
 +-------------------------------------------------------------------------------+
-| 1. DAYTIME MAIN GARDEN                                                        |
-|    - Validates: Core composition, day lighting, soil/plant/decor integration.  |
-|    - Constants: 1080×1920 framing, Thai home garden identity, soft style.     |
-|    - Focus: Overall harmony of basil, marigold, jar, and bench in sunlight.   |
-+-------------------------------------------------------------------------------+
-| 2. RAINY GARDEN                                                               |
+| 1. RAINY GARDEN                                                               |
 |    - Validates: Rain atmosphere, wet surface response, non-punitive coziness. |
-|    - Constants: Same garden layout as Mockup 1.                               |
-|    - Variation: Diffuse teal-grey light, rain streaks, wet sheen on jar/leaves.|
+|    - Constants: Established garden layout and approved Master Style Anchor.   |
+|    - Focus: Diffuse silver-teal mist, subtle rain streaks, damp leaf sheen.   |
 +-------------------------------------------------------------------------------+
-| 3. NIGHTTIME GARDEN WITH LAMP & FIREFLIES                                     |
+| 2. NIGHTTIME GARDEN WITH LAMP & FIREFLIES                                     |
 |    - Validates: Nocturnal readability, localized warm pools, magical mood.   |
-|    - Constants: Same garden layout as Mockup 1.                               |
-|    - Variation: Indigo ambient, warm lamp pool on bench, soft firefly motes.  |
+|    - Constants: Established garden layout and approved Master Style Anchor.   |
+|    - Focus: Indigo ambient, warm lamp pool on bench, soft firefly motes.      |
 +-------------------------------------------------------------------------------+
-| 4. PLANT CLOSE-READ (HOLY BASIL & MARIGOLD)                                   |
+| 3. PLANT CLOSE-READ (HOLY BASIL & MARIGOLD)                                   |
 |    - Validates: 4-stage growth silhouette readability at mobile scale.        |
 |    - Constants: Side-by-side progression from Planted to Mature.              |
 |    - Focus: Silhouette mass, color progression, clear harvestable readiness.  |
 +-------------------------------------------------------------------------------+
-| 5. VISITOR MOMENT (CAT ON BENCH & BUTTERFLY ON MARIGOLD)                      |
+| 4. VISITOR MOMENT (CAT ON BENCH & BUTTERFLY ON MARIGOLD)                      |
 |    - Validates: Animal scale, believable integration, absence of mascot tropes|
-|    - Constants: Established garden elements.                                  |
+|    - Constants: Established garden elements and approved Master Style Anchor. |
 |    - Focus: Cat sleeping naturally on bench; butterfly sipping on blossom.   |
 +-------------------------------------------------------------------------------+
 ```
@@ -864,77 +905,106 @@ Following approval of this Visual Style Bible, Task 4.2 will generate **5 target
 
 ## 29. Master Style Selection Process
 
-**Status: LOCKED Process**
+**Status: LOCKED Process — STEP 5 COMPLETED (Owner Approved in Task 4.2C)**
 
 To ensure cohesive art direction and prevent style fragmentation, the project follows an explicit **Master Style Selection Process**:
 
 ```text
 +-----------------------------+
 | Step 1: Bible Hypotheses    |  VISUAL_STYLE_BIBLE.md defines preferred visual
-+--------------+--------------+  hypotheses with correct decision statuses.
++--------------+--------------+  hypotheses with correct decision statuses. [DONE]
                |
                v
 +-----------------------------+
 | Step 2: Generate Mockups    |  Generate concept mockups guided strictly
-+--------------+--------------+  by Bible hypotheses (Task 4.2).
++--------------+--------------+  by Bible hypotheses (Task 4.2B). [DONE]
                |
                v
 +-----------------------------+
 | Step 3: Comparative Audit   |  Evaluate mockups against Cultural Guardrails,
-+--------------+--------------+  Mobile Readability, and Core Art Style.
++--------------+--------------+  Mobile Readability, and Core Art Style. [DONE]
                |
                v
 +-----------------------------+
 | Step 4: Reject Drift        |  Eliminate any style drift toward generic anime,
-+--------------+--------------+  western farm, pixel art, or glossy 3D.
++--------------+--------------+  western farm, pixel art, or glossy 3D. [DONE]
                |
                v
 +-----------------------------+
-| Step 5: Owner Review & Lock |  Project owner explicitly approves ONE single
-+--------------+--------------+  Master Style Anchor; provisional choices promoted.
+| Step 5: Owner Review & Lock |  Project owner explicitly approved Synthesized
++--------------+--------------+  Master Style Anchor (Task 4.2C). [LOCKED]
                |
                v
 +-----------------------------+
 | Step 6: Asset Tech Pipeline |  Establish technical asset pipeline, sprite grids,
-+-----------------------------+  and Godot import presets (Task 4.3).
++-----------------------------+  and Godot import presets (Task 4.3). [NEXT]
 ```
 
-*Crucial Governance Rule:* An individual generated image, agent preference, or single successful mockup must never silently promote a visual direction to LOCKED. The Visual Style Bible's aesthetic directions remain PROVISIONAL until the project owner explicitly approves the Master Style Anchor following Task 4.2 review. Only after that explicit owner approval may provisional aesthetic decisions be promoted to LOCKED VISUAL DIRECTION.
+*Governance Reaffirmation:* The Project Owner has explicitly reviewed Round-A candidates and approved the synthesized Master Style (Candidate C foundation + Candidate A atmosphere + Candidate B readability). This promotes core visual style directions to **LOCKED VISUAL DIRECTION**. Unrelated technical specifications remain **TBD** until Task 4.3.
 
 ---
 
-## 30. Image-Generation Prompt Anchor
+## 30. Approved Master Style Prompt Anchor
 
-**Status: PROVISIONAL Reference Prompt (No Images Generated in Task 4.1)**
+**Status: LOCKED MASTER STYLE ANCHOR (Owner Approved in Task 4.2C)**
 
-The following standardized prompt block serves as the **reusable prompt anchor** for future concept generation workflows (e.g., in Task 4.2). It encapsulates all aesthetic requirements and negative constraints into a repeatable format:
+The following standardized prompt block serves as the **Approved Master Style Anchor** for all future concept and asset reference generation (including Task 4.2D Round-B validation). It encapsulates all approved aesthetic requirements and negative constraints into a repeatable format:
 
 ```text
 PROMPT ANCHOR TEMPLATE:
 
-A beautiful 2D soft hand-painted storybook illustration of a cozy, living everyday
-Thai domestic home garden. Warm, gentle, inviting, and lived-in atmosphere.
-Modest wooden fence, clay terracotta water jar (ong din pao), simple weathered teak
-garden bench, potted holy basil herbs and bright marigold flowers in rich moist soil.
-Natural tropical daylight filtering softly through broad green leaves.
-Organic shapes, softened contours, tactile painterly textures with subtle gouache
-and watercolor feel, restrained natural color palette of lush greens, warm terracotta,
-and earthy woods. Android portrait mobile composition (9:16 aspect ratio).
-Calm observational perspective, peaceful domestic life.
+A beautiful 2D soft hand-painted storybook illustration combining soft gouache-like body colors for important gameplay entities with delicate watercolor-like atmospheric wash transitions in the background and ground planes. Clear, instantly readable silhouettes for plants, visitors, and garden objects with moderate local value separation from the surrounding environment. Organic, softened painted contours with selective edge clarity on focal elements; strictly no universal heavy black comic outlines. Restrained, tactile handmade paper and brush texture conveying organic warmth without high-frequency noise or small-screen grain. Warm, natural, slightly earthy color palette featuring tropical greens, rich terracotta, weathered teak wood, moist garden soil, soft moss, and muted concrete. Culturally grounded in an authentic everyday Thai domestic residential yard, evoking a calm, peaceful, low-pressure, lived-in domestic sanctuary. No glossy 3D CGI rendering, no photorealism, no pixel art, no chibi mascot proportions, framed specifically for Android portrait mobile readability (9:16 aspect ratio).
 
 NEGATIVE / EXCLUSION ANCHOR:
 No glossy 3D rendering, no CGI specular highlights, no pixel art, no sharp vector flat art,
 no photorealism, no anime character tropes, no cute oversized chibi mascots,
 no Buddhist temples, no golden religious ornaments, no mythical naga creatures,
 no tourist tuk-tuks, no neon casino colors, no UI buttons, no text, no letters,
-no watermarks, no framing borders.
+no watermarks, no framing borders, no white concept presentation borders.
 ```
 
 ---
 
-## 31. Negative Visual Rules ("Do Not Drift Toward")
+## 31. Negative Visual Rules & Explicitly Rejected Traits
 
-**Status: PROVISIONAL Visual Guardrails (grounded in locked design pillars & provisional art direction)**
+**Status: LOCKED VISUAL DIRECTION (Owner Approved in Task 4.2C)**
+
+### 31.1 Explicitly Rejected Traits from Round-A Review
+
+The Project Owner's visual review explicitly rejected the following stylistic extremes:
+
+- **From Candidate A (Watercolor-Forward) — REJECTED:**
+  - Excessive watercolor softness that merges interactables into the background environment.
+  - Excessive pigment granulation and paper noise that reads as grit at mobile scale.
+  - Weak foreground/background value separation.
+- **From Candidate B (Gouache-Forward) — REJECTED:**
+  - Excessively hard or poster-like graphic rendering.
+  - Generic flat mobile-game appearance lacking illustrated soul.
+  - Loss of atmospheric softness and airy environmental depth.
+  - Loss of handmade watercolor warmth.
+- **From Candidate C (Hybrid) — REJECTED:**
+  - Overly neutral compromise without recognizable handmade character.
+  - Decorative white paper framing border as part of in-game presentation (presentation artifact only).
+- **General Rejected Outcomes:**
+  - Glossy 3D CGI rendering and specular plastic highlights.
+  - Photorealism and raw photographic textures.
+  - Pixel-art direction, grid dithering, and retro sprites.
+  - Universal heavy comic book outlines.
+  - Hyper-saturated mobile farming-game color ramps.
+  - Chibi mascot-world treatment and oversized cartoon eyes.
+  - Excessive magical sparkle effects, loot rays, or fireworks.
+  - Visually cluttered environments violating the "one-or-two details" rule.
+
+### 31.2 Visual Production Priority
+
+All visual asset creation and evaluation must strictly adhere to this approved priority order:
+1. **Mobile Readability** (Silhouette clarity, touch targets, value separation on phone screens).
+2. **Calm and Inviting Atmosphere** (Soft light, low-pressure ambiance, peaceful setting).
+3. **Coherent Handmade Illustrated Character** (Storybook warmth, visible artisan craft, unified world).
+4. **Everyday Lived-In Garden Authenticity** (Modest Thai domestic reality, natural weathering, practical care).
+5. **Repeatability Across a Practical 2D Production Pipeline** (Feasible, scalable 2D sprite creation in Godot).
+
+### 31.3 Standard Visual Drift Avoidance Rules
 
 To preserve the unique soul of *Garden*, visual artists and generation workflows must vigilantly avoid drifting toward the following visual tropes:
 
@@ -988,14 +1058,19 @@ Every new concept art piece, mockup, environment sprite, plant stage, visitor po
 
 ---
 
-## 33. Summary of Open Visual Decisions (Next Tasks)
+## 33. Summary of Visual Decisions & Next Tasks
 
-**Status: TBD**
+**Status: TASK 4.2C COMPLETE; DOWNSTREAM PIPELINE SCHEDULED**
 
-To preserve strict separation of concerns, the following downstream visual and technical decisions are deliberately left for future tasks:
+To preserve strict separation of concerns, the project status is summarized below:
 
-1. **Selection of Single Master Style Anchor:** Scheduled for **Task 4.2** following multi-mockup comparison.
-2. **Typography Asset Selection & Licensing:** Font families will be evaluated and verified in a future UI asset task.
-3. **Asset Technical Pipeline Specifications:** Exact sprite sheet layouts, pixel dimensions, PPU, Godot 2D import compression, and atlas boundaries belong to **Task 4.3**.
-4. **Shader and Lighting Technical Implementation:** Shaders, light nodes, and canvas modulators belong to milestone implementation tasks.
-5. **Audio and Ambient Soundscape:** Audio assets and sound direction belong to Milestone 5.
+1. **Master Style Foundation & Synthesis:** **LOCKED VISUAL DIRECTION (Owner Approved in Task 4.2C)** — Balanced Storybook Hybrid (Candidate C core, Candidate A atmospheric softness, Candidate B gameplay readability).
+2. **Cultural Grounding:** **LOCKED VISUAL DIRECTION (Owner Approved in Task 4.2C)** — Everyday Thai-inspired domestic garden setting.
+3. **Qualitative Visual Hierarchies:** **LOCKED (Owner Approved in Task 4.2C)** — Edge hierarchy, texture strategy, silhouette readability priority, and broad warm earthy palette character.
+4. **Master Style Validation (Round B):** Scheduled for **Task 4.2D** (Rainy Garden, Night Garden, Plant Growth Stages, Visitor Moment).
+5. **Typography Asset Selection & Licensing:** Font families will be evaluated and verified in a future UI asset task (TBD).
+6. **Asset Technical Pipeline Specifications:** Exact sprite sheet layouts, pixel dimensions, PPU, Godot 2D import compression, and atlas boundaries belong to **Task 4.3** (TBD).
+7. **Final Numerical Colors:** Final production HEX calibration belongs to **Task 4.3** (TBD).
+8. **Exact Texture & Brush Assets:** Paper textures, grain files, and brush engine presets belong to **Task 4.3** (TBD).
+9. **Shader and Lighting Technical Implementation:** Shaders, light nodes, and canvas modulators belong to milestone implementation tasks (TBD).
+10. **Audio and Ambient Soundscape:** Audio assets and sound direction belong to Milestone 5 (TBD).
