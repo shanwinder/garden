@@ -1,6 +1,6 @@
 # Garden Visual Style Bible
 
-> Status: **Authoritative Visual Style Bible — Milestone 4 (Task 4.2C Owner Approved Master Style)**
+> Status: **Authoritative Visual Style Bible — Milestone 4 (Task 4.2E Round-B Owner Validated Master Style)**
 >
 > Reference Target: **Android Portrait (1080 × 1920 Responsive)**
 >
@@ -48,25 +48,36 @@ A PROVISIONAL visual decision may become LOCKED only when:
 
 *Governance Event (Task 4.2C):* Condition 2 has occurred. Following visual review of Round-A candidates (A, B, C), the Project Owner has explicitly approved the synthesized Master Style direction (Candidate C foundation + Candidate A atmosphere + Candidate B readability). Approved aesthetic directions and qualitative hierarchies are now **LOCKED VISUAL DIRECTION**. Unrelated technical asset specifications remain **TBD**.
 
+*Governance Event (Task 4.2E):* Condition 2 re-confirmed. Following visual review of Round-B condition validation mockups and controlled refinement, the Project Owner has formally reviewed and approved all four representative scenarios (Rainy Garden: PASS, Night Garden: PASS, Plant Growth Close-Read: PASS, Visitor Moment: PASS).
+- Master Style remains **LOCKED + ROUND-B VALIDATED** (UNCHANGED).
+- Qualitative treatments for Rain, Night, Plant-Stage Readability, and Visitor Natural Scale are promoted to **VALIDATED / LOCKED QUALITATIVE DIRECTION**.
+- Landscape botanical validation plate is recognized as a review/reference format only; Android-first portrait 1080 × 1920 reference game canvas remains locked.
+- Technical implementation details (sprite sizes, PPU, atlasing, compression, animation FPS, shaders, exact numerical HEX) remain explicitly **TBD** for Task 4.3.
+- Asset Technical Pipeline Gate is **OPEN**.
+
 ### 2.2 Visual Decision Audit Table
 
 | Topic / Decision Area | Status | Authority & Notes |
 |---|---|---|
 | 2D Game Presentation | **LOCKED** | `ARCHITECTURE.md` §3 (Compatibility 2D renderer) |
-| Android-First / Portrait / 1080 × 1920 Reference Canvas | **LOCKED** | `ARCHITECTURE.md` §3 (Mobile portrait target) |
+| Android-First / Portrait / 1080 × 1920 Reference Canvas | **LOCKED** | `ARCHITECTURE.md` §3 (Mobile portrait target; reference canvas unchanged by review plates) |
 | Calm, Low-Pressure Visual Experience Goal | **LOCKED PRODUCT GOAL** | `GAME_DESIGN.md` §4 (Pillars 4.1 & 4.2; low-pressure living garden) |
-| Soft Hand-Painted / Storybook Visual Treatment | **LOCKED VISUAL DIRECTION — OWNER APPROVED MASTER STYLE SYNTHESIS** | Synthesized Master Style foundation (Candidate C core + Candidate A atmosphere + Candidate B readability); Owner Approved (Task 4.2C) |
+| Soft Hand-Painted / Storybook Visual Treatment | **LOCKED + ROUND-B VALIDATED** | Synthesized Master Style foundation (Candidate C core + Candidate A atmosphere + Candidate B readability); Owner Approved (Task 4.2C) and Validated across all Round-B conditions (Task 4.2E) |
 | Everyday Thai-Inspired Domestic Garden Identity | **LOCKED VISUAL DIRECTION — OWNER APPROVED** | Authentic residential home-garden setting; modest, lived-in, humid tropical climate without tourist or temple tropes; Owner Approved (Task 4.2C) |
 | Watercolor vs. Gouache Execution Hierarchy | **LOCKED VISUAL DIRECTION** | Balanced Storybook Hybrid: watercolor softness for atmospheric depth; gouache clarity for important gameplay entities; Owner Approved (Task 4.2C) |
 | Edge Treatment Hierarchy | **LOCKED QUALITATIVE HIERARCHY** | Firmer painted outer edges on important gameplay entities; softer edges on background/atmosphere; no universal heavy black outline; exact pixel thickness TBD |
 | Texture Treatment Strategy | **LOCKED QUALITATIVE HIERARCHY** | Restrained handmade paper/brush character; clear readable entity shapes; zero high-frequency noise that harms phone readability; exact texture assets TBD |
-| Silhouette Treatment & Mobile Readability | **LOCKED QUALITATIVE HIERARCHY** | Gameplay-relevant plants, visitors, and decors must be recognizable by silhouette at phone scale; natural visitor proportions; exact asset-size rules TBD |
+| Silhouette Treatment & Mobile Readability | **VALIDATED / LOCKED QUALITATIVE DIRECTION** | Gameplay plants (4 stages) and visitors (natural domestic scale) readability VALIDATED / LOCKED (Task 4.2E); exact asset dimensions and PPU remain TBD for Task 4.3 |
+| Rain Visual Treatment | **VALIDATED / LOCKED QUALITATIVE DIRECTION** | Gentle tropical rain, cozy/refreshing/non-punitive atmosphere, diffuse soft lighting, restrained streaks, wet sheen; shaders & particle density TBD (Task 4.2E) |
+| Night Visual Treatment | **VALIDATED / LOCKED QUALITATIVE DIRECTION** | Deep peaceful indigo ambient, localized warm lamp pools, restrained fireflies; no crushed black shadows or neon; exact HEX & lighting nodes TBD (Task 4.2E) |
+| Plant Stage Visual Readability | **VALIDATED / LOCKED QUALITATIVE DIRECTION** | 4-stage silhouette differentiation (Planted, Sprout, Growing, Mature) without text dependency; basil vs marigold distinction locked; sprite sizes TBD (Task 4.2E) |
+| Visitor Natural-Scale Treatment | **VALIDATED / LOCKED QUALITATIVE DIRECTION** | Believable domestic anatomy, dignified poses; butterfly delicate and small relative to flowers; no chibi/mascots; animation frames TBD (Task 4.2E) |
 | Color Palette Character vs. Numerical Values | **LOCKED BROAD CHARACTER / PROVISIONAL VALUES** | Warm, natural, restrained, slightly earthy palette character is LOCKED; exact digital HEX values remain PROVISIONAL / TBD for Task 4.3 |
 | Avoidance of Pixel Art | **LOCKED VISUAL DIRECTION** | Consequence of approved painterly Master Style; retro grid pixel art strictly rejected |
 | Avoidance of Glossy 3D / Heavy Chibi Mascots | **LOCKED VISUAL DIRECTION** | Consequence of approved storybook Master Style; natural animal proportions and matte painted rendering locked |
 | Three-Tier Value & Contrast Hierarchy Implementation | **LOCKED QUALITATIVE HIERARCHY** | Visual method serving locked accessibility goal (`GAME_DESIGN.md` §29); Tier 1 (focal) > Tier 2 (supporting) > Tier 3 (background) |
-| MVP Vertical Slice Entity Validation Roster | **PROVISIONAL VALIDATION SCOPE** | Planned mockup validation set (2 plants, 2 visitors, 2 decors, 3 env states) |
-| Lighting & Weather Conditions Execution Profiles | **PROVISIONAL (Pending Round-B Validation)** | Master Style is LOCKED; exact rain, night, and weather color shift profiles remain PROVISIONAL pending Task 4.2D Round B |
+| MVP Vertical Slice Entity Validation Roster | **VALIDATED IN ROUND B** | Mockup validation roster (2 plants, 2 visitors, 2 decors, 3 env states) completed and approved in Task 4.2E |
+| Lighting & Weather Conditions Execution Profiles | **VALIDATED / LOCKED QUALITATIVE DIRECTION (Rain & Night); PROVISIONAL (Cloudy)** | Rain and Night qualitative profiles VALIDATED / LOCKED (Task 4.2E); exact shaders, particle density, and final production HEX values remain TBD for Task 4.3 |
 | UI Surface Card Texture & Panel Rounding Radii | **PROVISIONAL** | Subject to UI layout prototyping; UI implementation out of scope |
 | Specific Font Families (Thai & Latin) | **TBD** | Evaluation criteria set; font selection belongs to future UI asset task |
 | Exact Sprite Pixel Dimensions & PPU | **TBD** | Belongs to Task 4.3 Asset Technical Pipeline |
@@ -140,9 +151,9 @@ DO NOT:
 
 ## 5. Core Art Style and Visual Vocabulary
 
-**Status: LOCKED 2D Technical Direction (ARCHITECTURE.md §3); LOCKED VISUAL DIRECTION — OWNER APPROVED MASTER STYLE SYNTHESIS (Task 4.2C)**
+**Status: LOCKED 2D Technical Direction (ARCHITECTURE.md §3); LOCKED + ROUND-B VALIDATED (Task 4.2C Owner Approved, Task 4.2E Owner Validated)**
 
-The technical foundation of *Garden* is **2D** (LOCKED by `ARCHITECTURE.md` §3). Following visual evaluation of Round-A candidates in Task 4.2B, the Project Owner explicitly approved the synthesized **Balanced Storybook Hybrid** as the project's Master Style (LOCKED VISUAL DIRECTION — Task 4.2C).
+The technical foundation of *Garden* is **2D** (LOCKED by `ARCHITECTURE.md` §3). Following visual evaluation of Round-A candidates in Task 4.2B, the Project Owner explicitly approved the synthesized **Balanced Storybook Hybrid** as the project's Master Style (LOCKED VISUAL DIRECTION — Task 4.2C). In Task 4.2E, the Master Style survived comprehensive Round-B condition validation (Rain, Night, Plant Growth Close-Read, Visitor Moment) with PASS, confirming the style as **VALIDATED — UNCHANGED**.
 
 The approved Master Style synthesizes traits across the experimental candidates into one coherent illustrated world:
 - **Core Foundation (Candidate C):** Balanced storybook painterly hybrid providing unified harmony between subjects and environment.
@@ -448,37 +459,50 @@ To serve the locked accessibility goal of adequate visual readability on phone d
 
 ## 13. Lighting and Atmospheric Conditions
 
-**Status: PROVISIONAL Visual Direction (Pending Round-B Validation in Task 4.2D)**
+**Status: VALIDATED / LOCKED QUALITATIVE DIRECTION (Rain & Night — Task 4.2E); PROVISIONAL (Cloudy); Technical Shaders & Numerical Values TBD**
 
-*Master Style Status:* While the core Master Style is **LOCKED**, the exact visual implementation profiles for Day, Night, Cloudy, and Rain conditions remain **PROVISIONAL**. Round B (Task 4.2D) exists specifically to validate the approved Master Style under these diverse environmental conditions before final asset locking.
+*Round-B Validation Outcome (Task 4.2E):* The Master Style underwent comprehensive condition validation in Round B. Both **Rainy Garden** and **Night Garden** visual treatments received formal Project Owner PASS approval. Their qualitative visual principles are promoted to **VALIDATED / LOCKED VISUAL DIRECTION**, while exact technical implementations remain TBD for Task 4.3.
 
 Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of the tropics, aligning with the provisional time-of-day and weather frameworks in `GAME_DESIGN.md` §13 and §14.
 
-### 13.1 Lighting Condition Profiles
+### 13.1 Validated Qualitative Weather & Lighting Principles
+
+#### 13.1.1 Rain Visual Treatment
+- **Status: VALIDATED / LOCKED QUALITATIVE DIRECTION (Task 4.2E)**
+- **Locked Principles:**
+  - Gentle tropical daytime rain with a cozy, refreshing, and non-punitive atmosphere (`GAME_DESIGN.md` §14).
+  - Diffuse softened lighting with gentle silver-teal atmospheric mist washing through the scene.
+  - Visible but restrained translucent vertical rain streaks.
+  - Small puddles and ripples where appropriate.
+  - Damp foliage and surfaces exhibiting a soft, gentle wet sheen (subtle specular highlight on clay and leaves).
+  - Readable wet ground and material response; silhouettes remain clearly readable against the damp backdrop.
+  - Visual treatment must never become storm, disaster, cold horror, or threatening imagery.
+- **Explicitly TBD for Task 4.3 (Technical):** Exact rain streak count, rain particle speed, shader implementation, wet reflection strength curve, exact numerical production HEX colors, and technical engine implementation technique.
+
+#### 13.1.2 Night Visual Treatment
+- **Status: VALIDATED / LOCKED QUALITATIVE DIRECTION (Task 4.2E)**
+- **Locked Principles:**
+  - Cool, peaceful ambient night base; important silhouettes remain clearly readable.
+  - Strictly no crushed black shadows; the garden maintains an intimate, safe, calm sanctuary mood.
+  - Localized warm illumination radiating from a simple garden lantern or soft house window glow, pooling on the bench and adjacent soil.
+  - Restrained, gentle firefly accents where appropriate, drifting with soft yellow-green luminescence.
+  - Intimate, safe, tranquil, and contemplative atmosphere.
+  - Strictly no horror mood, no neon/cyberpunk saturation drift, and no excessive magical-particle treatment.
+- **Explicitly TBD for Task 4.3 (Technical):** Exact numerical HEX night base (provisional `#1A233A` to be calibrated), lamp light radius and attenuation curve, shader / CanvasModulate architecture, final number of fireflies, animation rate, and exact light intensity values.
+
+#### 13.1.3 Cloudy Atmosphere (Provisional)
+- **Status: PROVISIONAL Visual Direction**
+- Diffuse, omni-directional soft skylight without harsh directional shadows.
+- Slightly desaturated warm tones, allowing rich foliage greens to appear deeper and lusher.
+- Atmosphere feels calm, cool, and quiet before or after rainfall.
 
 ```text
 +---------------------------------------------------------------------------------------------------+
-| DAY LIGHTING (Warm, Restful, Humid)                                                               |
-| - Directional warm sunlight (subtle 35-45 degree angle, morning/early afternoon feel).            |
-| - Soft, diffused shadows with warm green/brown ambient bounce; no pitch-black hard cast shadows.  |
-| - Atmosphere feels humid and alive; subtle golden highlights kiss the edges of leaves and pots.   |
-+---------------------------------------------------------------------------------------------------+
-| NIGHT LIGHTING (Intimate, Peaceful, Moonlit)                                                      |
-| - Base ambient light is a soft deep indigo-blue (#1A233A); never crushed black.                  |
-| - Localized warm light pools radiate softly from garden lamps or warm home window glow.           |
-| - Fireflies create floating points of soft gold-green luminescence.                              |
-| - No harsh blue filter over daytime art; artwork must have dedicated nighttime value treatment.  |
-+---------------------------------------------------------------------------------------------------+
-| CLOUDY ATMOSPHERE (Diffuse, Lush, Contemplative)                                                  |
-| - Diffuse, omni-directional soft skylight without harsh directional shadows.                     |
-| - Slightly desaturated warm tones, allowing rich foliage greens to appear deeper and lusher.     |
-| - Atmosphere feels calm, cool, and quiet before or after rainfall.                                |
-+---------------------------------------------------------------------------------------------------+
-| RAIN ATMOSPHERE (Refreshing, Wet, Non-Punitive)                                                   |
-| - Gentle silver-teal atmospheric wash; distant trees softly fade into rain mist.                 |
-| - Visible soft vertical rain streaks and delicate circular ripples in puddles, jars, and ponds.  |
-| - Foliage surfaces appear damp and slightly heavier, with soft water drops glistening on tips.   |
-| - The atmosphere is cozy and refreshing—never dark, stormy, frightening, or punitive.             |
+| VALIDATED LIGHTING CONDITION PROFILES (QUALITATIVE DIRECTION)                                     |
+| - DAY: Directional warm sun (~35-45°), soft diffused shadows with warm bounce, humid life.       |
+| - NIGHT: Deep indigo ambient base, no crushed blacks, warm lamp pool on bench, gentle fireflies.  |
+| - RAIN: Diffuse silver-teal mist, soft rain streaks, wet leaf/clay sheen, cozy & non-punitive.     |
+| - CLOUDY (Provisional): Diffuse skylight, deeper saturated greens, quiet contemplative calm.       |
 +---------------------------------------------------------------------------------------------------+
 ```
 
@@ -495,9 +519,13 @@ Lighting in *Garden* conveys the gentle passage of time and the lived rhythm of 
 
 ## 14. Plant Visual Language
 
-**Status: LOCKED Gameplay Growth Stages (GAME_DESIGN.md §10); LOCKED Silhouette Principles; PROVISIONAL Implementation Details**
+**Status: LOCKED Gameplay Growth Stages (GAME_DESIGN.md §10); VALIDATED / LOCKED QUALITATIVE DIRECTION (Task 4.2E); Technical Asset Specs TBD**
 
-> **Stochastic Detail Notice:** The visual principles of clear 4-stage silhouette differentiation, mass distinction, and botanical plausibility are **LOCKED**. Stochastic details appearing in concept mockups (such as exact leaf counts, branch counts, or exact flower petal counts) are non-authoritative and not locked.
+> **Round-B Validation Outcome (Task 4.2E):** The 4-stage visual growth presentation of Holy Basil and Marigold received formal Project Owner PASS approval. Qualitative differentiation principles are promoted to **VALIDATED / LOCKED VISUAL DIRECTION**.
+>
+> **Landscape Botanical Reference Plate Governance:** The accepted 16:9 landscape validation plate is strictly a **REVIEW / REFERENCE FORMAT** for evaluating side-by-side growth progressions ($2\text{ rows} \times 4\text{ columns}$). It does **NOT** alter the Android-first product target, portrait gameplay orientation, 1080 × 1920 reference canvas, camera system, UI layout, or sprite production aspect ratios. Architecture remains strictly Android-first portrait 1080 × 1920 (`ARCHITECTURE.md` §3).
+>
+> **Stochastic Detail Notice & Technical Non-Lock:** Visual principles of clear 4-stage silhouette differentiation, mass progression, and botanical trait distinction are **LOCKED**. Exact leaf counts, branch counts, flower counts, sprite pixel dimensions, PPU, and sprite frame counts remain explicitly **TBD** for Task 4.3.
 
 Plants are living, persistent members of the garden. They grow through four clearly readable stages:
 
@@ -508,9 +536,11 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ### 14.1 General Growth Stage Rules
 
-1. **Stage Distinguishability:** The player must distinguish plant stages primarily by **silhouette, height, and foliage mass**, never by reading small text labels alone. Growth stages (`planted -> sprout -> growing -> mature/harvestable`) and persistence after harvest are LOCKED gameplay contracts (`GAME_DESIGN.md` §10); the visual differentiation principles (silhouette mass, leaf clump density, painted gouache-like clarity) are LOCKED visual principles, while exact sprite dimensions and PPU belong to Task 4.3.
-2. **Persistence After Maturity:** Reaching maturity produces flowers or harvestable goods. In accordance with `GAME_DESIGN.md` §10, mature plants remain in the garden after harvest rather than vanishing.
+1. **Stage Distinguishability (LOCKED):** The player must distinguish plant stages primarily by **silhouette, plant mass, height, branching, foliage density, and mature species-specific traits**, with **zero dependency on text labels or numerical markers**. Growth stages (`planted -> sprout -> growing -> mature/harvestable`) and persistence after harvest are LOCKED gameplay contracts (`GAME_DESIGN.md` §10); the visual differentiation principles are LOCKED visual directions, while exact sprite dimensions and PPU belong to Task 4.3.
+2. **Persistence After Maturity (LOCKED):** Reaching maturity produces flowers or harvestable goods. In accordance with `GAME_DESIGN.md` §10, mature plants remain in the garden after harvest rather than vanishing.
 3. **Organic Identity:** Plants retain clear botanical character (leaf shapes, branch structure) without requiring dry botanical textbook realism.
+   - **Holy Basil (*กะเพรา*):** Distinguished by broad leafy branching dome structure and mature purple/reddish flower spikes at crown tips.
+   - **Marigold (*ดาวเรือง*):** Distinguished by finely segmented foliage and mature full rounded golden-orange pom-pom blossom heads.
 
 ### 14.2 Initial Vertical Slice Plants
 
@@ -546,17 +576,19 @@ PLANTED            SPROUT             GROWING            MATURE
 
 ## 15. Visitor Visual Language
 
-**Status: LOCKED Behavioral Rules (GAME_DESIGN.md §11); LOCKED Anatomy & Dignity Principles; PROVISIONAL Profiles**
+**Status: LOCKED Behavioral Rules (GAME_DESIGN.md §11); VALIDATED / LOCKED QUALITATIVE DIRECTION (Task 4.2E); Technical Asset Specs TBD**
 
-> **Stochastic Detail Notice:** The visual principles of believable domestic anatomy, natural restful postures, and dignity without caricature or chibi mascots are **LOCKED**. Stochastic details appearing in concept mockups (such as specific cat coat markings, fur patches, or exact butterfly wing patterns) are non-authoritative and not locked.
+> **Round-B Validation Outcome (Task 4.2E):** The natural domestic scaling and anatomy of visitors (Cat and Butterfly) received formal Project Owner PASS approval after controlled refinement reducing the butterfly to natural scale. Qualitative visitor scale and anatomy principles are promoted to **VALIDATED / LOCKED VISUAL DIRECTION**.
+>
+> **Stochastic Detail Notice & Technical Non-Lock:** Visual principles of believable domestic anatomy, natural restful postures, and dignity without caricature or chibi mascots are **LOCKED**. Exact fur/wing color variations, exact poses, animation frame rates, and sprite sheet layouts remain explicitly **TBD** for Task 4.3.
 
 Visitors are wild or domestic creatures that choose to visit the garden because of the conditions created by the player.
 
 ### 15.1 Core Visitor Principles
 
-- **Autonomous Guests, Not Collectible Tokens:** Visitors must feel like living creatures entering, resting, and leaving naturally. Core visitor behavior is LOCKED by `GAME_DESIGN.md` §11; visual execution principles (natural proportions, dignified resting postures, soft gouache body clarity) are LOCKED visual directions, while exact animation sprite sheets belong to Task 4.3.
-- **Readable Natural Anatomy:** Silhouettes reflect believable animal proportions softened by storybook illustration. No oversized chibi heads, giant anime eyes, or cartoon hands.
-- **Environmental Grounding:** Visitors physically interact with the garden (e.g., cat sleeps on bench, butterfly hovers near marigold blossoms, frog rests near the water jar).
+- **Autonomous Living Guests, Not Collectible Tokens (LOCKED):** Visitors must feel like living creatures that chose to enter the garden sanctuary, not board-game mascots placed for collection or progression gating. Core visitor behavior is LOCKED by `GAME_DESIGN.md` §11; visual execution principles (natural domestic proportions, dignified resting postures, soft gouache body clarity) are LOCKED visual directions, while exact animation sprite sheets belong to Task 4.3.
+- **Readable Natural Anatomy & Scale (LOCKED):** Silhouettes reflect believable domestic animal proportions softened by storybook illustration. Strictly no oversized chibi heads, giant cartoon anime eyes, comical mascot proportions, or humanoid postures.
+- **Environmental Grounding (LOCKED):** Visitors physically interact with the garden environment in naturalistic ways (e.g., cat sleeps peacefully curled on the bench, butterfly flutters and alights naturally atop flowering plants).
 - **Subtle Idle Life:** Breathing motion, occasional ear twitch, wing flutter, or head turn. Visitors do not constantly bounce or loop hyperactive animations.
 
 ### 15.2 Initial Vertical Slice Visitors
@@ -564,19 +596,22 @@ Visitors are wild or domestic creatures that choose to visit the garden because 
 #### Butterfly (`visitor.butterfly`)
 
 - **Identity:** Gentle daytime visitor attracted to flowering plants (marigold, jasmine).
-- **Visual Form:** Small, readable wing silhouette. Simple graceful wings with soft warm cream and subtle yellow/orange patterning.
-- **Behavior & Staging:** Delicate flutter path through midground; pauses and rests gently atop blossom crowns.
+- **Visual Form (LOCKED QUALITATIVE SCALE):** Small and delicate; naturally scaled relative to flowers (significantly smaller than cat head). Simple graceful wings with soft warm cream and subtle yellow/orange patterning.
+- **Discoverability (LOCKED):** Must remain discoverable through placement, value contrast, and gentle color rather than artificial physical enlargement.
+- **Behavior & Staging:** Delicate flutter path through midground; pauses and rests gently atop blossom crowns. Associated naturally with flowering plants.
 - **Negative Bounds:** Must not be giant, fantastical, or leave magical glitter trails.
+- **Technical Non-Lock:** Exact wing patterns, colors, animation frame count, and sprite dimensions remain TBD for Task 4.3.
 
 #### Cat (`visitor.cat`)
 
 - **Identity:** Local domestic neighborhood cat visiting for peace, warmth, and shade.
-- **Visual Form:** Relaxed domestic cat anatomy (short coat, gentle rounded contours). Warm cream or ginger tabby markings.
+- **Visual Form (LOCKED QUALITATIVE SCALE):** Believable domestic anatomy and natural scale relative to furniture (bench, clay jar). Soft rounded contours, short coat, warm cream or ginger tabby markings.
 - **Key Poses:**
   - *Curled Sleeping:* Curled into a soft crescent or loaf on the wooden bench or sunny paver.
   - *Sitting Alert:* Upright seated posture, tail wrapped around paws, watching butterflies.
   - *Slow Walking:* Leisurely stroll through the garden path.
-- **Personality:** Calm, independent, affectionate presence. Conveys personality through body posture and ear angle rather than exaggerated human facial expressions.
+- **Personality (LOCKED):** Calm, independent, affectionate presence. Conveys personality primarily through body posture, pose, and ear angle rather than exaggerated human facial expressions. Strictly no mascot/chibi anatomy.
+- **Technical Non-Lock:** Exact coat pattern variations, exact pose frames, and sprite pixel dimensions remain TBD for Task 4.3.
 
 ### 15.3 Future Visitor Consistency Guidance
 
@@ -867,37 +902,28 @@ To prove the visual direction before launching full-scale content production, th
 
 ## 28. Concept Mockup Experiment Plan (Task 4.2 Sequence)
 
-**Status: TASK 4.2C COMPLETED (Master Style Locked); TASK 4.2D NEXT (Validation)**
+**Status: TASK 4.2E COMPLETED (Round-B Owner Validated — PASS); TASK 4.3 NEXT (Asset Pipeline Gate OPEN)**
 
 Task 4.2 evaluates visual hypotheses through a controlled two-round experiment sequence:
 - **Task 4.2A:** Controlled concept mockup experiment specification (`VISUAL_MOCKUP_PLAN.md`). [COMPLETED]
 - **Task 4.2B:** Round-A style comparison generating Candidates A, B, and C. [COMPLETED]
 - **Task 4.2C:** Record Project Owner approved Master Style synthesis decision. [COMPLETED]
-- **Task 4.2D:** Round-B Master Style validation across 4 targeted scenarios. [AUTHORIZED / NEXT]
+- **Task 4.2D/E:** Round-B Master Style validation across 4 targeted scenarios and Owner Review. [COMPLETED — ALL PASS]
 
 ```text
 +-------------------------------------------------------------------------------+
-|                      TASK 4.2D ROUND-B VALIDATION MOCKUPS (4)                 |
+|                      ROUND-B VALIDATION OUTCOMES (TASK 4.2E) [ALL PASS]       |
 +-------------------------------------------------------------------------------+
-| 1. RAINY GARDEN                                                               |
-|    - Validates: Rain atmosphere, wet surface response, non-punitive coziness. |
-|    - Constants: Established garden layout and approved Master Style Anchor.   |
-|    - Focus: Diffuse silver-teal mist, subtle rain streaks, damp leaf sheen.   |
-+-------------------------------------------------------------------------------+
-| 2. NIGHTTIME GARDEN WITH LAMP & FIREFLIES                                     |
-|    - Validates: Nocturnal readability, localized warm pools, magical mood.   |
-|    - Constants: Established garden layout and approved Master Style Anchor.   |
-|    - Focus: Indigo ambient, warm lamp pool on bench, soft firefly motes.      |
-+-------------------------------------------------------------------------------+
-| 3. PLANT CLOSE-READ (HOLY BASIL & MARIGOLD)                                   |
-|    - Validates: 4-stage growth silhouette readability at mobile scale.        |
-|    - Constants: Side-by-side progression from Planted to Mature.              |
-|    - Focus: Silhouette mass, color progression, clear harvestable readiness.  |
-+-------------------------------------------------------------------------------+
-| 4. VISITOR MOMENT (CAT ON BENCH & BUTTERFLY ON MARIGOLD)                      |
-|    - Validates: Animal scale, believable integration, absence of mascot tropes|
-|    - Constants: Established garden elements and approved Master Style Anchor. |
-|    - Focus: Cat sleeping naturally on bench; butterfly sipping on blossom.   |
+| 1. RAINY GARDEN: PASS                                                         |
+|    - Validated: Soft diffuse teal mist, non-punitive coziness, wet sheen.     |
+| 2. NIGHTTIME GARDEN WITH LAMP & FIREFLIES: PASS                               |
+|    - Validated: Nocturnal readability, warm lamp pool, restrained fireflies.  |
+| 3. PLANT CLOSE-READ (HOLY BASIL & MARIGOLD): PASS                             |
+|    - Validated: 4-stage silhouette differentiation; landscape reference plate.|
+| 4. VISITOR MOMENT (CAT ON BENCH & BUTTERFLY ON MARIGOLD): PASS                |
+|    - Validated: Natural animal scale, relaxed cat pose, delicate butterfly.   |
+| - MASTER STYLE STATUS: VALIDATED — UNCHANGED (Balanced Storybook Hybrid)      |
+| - ASSET TECHNICAL PIPELINE GATE: OPEN (Proceed to Task 4.3)                   |
 +-------------------------------------------------------------------------------+
 ```
 
@@ -905,7 +931,7 @@ Task 4.2 evaluates visual hypotheses through a controlled two-round experiment s
 
 ## 29. Master Style Selection Process
 
-**Status: LOCKED Process — STEP 5 COMPLETED (Owner Approved in Task 4.2C)**
+**Status: LOCKED Process — STEP 5 COMPLETED (Owner Approved in Task 4.2C & Validated in Task 4.2E)**
 
 To ensure cohesive art direction and prevent style fragmentation, the project follows an explicit **Master Style Selection Process**:
 
@@ -931,16 +957,16 @@ To ensure cohesive art direction and prevent style fragmentation, the project fo
                |
                v
 +-----------------------------+
-| Step 5: Owner Review & Lock |  Project owner explicitly approved Synthesized
-+--------------+--------------+  Master Style Anchor (Task 4.2C). [LOCKED]
+| Step 5: Owner Review & Lock |  Project owner approved Master Style Anchor
++--------------+--------------+  (Task 4.2C) & validated Round B (Task 4.2E). [PASS]
                |
                v
 +-----------------------------+
 | Step 6: Asset Tech Pipeline |  Establish technical asset pipeline, sprite grids,
-+-----------------------------+  and Godot import presets (Task 4.3). [NEXT]
++-----------------------------+  and Godot import presets (Task 4.3). [GATE OPEN]
 ```
 
-*Governance Reaffirmation:* The Project Owner has explicitly reviewed Round-A candidates and approved the synthesized Master Style (Candidate C foundation + Candidate A atmosphere + Candidate B readability). This promotes core visual style directions to **LOCKED VISUAL DIRECTION**. Unrelated technical specifications remain **TBD** until Task 4.3.
+*Governance Reaffirmation:* The Project Owner has explicitly reviewed Round-A candidates and approved the synthesized Master Style (Candidate C foundation + Candidate A atmosphere + Candidate B readability) in Task 4.2C, and confirmed its robustness across all representative conditions (Rain, Night, Plant growth, Visitor scale) with PASS in Task 4.2E. Core visual style directions are **LOCKED + ROUND-B VALIDATED**. Technical asset specifications remain **TBD** until Task 4.3.
 
 ---
 
@@ -1060,17 +1086,20 @@ Every new concept art piece, mockup, environment sprite, plant stage, visitor po
 
 ## 33. Summary of Visual Decisions & Next Tasks
 
-**Status: TASK 4.2C COMPLETE; DOWNSTREAM PIPELINE SCHEDULED**
+**Status: TASK 4.2E COMPLETE; ASSET TECHNICAL PIPELINE GATE OPEN (Task 4.3 NEXT)**
 
 To preserve strict separation of concerns, the project status is summarized below:
 
-1. **Master Style Foundation & Synthesis:** **LOCKED VISUAL DIRECTION (Owner Approved in Task 4.2C)** — Balanced Storybook Hybrid (Candidate C core, Candidate A atmospheric softness, Candidate B gameplay readability).
-2. **Cultural Grounding:** **LOCKED VISUAL DIRECTION (Owner Approved in Task 4.2C)** — Everyday Thai-inspired domestic garden setting.
-3. **Qualitative Visual Hierarchies:** **LOCKED (Owner Approved in Task 4.2C)** — Edge hierarchy, texture strategy, silhouette readability priority, and broad warm earthy palette character.
-4. **Master Style Validation (Round B):** Scheduled for **Task 4.2D** (Rainy Garden, Night Garden, Plant Growth Stages, Visitor Moment).
-5. **Typography Asset Selection & Licensing:** Font families will be evaluated and verified in a future UI asset task (TBD).
-6. **Asset Technical Pipeline Specifications:** Exact sprite sheet layouts, pixel dimensions, PPU, Godot 2D import compression, and atlas boundaries belong to **Task 4.3** (TBD).
-7. **Final Numerical Colors:** Final production HEX calibration belongs to **Task 4.3** (TBD).
-8. **Exact Texture & Brush Assets:** Paper textures, grain files, and brush engine presets belong to **Task 4.3** (TBD).
-9. **Shader and Lighting Technical Implementation:** Shaders, light nodes, and canvas modulators belong to milestone implementation tasks (TBD).
-10. **Audio and Ambient Soundscape:** Audio assets and sound direction belong to Milestone 5 (TBD).
+1. **Master Style Foundation & Synthesis:** **LOCKED + ROUND-B VALIDATED** — Balanced Storybook Hybrid (Candidate C core, Candidate A atmospheric softness, Candidate B gameplay readability; validated unchanged across all conditions in Task 4.2E).
+2. **Cultural Grounding:** **LOCKED VISUAL DIRECTION** — Everyday Thai-inspired domestic garden setting.
+3. **Qualitative Visual Hierarchies:** **LOCKED VISUAL DIRECTION** — Edge hierarchy, texture strategy, silhouette readability priority, and broad warm earthy palette character.
+4. **Lighting & Weather Qualitative Treatments:** **VALIDATED / LOCKED QUALITATIVE DIRECTION** — Rainy Garden (soft diffuse mist, wet sheen, non-punitive) and Night Garden (deep indigo, warm lamp pool, restrained fireflies) validated with PASS in Task 4.2E.
+5. **Plant & Visitor Qualitative Readability:** **VALIDATED / LOCKED QUALITATIVE DIRECTION** — 4-stage plant growth differentiation (no text dependency) and natural visitor scaling/anatomy validated with PASS in Task 4.2E.
+6. **Master Style Validation (Round B):** **COMPLETED / OWNER VALIDATED — PASS** (Rain, Night, Plant Growth Close-Read, Visitor Moment; Task 4.2E).
+7. **Asset Technical Pipeline Gate:** **OPEN** — Task 4.3 permitted to establish technical specifications.
+8. **Typography Asset Selection & Licensing:** Font families will be evaluated and verified in a future UI asset task (TBD).
+9. **Asset Technical Pipeline Specifications:** Exact sprite sheet layouts, pixel dimensions, PPU, Godot 2D import compression, and atlas boundaries belong to **Task 4.3** (TBD).
+10. **Final Numerical Colors:** Final production HEX calibration belongs to **Task 4.3** (TBD).
+11. **Exact Texture & Brush Assets:** Paper textures, grain files, and brush engine presets belong to **Task 4.3** (TBD).
+12. **Shader and Lighting Technical Implementation:** Shaders, light nodes, and canvas modulators belong to milestone implementation tasks (TBD).
+13. **Audio and Ambient Soundscape:** Audio assets and sound direction belong to Milestone 5 (TBD).
