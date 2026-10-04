@@ -1,7 +1,7 @@
 # รายงานผลการทดสอบทางเทคนิคไปป์ไลน์แอสเซท (Asset Pipeline Empirical Validation Spike)
 
 > เอกสารอ้างอิง: Task 4.4A — Asset Pipeline Empirical Validation Spike
-> สถานะ: **เสร็จสิ้นการทดสอบทางเทคนิคเฉพาะที่และบิลด์ (Local/Import/Build Validated — On-Device Deferred)**
+> สถานะ: **PARTIAL — local/import/build validation completed; device-dependent evidence remains unavailable** (เสร็จสิ้นการทดสอบทางเทคนิคเฉพาะที่และบิลด์ — รอการตรวจสอบบนอุปกรณ์จริง)
 > วันที่ดำเนินการ: 2026-10-04
 > สาขาที่ทำการทดสอบ: `milestone/4-visual-direction`
 > เบสไลน์คอมมิต (Baseline HEAD): `55b36caa6c958c1999b0da0db5cab41de50e212a`
@@ -159,17 +159,26 @@ Lossless,Lossy,VRAM Compressed,VRAM Uncompressed,Basis Universal
 
 ## 5. การทดสอบการสเกล, จุดหมุน, ฟิลเตอร์, และแอนิเมชัน (Spike Scene Mechanics)
 
+> **หมายเหตุการจำแนกระดับหลักฐาน (Evidence Provenance Classification):**
+> - **MECHANICALLY VERIFIED**: หลักฐานความถูกต้องเชิงกลไก (การตั้งค่าคอนฟิก, รีซอร์ส, โครงสร้างเรขาคณิตจุดหมุน, การสร้างซีน, และผลสำเร็จของบิลด์)
+> - **VISUALLY VERIFIED**: หลักฐานการมองเห็นจริงจากการแคปเจอร์ภาพเรนเดอร์ของเอนจินหรือการสังเกตการณ์บนหน้าจอแสดงผล
+> - **DEVICE VERIFIED**: หลักฐานที่สังเกตการณ์และตรวจวัดผลจริงบนฮาร์ดแวร์อุปกรณ์ตัวแทนเป้าหมายที่ได้รับอนุญาต
+
 ได้สร้างซีนทดสอบที่ `res://spike/asset_pipeline/asset_pipeline_spike.tscn` ภายใต้ Temporary Clone โดยมีผลการทดสอบเชิงกลไกดังนี้:
 
 ### 5.1 ผืนผ้าใบอ้างอิงและการไม่ใช้ Hand-Scale ชดเชย (Reference Scale Validation)
 - รันภายใต้พิกัด Viewport อ้างอิง `1080 × 1920` ของโปรเจกต์
-- โหนด `Sprite2D` และ `AnimatedSprite2D` ทั้งหมดในซีนตั้งค่า:
-  `scale = Vector2(1, 1)`
-- ภาพฉากหลัง `full_canvas_background.png` (1080×1920) วางที่ `position = Vector2(540, 960)` ปกคลุมหน้าจอพอดี 1:1 พิกเซล
-- ยืนยันว่าการวาดและส่งออกแอสเซทในขนาดพิกเซลที่ต้องการแสดงผลจริงบนแคนวาส (Author at intended runtime-export size) ทำให้ไม่ต้องพึ่งพาการสเกลชดเชยตามอำเภอใจในซีน (Arbitrary corrective scale)
+- การทดสอบประสบความสำเร็จในการยืนยันหลักการ 1:1 authored/export/display สำหรับวัตถุตัวแทนขนาดอ้างอิง (Representative reference-size subjects):
+  - ภาพฉากหลัง `full_canvas_background.png` (1080×1920) วางที่ `position = Vector2(540, 960)` แสดงผลที่ `scale = Vector2(1, 1)` ปกคลุมหน้าจอพอดี 1:1 พิกเซล
+  - วัตถุทดสอบจุดหมุนอิงพื้น (Grounded pivot subjects ขนาด 512×512), วัตถุทดสอบใบไม้ (Foliage subjects ขนาด 512×512), และวัตถุทดสอบแอนิเมชัน (`AnimatedSprite2D` ขนาด 256×256) ล้วนใช้ `scale = Vector2(1, 1)`
+- **ข้อยกเว้นการจัดวางในฟิกซ์เจอร์วินิจฉัย (Diagnostic Fixture Scale Exception):**
+  - สไปรต์เปรียบเทียบ Gradient ขนาด 1024×1024 จำนวน 2 ชิ้น (`GradientLossless` และ `GradientVRAM`) ได้รับการตั้งค่า `scale = Vector2(0.45, 0.45)` โดยเจตนา เพียงเพื่อให้สามารถจัดวางเปรียบเทียบแบบเคียงข้างกัน (Side-by-side) ภายในขอบเขตความกว้าง 1080 px ของฟิกซ์เจอร์ทดสอบได้
+  - การสเกลในฟิกซ์เจอร์ดังกล่าว **ไม่ใช่การสเกลชดเชยสำหรับแอสเซทในโปรดักชันจริง (Not a corrective production asset scale)**
+  - ดังนั้น รายงานฉบับนี้จึงไม่กล่าวอ้างว่าทุกสไปรต์ในซีนฟิกซ์เจอร์ทั้งหมดใช้ `scale = Vector2(1, 1)`
+- **ข้อสรุปไปป์ไลน์:** ยืนยันว่าการวาดและส่งออกแอสเซทในขนาดพิกเซลที่ต้องการแสดงผลจริงบนแคนวาส (Author at intended runtime-export size) ทำให้ไม่ต้องพึ่งพาการสเกลชดเชยตามอำเภอใจในซีน และการปรับสเกลชดเชยรายชิ้นตามอำเภอใจไม่ควรกลายเป็นแนวปฏิบัติปกติของโปรดักชัน (Arbitrary corrective per-asset scale should not become normal production practice)
 
 ### 5.2 การทดสอบจุดหมุนอิงพื้นล่างกึ่งกลาง (Bottom-Center Pivot Test)
-ได้ทำการทดสอบและเปรียบเทียบสองแนวทางสำหรับสไปรต์ขนาด 512×512 ที่ต้องการให้จุดสัมผัสพื้นอยู่ที่ `y = 1000`:
+- ได้ทำการทดสอบและเปรียบเทียบสองแนวทางสำหรับสไปรต์ขนาด 512×512 ที่ต้องการให้จุดสัมผัสพื้นอยู่ที่ `y = 1000`:
 - **Option A (`GroundedPivotOptionA`):**
   - คอนฟิก: `centered = true`, `offset = Vector2(0, -256)` (โดย `-256` คือ `-texture_height / 2`)
   - ตำแหน่งโหนด: `position = Vector2(280, 1000)`
@@ -179,26 +188,48 @@ Lossless,Lossy,VRAM Compressed,VRAM Uncompressed,Basis Universal
   - ตำแหน่งโหนด: `position = Vector2(800, 1000)`
   - ผลลัพธ์: ขอบล่างแตะที่ `y = 1000` และกึ่งกลางอยู่ที่ `x = 800` ได้ผลทางเรขาคณิตตรงกัน
 - **ข้อสรุปเปรียบเทียบ:**
-  Option A มีความเรียบง่ายและลดความเสี่ยงต่อความผิดพลาดของมนุษย์มากกว่า เนื่องจากพิกัด X คงที่ที่ `offset.x = 0` ตามค่าศูนย์กลาง และปรับเพียง `offset.y = -(height / 2)` สำหรับการตรึงระนาบพื้น
+  Option A มีความเรียบง่ายและลดความเสี่ยงต่อความผิดพลาดของมนุษย์มากกว่า เนื่องจากพิกัด X คงที่ที่ `offset.x = 0` ตามค่าศูนย์กลาง และปรับเพียง `offset.y = -(height / 2)` สำหรับการตรึงระนาบพื้น (Mechanically Verified)
 
 ### 5.3 การทดสอบ Texture Filtering (Linear vs Nearest)
-- ได้ทดสอบผ่านคุณสมบัติ `CanvasItem.texture_filter`:
-  - `TEXTURE_FILTER_LINEAR` (Enum 2): ให้การเกลี่ยสีของฝีแปรงสีน้ำ/กูอัชและขอบโปร่งแสงที่นุ่มนวล กลมกลืน สอดคล้องกับทิศทางศิลป์ Balanced Storybook Hybrid
-  - `TEXTURE_FILTER_NEAREST` (Enum 1): ก่อให้เกิดรอยหยักพิกเซลบันได (Staircase pixel stepping) และเส้นขอบแตกหยาบกร้านที่รอยต่ออัลฟา ซึ่งทำลายความงามแบบภาพวาดนิทานอย่างสิ้นเชิง
-- **ข้อเท็จจริงโครงสร้างเอนจิน:** ยืนยันว่าการตั้งค่า Filter อาศัยโหนด `CanvasItem` หรือการตั้งค่าโปรเจกต์ `ProjectSettings` ไม่ได้ถูกบันทึกไว้ในไฟล์ `.import`
+- **สถานะการเปรียบเทียบคุณภาพทางสายตา (Visual Comparison Status):**
+  **`UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED`** (เนื่องจากติดข้อจำกัดใน §5.5 `LOCAL RENDER SCREENSHOT BLOCKED BY ENVIRONMENT`)
+- **สิ่งที่ได้รับการยืนยันเชิงกลไก (Mechanically Confirmed):**
+  - คุณสมบัติ `CanvasItem.texture_filter` สามารถกำหนดค่าแยกรายโหนดได้อย่างชัดเจน
+  - โหนดที่เป็นเบสไลน์หลักถูกกำหนดค่าเป็น `TEXTURE_FILTER_LINEAR` (Enum 2)
+  - โหนดสำหรับเปรียบเทียบถูกกำหนดค่าเป็น `TEXTURE_FILTER_NEAREST` (Enum 1)
+  - การจัดเก็บคอนฟิกและโครงสร้างการสร้างซีน (Scene serialization) มีความสมบูรณ์และถูกต้องเชิงกลไก
+  - **ตำแหน่งการตั้งค่า (Configuration Locus):** ยืนยันว่าการตั้งค่า Filter อาศัยโหนด `CanvasItem` หรือการตั้งค่า Canvas ของโปรเจกต์ (`ProjectSettings`) ไม่ได้ถูกบันทึกไว้ในไฟล์ `.import`
+- **สิ่งที่ยังไม่ได้รับการยืนยันเชิงประจักษ์ทางสายตาจากการทดสอบนี้ (Not Empirically Visually Confirmed):**
+  - ไม่มีหลักฐานภาพเรนเดอร์โดยตรงว่า Linear ดูนุ่มนวลกว่าจริงบนผลลัพธ์ Compatibility Renderer ในเครื่อง
+  - ไม่มีหลักฐานภาพเรนเดอร์โดยตรงของรอยหยักพิกเซล (Pixelation / Jagged edges) ของ Nearest จากเฟรมเรนเดอร์ในเครื่อง
+  - ความยอมรับได้ทางสายตาขั้นสุดท้ายบนหน้าจออุปกรณ์พกพา
+- **ข้อสรุปไปป์ไลน์:**
+  `TEXTURE_FILTER_LINEAR` ยังคงเป็นเบสไลน์ไปป์ไลน์ที่ได้รับความเห็นชอบตามทิศทางศิลป์จิตรกรรม (Painterly Direction) ที่สืบทอดมาจาก `ASSET_PIPELINE.md` แต่งานทดสอบ Spike นี้ไม่นำเสนอสถานะที่ถูกบล็อกภาพเรนเดอร์เป็นข้อพิสูจน์เชิงประจักษ์ทางสายตา (Blocked screenshot is not visual empirical proof)
 
 ### 5.4 การทดสอบขอบเขตเฟรมแอนิเมชัน (Animation Frame Bounds Test)
-- โหนด `AnimatedSprite2D` ใช้งานร่วมกับ `SpriteFrames` บรรจุ 4 เฟรมวินิจฉัย (`anim_frame_00.png` ถึง `anim_frame_03.png`)
-- ทุกเฟรมมีมิติเท่ากันเป๊ะ: `256 × 256`
-- ฐานสัมผัสพื้นตรึงแน่นที่ `(128, 248)` ในทุกเฟรม
-- เมื่อเล่นลูปแอนิเมชันด้วยความเร็ว 8 FPS:
-  - การขยับช่วงตัวและหูหายใจเป็นไปอย่างราบรื่น
-  - **ไม่พบการกระตุกหรือกระโดดของตำแหน่ง (No visual position jump or anchor jitter)** ยืนยันว่ากฎเกณฑ์เรื่องการรักษามิติเฟรมให้เท่ากันทุกเฟรมในซีเควนซ์เป็นสิ่งจำเป็นอย่างยิ่ง
+- **สถานะการสังเกตการณ์ภาพเคลื่อนไหวเรนเดอร์ (Rendered Animation Observation Status):**
+  **`UNVERIFIED — RENDERED/DEVICE EVIDENCE REQUIRED`** (เนื่องจากติดข้อจำกัดใน §5.5 `LOCAL RENDER SCREENSHOT BLOCKED BY ENVIRONMENT`)
+- **สิ่งที่ได้รับการยืนยันเชิงกลไก (Mechanically Confirmed):**
+  - โหนด `AnimatedSprite2D` ใช้งานร่วมกับ `SpriteFrames` บรรจุ 4 เฟรมวินิจฉัย (`anim_frame_00.png` ถึง `anim_frame_03.png`) ได้สำเร็จสมบูรณ์
+  - โหลดครบทั้ง 4 เฟรม โดยทุกเฟรมมีมิติแคนวาสเท่ากันเป๊ะ: `256 × 256`
+  - ทุกเฟรมที่สร้างขึ้นใช้พิกัดจุดสัมผัสพื้นเดียวกันอย่างแม่นยำ: `(128, 248)`
+  - ขนาดมิติผืนผ้าใบร่วมและการกำหนดตำแหน่งจุดยึดร่วมกัน ขจัดปัญหาการเลื่อนตำแหน่งที่เกิดจากขอบเขตเฟรมไม่เท่ากันตั้งแต่ระดับโครงสร้าง (Common canvas dimensions and common anchor configuration remove frame-bound-induced positional displacement by construction)
+  - ความเร็วแอนิเมชันถูกกำหนดค่าไว้ที่ 8 FPS ในรีซอร์ส
+  - โครงสร้างซีน/รีซอร์สและการเอ็กซ์พอร์ตไปยัง Android สำเร็จเรียบร้อย
+- **สิ่งที่ยังไม่ได้รับการยืนยันเชิงประจักษ์ทางสายตา (Not Empirically Visually Confirmed):**
+  - ความรู้สึกลื่นไหลที่รับรู้ได้ (Perceived smoothness) ที่ 8 FPS
+  - การปลอดจากการกระตุก (Absence of jitter) ในเอาต์พุตที่เรนเดอร์จริงบน GPU
+  - จังหวะการแสดงผลเฟรม (Frame pacing) และความรู้สึกของแอนิเมชัน (Animation feel)
+  - ประสิทธิภาพการทำงานจริงบนอุปกรณ์ (Device performance)
+- **ข้อสรุปไปป์ไลน์:**
+  ความสม่ำเสมอเชิงกลไกของขอบเขตเฟรมและจุดยึดได้รับการยืนยัน (Mechanical frame-bound and anchor consistency confirmed); แต่ความราบรื่นในการเรนเดอร์จริงและ frame pacing ยังคงไม่ได้รับการตรวจสอบ (Rendered smoothness/frame pacing remain unverified) โดยช่วงความเร็ว 8–12 FPS ยังคงสถานะ **PROVISIONAL** รอการประเมินบนอุปกรณ์จริง
 
 ### 5.5 สถานะการจับภาพหน้าจอในเครื่อง (Local Screenshot Status)
 - บันทึกผลตามเงื่อนไข:
   **`LOCAL RENDER SCREENSHOT BLOCKED BY ENVIRONMENT`**
 - **เหตุผลทางเทคนิค:** ในสภาพแวดล้อมเทอร์มินัล macOS ที่ทำงานแบบ Headless ปราศจาก WindowServer GUI Session โหมด `--headless` ของ Godot จะสลับไปใช้ Display Driver `headless` และ Dummy Rendering Server (`PN13RendererDummy`) โดยอัตโนมัติ ซึ่ง Viewport Texture จะส่งค่า `null` และไม่มีฮาร์ดแวร์เรนเดอร์เฟรมจริง จึงไม่สามารถจับภาพหน้าจอเรนเดอร์ในโหมดนี้ได้ และไม่มีการสร้างภาพสังเคราะห์หลอกขึ้นมาแทนที่
+- **ผลกระทบต่อการยืนยันหลักฐาน (Impact on Evidence Provenance):**
+  ข้อจำกัดด้านสภาพแวดล้อมนี้ส่งผลโดยตรงให้การเปรียบเทียบคุณภาพทางสายตาของ Texture Filtering (§5.3) และการสังเกตการณ์ความราบรื่นของแอนิเมชันจริง (§5.4) ไม่สามารถจัดเป็นหลักฐานเชิงประจักษ์ทางสายตา (Visually Verified) ได้ และต้องคงสถานะเป็น Unverified ในระดับการเรนเดอร์
 
 ---
 
@@ -269,17 +300,17 @@ godot --headless --path . \
 | **Lossless Import Baseline Configuration** | **CONFIRMED** | คอนฟิก `compress/mode=0`, `fix_alpha_border=true` สร้าง `.ctex` Lossless ได้เสถียร |
 | **VRAM Compressed Android Export Path** | **CONFIRMED** | คอนฟิก `compress/mode=2` สร้างทั้ง `.s3tc.ctex` (เดสก์ท็อป) และ `.etc2.ctex` (Android Compatibility) |
 | **Mipmap GPU Memory Formula (+33.3%)** | **CONFIRMED** | ได้รับการยืนยันเชิงทฤษฎีและเห็นผลการขยายตัวของไฟล์แคชบนดิสก์ (+63.7%) อย่างชัดเจน |
-| **Reference Canvas 1:1 Scale Strategy** | **CONFIRMED** | การวาดที่ขนาดจริงและตั้งค่า `Sprite2D.scale = Vector2(1, 1)` สอดคล้องกับพิกัดแคนวาส 1080×1920 โดยไม่ต้อง hand-scale ชดเชย |
+| **Reference Canvas 1:1 Scale Strategy** | **CONFIRMED** | ยืนยันหลักการ 1:1 authored/export/display สำหรับวัตถุตัวแทนขนาดอ้างอิง (ฉากหลัง 1080×1920, จุดหมุน, ใบไม้, แอนิเมชัน) โดยไม่ต้อง hand-scale ชดเชย (ข้อยกเว้นการสเกล 0.45 มีเฉพาะสไปรต์ gradient เพื่อจัดวางในฟิกซ์เจอร์ ไม่ใช่การสเกลชดเชยแอสเซทโปรดักชัน) |
 | **Bottom-Center Pivot Mechanics** | **CONFIRMED** | Option A (`centered=true, offset.y=-h/2`) ตรึงระนาบพื้นล่างเข้ากับตำแหน่งโหนดได้อย่างแม่นยำและไม่ซับซ้อน |
-| **Linear Texture Filter Baseline** | **CONFIRMED** | Linear จำเป็นสำหรับงานจิตรกรรม (Painterly); Nearest ก่อให้เกิดรอยหยักพิกเซลบันได |
-| **Filtering Configuration Locus** | **CONFIRMED** | ยืนยันว่าการตั้งค่า Filter อยู่ในโหนด `CanvasItem` / `ProjectSettings` ไม่ได้อยู่ในไฟล์ `.import` |
-| **Animation Frame Bounding Rule** | **CONFIRMED** | การกำหนดให้ทุกเฟรมมีขนาดพิกเซลเท่ากัน (256×256) ป้องกันปัญหาตำแหน่งสไปรต์กระโดด |
+| **Filtering Configuration Locus** | **CONFIRMED** | ยืนยันเชิงกลไกว่าการตั้งค่า Filter อยู่ในโหนด `CanvasItem` / `ProjectSettings` ไม่ได้อยู่ในไฟล์ `.import` |
+| **Animation Frame Bounding & Anchor Consistency** | **CONFIRMED** | ยืนยันเชิงกลไก: ขนาดเฟรมเท่ากัน (256×256) และใช้พิกัดจุดสัมผัสพื้นเดียวกัน ขจัดปัญหาสไปรต์กระโดดจากมิติเฟรมตั้งแต่ระดับโครงสร้าง |
 | **.import Sidecar VCS Policy** | **CONFIRMED** | ไฟล์ `.import` ต้องคอมมิตลง Git เพื่อการทำซ้ำบิลด์ได้ตรงกัน ส่วน `.godot/` อยู่ใน `.gitignore` |
 | **Android Export & v2/v3 Signing** | **CONFIRMED** | บิลด์ APK สำเร็จด้วยรหัสออก 0 และผ่านการรับรองลายเซ็นดิจิทัล v2/v3 ถูกต้องสมบูรณ์ |
 | **4 px Transparent Gutter Rule** | **STILL PROVISIONAL** | สมเหตุสมผลในเชิงทฤษฎี แต่ต้องรอตรวจสอบการเรนเดอร์ขอบอัลฟาจริงบนหน้าจออุปกรณ์พกพา |
-| **AnimatedSprite2D FPS Budget Ranges** | **STILL PROVISIONAL** | เชิงกลไกทำงานได้ที่ 8 FPS แต่ความลื่นไหลและจังหวะของแอนิเมชันจริงต้องปรับจูนบนอุปกรณ์ |
+| **AnimatedSprite2D FPS Budget Ranges & Rendered Smoothness** | **STILL PROVISIONAL** | เชิงกลไกคอนฟิกที่ 8 FPS ได้ แต่ความราบรื่นที่รับรู้ได้ (Perceived smoothness), การปลอดจาก jitter บน GPU จริง, และ frame pacing ยังไม่ได้รับการสังเกตการณ์จากการเรนเดอร์จริง ต้องรอประเมินบนอุปกรณ์ |
 | **Lossless Baseline for Sprites** | **STILL PROVISIONAL** | ยังคงเป็นทางเลือกหลักด้านคุณภาพ แต่ยังไม่ได้เปรียบเทียบข้อบกพร่องภาพกับ ETC2 บนฮาร์ดแวร์จริง |
 | **Large Background ETC2 vs Lossless** | **STILL PROVISIONAL** | คำนวณความต่างชัดเจน (7.91 MiB vs 1.98 MiB) แต่ยังไม่ตัดสินใจเลือกจนกว่าจะเห็นภาพบนจอจริง |
+| **Linear vs Nearest Rendered Visual Quality** | **UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED** | ไม่สามารถสรุปเปรียบเทียบคุณภาพทางสายตา (ความนุ่มนวล vs รอยหยักพิกเซล) ได้เนื่องจากติดข้อจำกัด Dummy Rendering Server ในเครื่อง; Linear ยังคงเป็นเบสไลน์ไปป์ไลน์ที่สืบทอดมาจากสไตล์จิตรกรรม |
 | **ETC2 Visual Artifact Acceptance** | **UNVERIFIED — DEVICE REQUIRED** | ไม่สามารถสรุปยอมรับการบีบอัด ETC2 บนภาพสีน้ำ/กูอัชและเงาสัมผัสได้หากไม่มีอุปกรณ์จริง |
 | **Real Android GPU Residency & Frame Timing** | **UNVERIFIED — DEVICE REQUIRED** | ต้องการการโปรไฟล์ผ่านฮาร์ดแวร์ Android ตัวแทนจริง |
 | **Total Scene Texture Memory Budget** | **UNVERIFIED — DEVICE REQUIRED** | ยังคงสถานะ TBD โดยไม่ทึกทักตัวเลขงบประมาณขึ้นมาเอง |
