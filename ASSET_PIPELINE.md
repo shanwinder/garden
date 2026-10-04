@@ -84,8 +84,8 @@ Production Approval
 |---|---|---|
 | Visual Reference → Source Master | Artist | Must satisfy VISUAL_STYLE_BIBLE.md qualitative direction |
 | Source Master → Runtime Export | Artist | Correct dimensions, transparent bounds, clean alpha, sRGB PNG |
-| Runtime Export → Godot Import | Developer + pipeline rules | Correct import settings per category (filter, mipmap, compression) |
-| Scene Integration | Developer | Correct pivot, no arbitrary corrective scale, stable anchor |
+| Runtime Export → Godot Import | Developer + pipeline rules | Correct import settings per category (compression, mipmaps, process options) |
+| Scene Integration | Developer | Correct pivot, Linear texture filter, no arbitrary corrective scale, stable anchor |
 | Android Validation | Developer + Artist | Confirmed visual quality on device at reference canvas scale |
 | Production Approval | Both | Acceptance checklist complete; committed file only |
 
@@ -437,7 +437,7 @@ matrix in `VISUAL_STYLE_BIBLE.md` §7.1 as the starting reference:
 | Sprout / seedling | ~4–7% | ~77–134 px height |
 | Planted mound | ~2–4% | ~38–77 px height |
 | Cat sitting | ~10–13% | ~192–250 px height |
-| Butterfly | ~3–5% | ~58–96 px height |
+| Butterfly | ~3–5% (reference) | TBD (calibrated in spike; naturally small) |
 | Clay water jar | ~18–22% | ~346–422 px height |
 | Garden bench | ~15–18% height, ~25% width | ~288–346 px H / ~270 px W |
 
@@ -511,7 +511,8 @@ would waste transparent canvas space for most hand-painted sprites.
 (Verified: Godot 4 documentation confirms NPOT support; GL Compatibility
 renderer handles NPOT textures for 2D.)
 
-When ETC2/ASTC VRAM compression is applied by the Godot importer, the engine
+When ETC2 VRAM compression is applied by the Godot importer on Android (or S3TC
+on desktop; see §17.1 for the Compatibility renderer compression path), the engine
 handles any required padding internally; the artist does not need to pad to POT.
 
 ### 9.3 Per-Category Dimension Guidelines
@@ -571,13 +572,27 @@ A 512 × 512 RGBA8 texture with mipmaps: ~1.33 MB.
 
 ### 10.3 VRAM Compression Factor
 
-ETC2 and ASTC reduce GPU memory substantially compared to RGBA8:
+ETC2 reduces GPU memory substantially compared to RGBA8:
 
-- **ETC2 RGBA (8 bits/px):** ~50% of RGBA8 — 512 × 512 ≈ 512 KB
-- **ASTC 6×6 (~3.6 bits/px):** ~45% of RGBA8 — varies by block size
+- **RGBA8:** 32 bits/pixel (baseline)
+- **ETC2 RGBA (8 bits/pixel):** 8 ÷ 32 = **~25% of RGBA8** (≈ 4:1 compression ratio)
+  - 512 × 512 RGBA8 without mipmaps: 1,048,576 bytes ≈ 1 MiB
+  - 512 × 512 ETC2 RGBA without mipmaps: 262,144 bytes ≈ 256 KiB
+  - With full mipmaps: multiply both by approximately 1.33
+
+**ASTC 6×6 (mathematical context only — see §10.4 and §17.1 for renderer path):**
+- 128 bits per 6×6 block = 128 ÷ 36 ≈ 3.56 bits/pixel
+- 3.56 ÷ 32 ≈ **~11.1% of RGBA8**
+- However, ASTC is NOT the normal runtime VRAM-compression path for this
+  project's Compatibility renderer on Android. See Section 17.1 for the
+  correct compression path.
+
+(Verified: Godot 4.7 importing images documentation confirms VRAM Compressed
+reduces memory roughly 4:1 for RGBA textures. Source:
+docs.godotengine.org/en/4.7/tutorials/assets_pipeline/importing_images.html)
 
 VRAM compression is the most effective tool for reducing GPU memory on Android
-mobile. See Section 18 (Compression Policy).
+mobile. See Section 17 (Compression Policy).
 
 ### 10.4 Scene Texture Memory Budget
 
@@ -693,17 +708,47 @@ correct without additional manual offsets.
 
 ### 12.2 Expressing Pivot in the Export
 
-The most practical approach for ground-contact pivots:
+**Principle (LOCKED):** All ground-contact sprites must have a ground-contact
+bottom-center anchor so that positioning the node's `position` at a logical
+garden coordinate places the sprite's base at that point.
 
-- Export the sprite so the **bottom edge of the painted content's bounding box
-  is the bottom edge of the canvas** (after the 4 px gutter is applied, the
-  pivot point falls naturally at bottom-center).
-- In Godot `Sprite2D`, set `offset` to `Vector2(0, -height/2)` when using
-  centered texture mode, or use `centered = false` and position the node at
-  the ground anchor point.
+**How `Sprite2D.centered` works (Godot 4.7 docs):**
+
+- `centered = true` (default): the texture is drawn centered around the node origin.
+- `centered = false`: the texture is drawn from the node origin at the top-left
+  corner. The origin is **not** automatically at the bottom-center.
+
+**Setting `centered = false` alone does NOT establish a bottom-center anchor.**
+An additional drawing offset is still required to place the texture's bottom-center
+at the node origin.
+
+**Implementation approaches (PROVISIONAL — confirm in technical spike):**
+
+Option A (with `centered = true`, recommended for clarity):
+```
+offset.x = 0
+offset.y = -(texture_height / 2)
+```
+This shifts the texture upward so its bottom edge aligns with the node origin,
+which then becomes the effective ground-contact point.
+
+Option B (with `centered = false`):
+```
+centered = false
+offset.x = -(texture_width / 2)
+offset.y = -texture_height
+```
+This also places the texture's bottom-center at the node origin, but requires
+both x and y offsets to be maintained correctly.
+
+**The canonical anchor PRINCIPLE is LOCKED:** the sprite's bottom-center must
+coincide with the node's `position` (the ground-contact point). The specific
+implementation mechanism (Option A or B) is **PROVISIONAL** and must be
+confirmed during the technical spike when the first production sprites are
+placed in Godot scenes.
 
 Establish one consistent approach for all gameplay sprites before production
-begins (to be confirmed in the technical spike).
+begins.
 
 ### 12.3 What Is Forbidden
 
@@ -857,11 +902,43 @@ approval.
 See Section 16 for mipmap defaults. `Linear Mipmap` is the preferred mode
 for sprites that will be viewed at significantly reduced scale.
 
-### 15.4 Project Default Versus Per-Node
+### 15.4 Filtering Is a Rendering Setting, Not an Import Setting
+
+**Important Godot 4 distinction (since Godot 4.0):**
+
+Texture filtering is configured through:
+
+1. **Project-wide default:** Project Settings > Rendering > Textures > Canvas
+   Textures > Default Texture Filter (sets the default for all CanvasItems)
+2. **Per-node override:** `CanvasItem.texture_filter` property on individual
+   Sprite2D / AnimatedSprite2D nodes
+
+**The `.import` sidecar file does NOT store the CanvasItem filter mode.**
+
+`.import` files encode import-time parameters such as:
+- `compress/mode` (Lossless, Lossy, VRAM Compressed, etc.)
+- `mipmaps/generate` (on/off)
+- Process options (Fix Alpha Border, Premult Alpha, etc.)
+
+They do NOT encode the runtime CanvasItem `texture_filter` choice.
+
+Therefore, **committing `.import` files does NOT reproduce the Linear filtering
+policy** for individual nodes. Linear filtering reproducibility requires:
+
+- Setting the project-wide Canvas Textures default to `Linear` in
+  `project.godot` (a future project-setting implementation task), **and/or**
+- Setting `texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR` on individual
+  nodes in scene files.
+
+**Task 4.3C corrects this documentation only; no modification is made to
+`project.godot` or scene files in this task.**
+
+### 15.5 Project Default Versus Per-Node
 
 Setting the project default filter to `Linear` in Project Settings ensures
 that sprites without explicit `texture_filter` override are correctly filtered.
-Per-node overrides should be used only for justified exceptions.
+Per-node overrides using `CanvasItem.texture_filter` should be used only for
+justified exceptions (e.g., a specific node that requires Nearest filtering).
 
 ---
 
@@ -916,44 +993,129 @@ Godot imports the PNG and, depending on import settings, may store it in the
 `.godot/imported/` cache as:
 
 - Raw RGBA8 (no GPU compression)
-- ETC2 (GPU-native compressed format for Android)
-- ASTC (modern GPU-native compressed format for Android)
+- ETC2 (GPU-native compressed format for mobile/Android/web)
+- ASTC (GPU-native compressed format for mobile, when High Quality is enabled)
 - S3TC/BC (desktop GPU compression)
+- BPTC (desktop High Quality compression)
 
 The GPU compression format is what actually occupies VRAM.
 
-(Verified: `project.godot` contains `textures/vram_compression/import_etc2_astc=true`,
-which enables both ETC2 and ASTC compression for Android export in Godot 4.)
+#### 17.1.1 Compatibility Renderer Compression Path
+
+The Godot 4.7 documentation states:
+
+> **High-quality VRAM texture compression is only supported in the Forward+
+> and Mobile renderers.** When using the Compatibility renderer, High Quality
+> is always considered disabled.
+
+With **High Quality disabled** (which applies unconditionally to Compatibility):
+
+- **Desktop platforms:** VRAM compression uses **S3TC**
+- **Mobile / Android / web:** VRAM compression uses **ETC2**
+
+**For this project's baseline:**
+
+```
+Renderer:   GL Compatibility
+Platform:   Android
+Mode:       VRAM Compressed
+Compression path: ETC2
+```
+
+When reasoning about runtime VRAM savings for Garden's Android build, use
+**ETC2** (not ASTC) as the applicable compression format.
+
+#### 17.1.2 Project Setting Clarification
+
+`project.godot` contains:
+```
+textures/vram_compression/import_etc2_astc=true
+```
+
+This setting **permits** Godot to import textures into the ETC2/ASTC family
+(enabling the relevant import pipeline). It does **not** override the
+renderer-specific High Quality behavior described above. Under Compatibility,
+High Quality remains disabled regardless of this setting, so the active
+runtime path on Android remains ETC2, not ASTC.
+
+Do not infer active ASTC runtime use merely from this project setting name.
 
 ### 17.2 Available Import Modes in Godot 4
 
-| Godot Import Compress Mode | Behavior | Android VRAM |
-|---|---|---|
-| **Lossless** | PNG stored; no GPU compression unless VRAM enabled | ~RGBA8 unless ETC2/ASTC override |
-| **Lossy** | WebP-encoded; some quality loss; smaller disk | Same VRAM as Lossless at runtime |
-| **VRAM Compressed** | GPU texture compressed at import; ETC2/ASTC on Android | ~50% of RGBA8 (ETC2 RGBA) |
-| **VRAM Uncompressed** | Forces uncompressed RGBA8 even on mobile | Full RGBA8 VRAM |
-| **Basis Universal** | Transcodes to best GPU format per platform | Variable; smallest overall |
+(Verified against Godot 4.7 importing images documentation.)
 
-(Verified against Godot 4 importing images documentation.)
+| Godot Import Compress Mode | GPU Memory Behavior | Disk Behavior |
+|---|---|---|
+| **Lossless** | Full GPU memory (RGBA8 at runtime); NO VRAM compression | Stored as lossless WebP/PNG; no quality loss |
+| **Lossy** | Full GPU memory — same as Lossless/Uncompressed; NOT reduced | Smaller disk size (WebP lossy); some quality loss |
+| **VRAM Compressed** | GPU-native compression; reduced VRAM (~4:1 for ETC2 RGBA on Android/Compatibility) | GPU-native format in cache |
+| **VRAM Uncompressed** | Full RGBA8 GPU memory | Uncompressed; useful for formats that can't be compressed |
+| **Basis Universal** | Transcodes to VRAM-compressed format; similar VRAM to VRAM Compressed | Very small files; slower compression; some quality loss |
+
+**Important clarifications verified against Godot 4.7 docs:**
+
+- **Lossless** does NOT silently become VRAM Compressed when ETC2/ASTC import
+  support is enabled. The `textures/vram_compression/import_etc2_astc=true`
+  project setting permits ETC2/ASTC import family support but does NOT
+  change the Compress > Mode for assets set to Lossless.
+- **Lossy** reduces disk size but does NOT reduce GPU memory usage. GPU memory
+  is the same as Lossless or VRAM Uncompressed.
+- **VRAM Compressed** is the mode that actually reduces GPU memory.
 
 ### 17.3 Decision Matrix
 
-| Asset Category | Recommended Import Mode | Rationale |
+**Status: PROVISIONAL TECHNICAL PIPELINE — pending visual quality comparison**
+
+Per Godot 4.7 official documentation:
+
+> **Lossless is the default and most common compression mode for 2D assets.**
+> It shows assets without any kind of artifacting.
+
+> VRAM Compressed **can produce noticeable artifacts** in 2D, especially on
+> lower-resolution textures. It should generally be avoided for 2D assets
+> unless memory savings are critical and artifacts are verified to be acceptable.
+
+Garden baseline policy for painterly 2D sprites (soft alpha edges, watercolor/
+gouache texture):
+
+**Baseline (initial quality default before empirical comparison):**
+
+| Asset Category | Baseline Import Mode | Notes |
 |---|---|---|
-| **Small alpha sprites** (plants, visitors, decorations ≤ 256 px) | VRAM Compressed (ETC2/ASTC) | Accept ETC2 RGBA quality; saves VRAM on Android; validate visual quality in spike |
-| **Large alpha sprites** (decorations ≥ 256 px, backgrounds) | VRAM Compressed (ETC2/ASTC) | Most important for memory saving; validate quality on gradients |
-| **UI icons (raster, small)** | Lossless | Small; quality critical for UI clarity; VRAM saving minor |
-| **UI panel patches (9-slice)** | Lossless | Quality critical; small dimensions; minimal VRAM impact |
-| **Animated sprite frames** | VRAM Compressed | Animation frames sum in VRAM; compression essential |
-| **Background environment art** | VRAM Compressed | Largest individual textures; highest memory payoff |
-| **Effect textures** | VRAM Compressed | Small textures; may have fine gradient detail — validate |
-| **Gradient / mask textures** | TBD; test Lossless vs VRAM | ETC2 can introduce banding on smooth gradients; compare visually |
+| **Plants (all stages)** | **Lossless** | Painterly with soft alpha; quality baseline |
+| **Visitors (cat, butterfly, etc.)** | **Lossless** | Soft painted edges; quality baseline |
+| **Decorations** | **Lossless** | Quality baseline |
+| **Animated sprite frames** | **Lossless** | Quality baseline; do not assume VRAM Compressed is essential |
+| **UI icons/panels** | **Lossless** | Small; quality critical; minimal VRAM impact |
+| **Small effect sprites** | **Lossless** | Default quality baseline |
+| **Large environment/background** | **PROVISIONAL / EMPIRICAL COMPARISON REQUIRED** | See below |
+
+**Large environment/background textures — comparison required in spike:**
+
+Compare Lossless vs Lossy vs VRAM Compressed (ETC2) for:
+- bg_house_wall.png, ground layers, sky panel, fence
+- Measure visual artifacts, GPU memory, and APK size
+- ETC2 may be approved for background layers if artifacts are acceptable and
+  memory savings are material
+
+**VRAM Compressed is NOT permanently forbidden for 2D.** It is an
+optimization candidate that requires visual and device evidence before
+adoption. The technical spike makes that determination per asset category.
+
+**When VRAM Compressed may be approved (per-asset basis after spike):**
+- Visual artifacts are acceptable on target devices
+- Memory savings are material (large textures benefit most)
+- Soft alpha edges, dark semi-transparent shadows, fine gradients have been
+  visually reviewed under ETC2 on Android
+
+**Do NOT claim VRAM compression is "essential" for animated sprite frames**
+prior to empirical comparison showing unacceptable memory usage under Lossless.
 
 **PROVISIONAL NOTE:** ETC2 compression of sprites with fine painted texture and
 soft gradient alpha edges may introduce visible block artifacts, particularly
-on dark semi-transparent shadows. Visual quality comparison must be performed
-during the technical spike before committing to VRAM Compressed defaults.
+on dark semi-transparent shadows and soft watercolor edges. Visual quality
+comparison must be performed during the technical spike before any category
+is changed from Lossless baseline to VRAM Compressed.
 
 ### 17.4 Source PNG Encoding
 
@@ -1112,8 +1274,14 @@ This ensures the ground anchor point is consistent across stage transitions.
 | Flutter animation | Wing-beat cycle; loopable; fast enough to read as natural flight |
 | Rest animation | Wings slowly open/close or near-static resting on flower |
 | Frame bounds | All flutter frames identical; all rest frames identical |
-| Scale awareness | At runtime display size (~58–96 px height), flutter animation must be readable |
-| Silhouette | Wing shape readable against foliage at small scale |
+| Runtime display size | TBD through reference-canvas calibration in the production validation spike |
+| Silhouette | Wing shape readable against foliage at small scale; readable through silhouette/value/placement rather than physical enlargement |
+
+**Locked qualitative requirements for butterfly scale:**
+- Naturally small; significantly smaller than cat head
+- Must read by silhouette, value, and placement — not by physical enlargement
+- Exact pixel height: **TBD** — to be determined through reference-canvas
+  calibration during the production validation spike
 
 ### 20.3 Future Visitor Consistency
 
@@ -1361,14 +1529,24 @@ occur during the technical spike:
 
 ## 26. Motion Density Policy
 
-**Status: LOCKED TECHNICAL PIPELINE (direction); PROVISIONAL (implementation)**
+**Status: PROVISIONAL TECHNICAL TARGET (3–5 motions) / INHERITED VISUAL DIRECTION (calm motion principle)**
 
-From `VISUAL_STYLE_BIBLE.md` §23 (PROVISIONAL Motion Density Budget):
+From `VISUAL_STYLE_BIBLE.md` §23:
 
 > At any given moment during ordinary garden play, no more than 3 to 5 subtle
 > ambient motions should be active simultaneously on the screen.
 
-### 26.1 Technical Implementation Principles
+### 26.1 Principle and Status Authority
+
+- **Qualitative principle:** Calm motion density, few concurrent subtle motions,
+  restful garden sanctuary. This is the **inherited visual direction** from
+  `VISUAL_STYLE_BIBLE.md` and remains a guiding qualitative standard.
+- **Exact numeric budget (3–5 simultaneous motions):** This is a **PROVISIONAL
+  TECHNICAL TARGET**, not a hard permanently locked technical maximum. It provides
+  an initial budget for composition and staging, to be empirically validated and
+  tuned during the vertical-slice and device testing spike.
+
+### 26.2 Technical Implementation Principles
 
 - Not every plant animates simultaneously. Only the plant in the active
   interaction focus, or triggered by a wind event, animates.
@@ -1378,7 +1556,7 @@ From `VISUAL_STYLE_BIBLE.md` §23 (PROVISIONAL Motion Density Budget):
 - Do NOT run `AnimationPlayer` nodes for off-screen entities (implement
   visibility-based pausing in a future task when prototyping).
 
-### 26.2 Battery Awareness
+### 26.3 Battery Awareness
 
 Consistent with `ARCHITECTURE.md` §37 (Performance and Battery Rules):
 
@@ -1388,7 +1566,7 @@ Consistent with `ARCHITECTURE.md` §37 (Performance and Battery Rules):
 - Particles for rain and ambient effects should have conservative emission
   rates; do not default to maximum particle density.
 
-### 26.3 Not Implemented in Task 4.3
+### 26.4 Not Implemented in Task 4.3
 
 Runtime visibility culling, LOD-based animation pausing, and battery profiling
 are deferred to a later implementation task.
@@ -1455,7 +1633,8 @@ the game repository.
 
 | File Type | Commit? | Notes |
 |---|---|---|
-| Runtime export PNGs | **YES** | Primary game art; in `assets/` |
+| Runtime export PNGs (`assets/**/*.png`) | **YES** | Primary game art; in `assets/` |
+| `.import` sidecar files (`assets/**/*.png.import`) | **YES** | Import configuration; must be committed — see §28.4 |
 | `SpriteFrames` resource (`.tres`) | **YES** | Animation data; text-based; reviewable |
 | Other `.tres` content/definition files | **YES** | Text-based resources |
 | Scene files (`.tscn`) referencing assets | **YES** | Text-based; reviewable |
@@ -1467,13 +1646,17 @@ the game repository.
 | File Type | Commit? | Notes |
 |---|---|---|
 | `.godot/` directory (all contents) | **NO** | Already in `.gitignore`; import cache, generated files |
-| `*.import` sidecar files | **NO** | Generated by Godot importer; in `.godot/` |
+| `.godot/imported/` (import cache) | **NO** | Auto-generated; regenerated on next editor launch |
 | Source masters (`.kra`, `.psd`, `.ase`, `.xcf`) | **NO** | Too large; editable source masters belong outside repo |
 | Failed concept iteration exports | **NO** | Stochastic output; do not accumulate |
 | Temporary test exports | **NO** | Delete after validation |
 | `.DS_Store`, `Thumbs.db`, editor state | **NO** | Already in `.gitignore` |
 | APK/build outputs | **NO** | Already in `.gitignore` |
 | Signing keys / credentials | **NO** | Security requirement |
+
+**Note:** `.import` sidecar files (e.g., `assets/plants/holy_basil/holy_basil_mature.png.import`)
+are NOT in `.godot/`; they live next to the source asset and MUST be committed.
+Only `.godot/` directory contents are excluded.
 
 ### 28.3 Large Binary Source Master Handling
 
@@ -1503,8 +1686,9 @@ source file. The `.import` files need to be examined:
 
 `.import` sidecar files in Godot 4 store the import parameters chosen in the
 Import panel for each asset. These **should be committed** to Git because they
-encode the project's intentional import settings (filter mode, mipmap on/off,
-compression mode, etc.) and enable reproducible builds.
+encode the project's intentional import settings (compression mode, mipmap on/off,
+process options, etc. — excluding CanvasItem filtering, which is configured
+via CanvasItem nodes or project setting; see §15.4) and enable reproducible builds.
 
 **Add to `.gitignore` only:** the `.godot/` directory (already done).
 Do NOT add `*.import` to `.gitignore`.
@@ -1651,11 +1835,15 @@ COLOR
 [ ] No colored halo / fringe at transparent edges
 [ ] Color profile consistent with source master intent
 
-IMPORT
-[ ] Correct Godot filter mode (Linear for painterly sprites)
+IMPORT SETTINGS (in .import sidecar)
+[ ] Compression mode per category decision matrix (Lossless baseline; Section 17)
 [ ] Mipmap setting per category decision matrix (Section 16)
-[ ] Compression mode per category decision matrix (Section 17)
+[ ] Image process/import options configured properly (Fix Alpha Border, Premult Alpha off)
 [ ] .import sidecar file generated and staged for commit
+
+RENDERING FILTER (CanvasItem / Project Setting)
+[ ] Linear filter policy respected for painterly sprites (Section 15)
+[ ] Configured via project Canvas default or explicit CanvasItem.texture_filter override (not in .import)
 
 PERFORMANCE
 [ ] Pixel dimensions within category guideline (Section 9)
@@ -1696,7 +1884,7 @@ file, or a code review note) must state:
    size is 1080 × 1920 = ~8 MB RGBA8")
 
 3. **Memory / performance implication:**
-   (e.g., "Adds ~8 MB uncompressed; mitigated by ASTC compression to ~2 MB")
+   (e.g., "Adds ~8 MB uncompressed; mitigated by ETC2 compression to ~2 MB")
 
 4. **Visual benefit:**
    (e.g., "Painting full-resolution avoids any resampling artifact on the
@@ -1747,7 +1935,7 @@ The first future asset set that validates this pipeline:
 - Confirm visual scale at reference canvas
 - Confirm filter quality on device
 - Confirm alpha edge quality
-- Confirm ETC2/ASTC compression quality on hand-painted sprites
+- Confirm visual quality under Lossless baseline vs ETC2 compression on hand-painted sprites
 - Confirm animation readability on device
 - Confirm memory estimates
 
@@ -1771,19 +1959,36 @@ Test a **minimal representative subset** in Godot on Android:
 - 1 decoration (bench)
 - 1 simple background
 
-### 34.2 What the Spike Measures
+### 34.2 What the Spike Measures and Compares
 
-- **Visual scale:** Are sprites the right size on the 1080 × 1920 canvas?
-- **Filtering:** Does linear filtering produce acceptable quality on painterly edges?
-- **Alpha edge quality:** Are soft watercolor/gouache edges clean or fringed?
-- **VRAM compression quality:** Does ETC2/ASTC introduce visible block artifacts
-  on the painterly style?
-- **Frame animation quality:** Is cat_idle readable and pleasant at device scale?
-- **Texture memory:** Measure total VRAM residency with the spike sprite set.
-- **Viewport responsiveness:** Does the 1080 × 1920 canvas scale correctly to
-  a real phone with a different aspect ratio?
-- **APK / runtime behavior:** Does the APK install and launch correctly?
-- **Device performance:** Frame rate stable; no thermal/battery anomaly.
+The spike must explicitly compare representative painterly assets under:
+
+**Lossless baseline** versus **VRAM Compressed (ETC2)** (and Lossy where appropriate).
+
+Specific visual and technical evaluations:
+
+- **Soft alpha edges:** Compare watercolor/gouache translucent stroke boundaries
+  under Lossless vs ETC2 block compression on phone displays.
+- **Painted texture:** Assess whether subtle gouache brushwork and paper tooth
+  survive ETC2 or exhibit muddy compression blocks.
+- **Dark semi-transparent shadows:** Inspect contact shadows beneath the bench,
+  clay jar, and plant mounds for ETC2 block artifacts or color fringing.
+- **Holy basil foliage:** Check fine branch, leaf contour, and vein readability.
+- **Marigold detail:** Inspect dense petal clusters and warm blossom gradient tones.
+- **Cat contours and fur:** Check silhouette softness and subtle breathing frame edges.
+- **Environment gradients:** Evaluate smooth sky, house wall, and soil gradients
+  for compression banding under ETC2.
+
+Key metrics to record:
+- **Visual artifacts:** Document any visible artifacting under 1:1 reference canvas
+  and real screen DPI.
+- **Imported GPU memory estimate:** Calculate uncompressed RGBA8 vs ETC2 (~25% / 4:1)
+  residency for the spike asset set.
+- **Device performance & runtime results:** Profile actual frame rate, launch time,
+  and VRAM residency on target Android hardware when available.
+
+The spike outcome **decides whether any asset category should change from the
+Lossless baseline to VRAM Compressed**.
 
 ### 34.3 Hardware Requirement
 
@@ -1796,7 +2001,7 @@ filtering behavior) and performance validation.
 The spike produces:
 
 - Updated/confirmed pixel dimensions for the first validation set
-- Confirmed compression settings per category
+- Confirmed compression settings per category (Lossless confirmed or VRAM Compressed justified with visual/device evidence)
 - Confirmed mipmap policy
 - Confirmed padding and pivot correctness
 - A preliminary VRAM estimate for the vertical-slice scene
@@ -1820,24 +2025,34 @@ Uncompressed RGBA8 with mipmaps  = width × height × 4 × 1.33
 Hypothetical vertical-slice scene at full load:
 
 ```
-Asset                         Dimensions    RGBA8      ASTC (~22.5%)
----------------------------------------------------------------------------
-holy_basil_mature             300×350       420 KB     ~95 KB
-holy_basil_planted            300×100       120 KB     ~27 KB
-marigold_mature               280×380       427 KB     ~96 KB
-marigold_planted              280×80        90 KB      ~20 KB
-cat_idle x6 frames            300×300 each  ~1.62 MB   ~365 KB
-butterfly_flutter x6 frames   100×100 each  240 KB     ~54 KB
-clay_jar                      250×350       350 KB     ~79 KB
-bench                         480×280       540 KB     ~122 KB
-background                    1080×1920     7.9 MB     ~1.8 MB
----------------------------------------------------------------------------
-APPROXIMATE TOTAL (ASTC)                               ~2.7 MB
+Asset                         Dimensions    RGBA8 (Uncompressed)  ETC2 RGBA (~25% / 4:1)
+----------------------------------------------------------------------------------------
+holy_basil_mature             300×350       420 KB                ~105 KB
+holy_basil_planted            300×100       120 KB                ~30 KB
+marigold_mature               280×380       ~426 KB               ~106 KB
+marigold_planted              280×80        ~90 KB                ~22 KB
+cat_idle x6 frames            300×300 each  ~2.16 MB              ~540 KB
+butterfly_flutter x6 frames   100×100 each  240 KB                60 KB
+clay_jar                      250×350       350 KB                ~88 KB
+bench                         480×280       ~538 KB               ~134 KB
+background                    1080×1920     ~8.29 MB              ~2.07 MB
+----------------------------------------------------------------------------------------
+APPROXIMATE TOTAL (if all ETC2)                                   ~3.65 MB
+APPROXIMATE TOTAL (Lossless sprites + ETC2 background)            ~6.4 MB
 ```
 
-This is a rough illustrative estimate only. Real compression ratios depend
-on image content (gradients compress poorly; flat areas compress well).
-Measure actual residency during the technical spike.
+**Notes on the estimate:**
+- **ETC2 is the applicable mobile format:** Under Garden's GL Compatibility
+  renderer on Android, VRAM compression uses ETC2 RGBA (8 bpp = ~25% of RGBA8 / 4:1
+  ratio), NOT ASTC. ASTC requires High Quality VRAM compression, which is
+  unconditionally disabled in Compatibility (see §17.1).
+- **Lossless baseline impact:** Under the project's quality baseline (§17.3),
+  gameplay sprites (plants, visitors, decorations) default to Lossless (remaining
+  in uncompressed RGBA8 in GPU memory, ~4.3 MB total), while large background
+  panels are candidates for ETC2 (~2.07 MB). Total scene residency is approximately
+  ~6.4 MB, well within modern mobile headroom.
+- Actual compression ratios depend on image content. Measure actual residency
+  during the technical spike.
 
 ### 35.3 Sprite Sheet Growth
 
@@ -1852,11 +2067,14 @@ Memory is proportional to total pixel area regardless of packing.
 
 ### 35.4 Full-Screen Texture Cost
 
-A full-canvas background at 1080 × 1920 RGBA8: **~8 MB uncompressed**.
-With ASTC: approximately **~1.8–2 MB** (content-dependent).
+A full-canvas background at 1080 × 1920 RGBA8: **~8.3 MB uncompressed** (8,294,400 bytes).
+With ETC2 RGBA (8 bpp, 25% / 4:1): approximately **~2.07 MB** (2,073,600 bytes).
+
+*(For mathematical context, ASTC 6×6 would theoretically yield ~11.1% or ~920 KB,
+but ASTC is not the runtime format under Compatibility renderer on Android).*
 
 This is the single most expensive texture in the vertical slice; it justifies
-VRAM compression regardless of quality concern.
+empirical comparison of Lossless vs Lossy vs ETC2 during the technical spike.
 
 ---
 
@@ -1878,12 +2096,13 @@ VRAM compression regardless of quality concern.
 | **4 px transparent gutter minimum** | PROVISIONAL TECHNICAL PIPELINE | May adjust to 8 px with device evidence |
 | **Mipmap defaults (plants/visitors/deco)** | PROVISIONAL TECHNICAL PIPELINE (OFF) | Validate in technical spike |
 | **Mipmap defaults (backgrounds/effects)** | PROVISIONAL TECHNICAL PIPELINE (ON) | Validate in technical spike |
-| **Compression: VRAM for most sprites** | PROVISIONAL TECHNICAL PIPELINE | ETC2/ASTC; validate quality in spike |
-| **Compression: Lossless for small UI** | PROVISIONAL TECHNICAL PIPELINE | Quality critical; minimal VRAM impact |
+| **Compression: Lossless baseline for 2D sprites** | PROVISIONAL TECHNICAL PIPELINE | Initial quality baseline per Godot 4.7 2D defaults; VRAM Compressed (ETC2) is optimization candidate |
+| **Compression: Large environment/background** | PROVISIONAL / EMPIRICAL COMPARISON | Compare Lossless vs Lossy vs VRAM Compressed (ETC2) in spike |
 | **Atlas strategy: no premature atlas** | PROVISIONAL TECHNICAL PIPELINE | Profiling-driven optimization only |
 | **AnimatedSprite2D for character animation** | PROVISIONAL TECHNICAL PIPELINE | Preferred; validate animation quality |
 | **AnimationPlayer for property animation** | PROVISIONAL TECHNICAL PIPELINE | Leaf sway, lamp, firefly |
 | **Animation budget ranges** | PROVISIONAL TECHNICAL PIPELINE | See Section 25; validate in spike |
+| **Motion density target (3–5 concurrent)** | PROVISIONAL TECHNICAL TARGET | Validate in spike; calm motion principle is inherited visual direction |
 | **sRGB color space for runtime exports** | LOCKED TECHNICAL PIPELINE | Godot 4 default assumption |
 | **Straight alpha (not premultiplied)** | LOCKED TECHNICAL PIPELINE | Godot 4 default import behavior |
 | **Lighting-neutral base art** | PROVISIONAL TECHNICAL PIPELINE | Form-shadow OK; baked directional forbidden |
@@ -1898,7 +2117,7 @@ VRAM compression regardless of quality concern.
 | **Final shader architecture** | TBD | Future implementation milestone |
 | **Wet surface overlay approach** | TBD / PROVISIONAL | Shader vs sprite; validate in spike |
 | **WebP for sprite runtime format** | TBD | Evaluate vs PNG in spike |
-| **ETC2 vs ASTC quality trade-off** | TBD / REQUIRES VISUAL COMPARISON | Test on device during spike |
+| **Lossless vs ETC2 quality trade-off** | TBD / REQUIRES EMPIRICAL COMPARISON | Compare on device during spike (Section 17.3, Section 34) |
 
 ---
 
@@ -1926,19 +2145,24 @@ The following visual decisions remain **unchanged and unmodified** by Task 4.3:
 
 The following Godot 4.7.2 technical claims were verified:
 
-| Claim | Verification Method |
+| Claim / Engine Fact | Verification Method & Authority |
 |---|---|
-| Engine version `4.7.2.stable.official.ed1daf0bf` | `godot --version` command run on project |
-| `project.godot` viewport `1080×1920`, portrait `=1`, ETC2/ASTC enabled, GL Compatibility | Direct file inspection of `/Applications/garden/project.godot` |
-| NPOT textures supported without POT requirement in Godot 4 | Official Godot 4 documentation confirmed; multiple corroborating sources |
-| CanvasItem `texture_filter` options (Linear, Nearest, Linear Mipmap, etc.) | Official Godot 4 documentation; search result confirmation |
-| ETC2 and ASTC are the Android VRAM compression formats in Godot 4 | Official Godot 4 import documentation; `textures/vram_compression/import_etc2_astc=true` in project settings |
-| `.godot/imported/` directory holds import cache and is not source-controlled | Direct inspection of `.gitignore`; confirmed `.godot/` is ignored |
-| `.import` sidecar files are per-texture import settings (Godot 4 behavior) | Official Godot 4 documentation; project behavior verification |
-| Mipmap overhead ~33% additional memory | Standard graphics engineering formula; corroborated by Godot documentation context |
-| AnimatedSprite2D + SpriteFrames is valid for 2D animation | Standard Godot 4 API; project does not yet use it but it is a documented engine class |
-| Godot 4 supports WebP import | Official Godot 4 supported image formats documentation |
-
+| **A.** Lossless is default/common for 2D assets | Official Godot 4.7 documentation (*Importing images*): "Lossless: This is the default and most common compression mode for 2D assets." |
+| **B.** VRAM Compressed can produce noticeable 2D artifacts | Official Godot 4.7 documentation (*Importing images*): warns VRAM compression produces noticeable block artifacts, especially on lower-resolution 2D textures. |
+| **C.** Lossy mode does not reduce GPU memory relative to Lossless | Official Godot 4.7 documentation (*Importing images*): "Video memory usage isn't decreased by this mode; it's the same as with Lossless or VRAM Uncompressed." |
+| **D.** ETC2 RGBA memory ratio is ~4:1 versus RGBA8 (8 bpp vs 32 bpp = 25%) | Official Godot 4.7 documentation (*Importing images*): confirms ~4:1 compression ratio for RGBA textures; standard GPU format specification (8 bits/pixel vs 32 bits/pixel). |
+| **E.** Compatibility renderer disables High Quality VRAM compression | Official Godot 4.7 documentation (*Importing images*): "High-quality VRAM texture compression is only supported in the Forward+ and Mobile renderers. When using the Compatibility renderer, High Quality is always considered disabled." |
+| **F.** With High Quality disabled, desktop uses S3TC and Android/mobile uses ETC2 | Official Godot 4.7 documentation (*Importing images*): "uses S3TC on desktop platforms and ETC2 on mobile/web platforms." ASTC is therefore not the runtime format under Compatibility on Android. |
+| **G.** Full mipmaps add ~33% additional memory | Standard graphics engineering formula (geometric series: 1 + 1/4 + 1/16 + ... ≈ 1.333×); confirmed in engine asset pipeline context. |
+| **H.** 2D texture filtering is CanvasItem / project-default based, not in `.import` | Official Godot 4.7 documentation (*Importing images*): "Since Godot 4.0, texture filter and repeat modes are set in the CanvasItem properties in 2D (with a project setting acting as a default)..." |
+| **I.** `<asset>.import` sidecar files should be committed to VCS | Official Godot 4.7 documentation (*Import process*): "Make sure to commit these files to your version control system, as these files contain important metadata." |
+| **J.** `.godot/` directory should NOT be committed to VCS | Official Godot 4.7 documentation (*Import process*); confirmed in project `.gitignore` (`.godot/`). |
+| **K.** `Sprite2D.centered = false` only shifts texture from center to top-left; not a bottom-center anchor | Official Godot 4.7 `Sprite2D` class reference: `centered` determines whether texture is centered around origin; an additional drawing offset is required to achieve a bottom-center anchor. |
+| Engine version `4.7.2.stable.official.ed1daf0bf` | `godot --version` command run in project directory |
+| Viewport 1080×1920 portrait, Compatibility renderer | Direct inspection of `project.godot` |
+| NPOT textures supported natively | Official Godot 4 documentation; GL Compatibility 2D renderer handles NPOT |
+| AnimatedSprite2D + SpriteFrames valid for 2D animation | Official Godot 4 class reference |
+| WebP import support | Official Godot 4 supported image formats documentation |
 Claims based solely on web search results (not directly verifiable in the local
 project) are marked PROVISIONAL and flagged for validation in the technical spike.
 
