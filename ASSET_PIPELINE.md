@@ -125,25 +125,54 @@ is tracked in Git.
 
 **PROVISIONAL TECHNICAL PIPELINE**
 
-Do NOT place editable source masters (`.kra`, `.psd`, `.ase`, `.xcf`) inside
-the Godot project tree alongside runtime exports. Godot will attempt to import
-unknown binary files and may produce unnecessary import overhead.
+Files placed under the Godot project root participate in the project's
+filesystem and resource workflow; recognized importable asset types are scanned
+and imported. Editable source-master directories that should not participate in
+that workflow should preferably remain outside the project root.
 
-Recommended approach (subject to owner decision):
+**Preferred Policy (Subject to Owner Decision):**
 
-- Keep editable source masters in a sibling directory alongside the repository
-  (e.g., `garden-art-sources/`) that is **not** inside the Godot project root.
-- Only the runtime export PNG is committed to the game repository.
-- If source masters must be version-controlled in the same repository, place
-  them in a dedicated top-level directory (e.g., `art_sources/`) and add their
-  extensions to `.gitignore` or use a Git-tracked location that is explicitly
-  excluded from the Godot export filter.
+Editable source masters (`.kra`, `.psd`, `.ase`, `.xcf`) should normally live
+**outside** the Godot project root.
+
+Examples:
+- External art repository
+- External cloud storage or NAS
+- Sibling non-Godot art workspace (e.g., `garden-art-sources/` adjacent to the project directory)
+
+The game repository contains runtime exports (clean PNGs), not large working masters.
+This keeps clone sizes small and prevents authoring clutter from entering the
+project resource tree.
+
+**Alternative: Same-Repository Tracked Source Masters (Owner Option):**
+
+If the project owner later intentionally chooses to keep editable source masters
+inside the **same** Git repository and within the Godot project tree:
+
+```
+art_sources/
+    .gdignore
+    ...
+```
+
+To make this technically coherent:
+- An empty `.gdignore` file placed inside `art_sources/` tells Godot to completely
+  ignore that directory and its contents during project resource scanning,
+  import flows, and FileSystem dock indexing (per official Godot 4.7 documentation).
+- **Distinguish `.gitignore` vs `.gdignore`:**
+  - `.gitignore` controls **Git tracking** only. It does not affect Godot's
+    internal import or resource scanning behavior. If source masters are intended
+    to be tracked in Git, adding them to `.gitignore` would contradict that goal.
+    `.gitignore` is only appropriate if source masters should NOT be tracked in Git.
+  - `.gdignore` controls **Godot scanning and import visibility** for a directory.
+    It has no effect on Git version control.
 
 > **OWNER DECISION REQUIRED:** The final source-master storage and backup
 > strategy requires explicit owner decision before production begins.
-> Options: (A) entirely separate repository/cloud storage for source masters;
-> (B) `art_sources/` directory in this repository excluded from export;
-> (C) external NAS/cloud with export-only files in this repository.
+> Options: (A) entirely separate repository/cloud storage for source masters (preferred);
+> (B) tracked `art_sources/` directory in this repository with `.gdignore` to prevent Godot scanning;
+> (C) external NAS/cloud with runtime exports only in this repository.
+> Git LFS is not introduced in Task 4.3.
 
 ### 3.3 Git LFS Policy
 
@@ -152,7 +181,7 @@ Recommended approach (subject to owner decision):
 Git LFS is **not** part of the repository baseline for Task 4.3. Do not
 introduce it in this task. Large binary source masters must not be casually
 committed to the repository in their current form until a storage strategy is
-approved. See Section 29 (Version-Control Policy) for commit rules.
+approved. See Section 28 (Version-Control Policy) for commit rules.
 
 ---
 
@@ -600,14 +629,19 @@ mobile. See Section 17 (Compression Policy).
 
 A total scene GPU texture memory budget cannot be responsibly invented without:
 
-- Final production sprite dimensions
+- Real production sprite dimensions
 - Confirmed compression settings
-- Profiling on representative target Android hardware
+- Representative target Android hardware
+- Profiling evidence
 
-Define the budget during the technical spike (Section 35). Targeting total
-scene residency under 64–128 MB of GPU memory is a reasonable provisional
-goal for a small cozy 2D game on mid-range Android, but this must be confirmed
-empirically.
+Task 4.3 does NOT define a 64 MB, 128 MB, or any other hard or provisional
+budget target. The total scene texture-memory budget remains TBD.
+
+During the future technical spike (§34), actual and estimated residency for
+the representative scene will be recorded and compared across import choices.
+A future scene memory budget may be established only after representative
+Android device profiling evidence exists. Until then, memory measurements
+serve as descriptive evidence, not pass/fail thresholds.
 
 ### 10.5 Distinctions
 
@@ -619,7 +653,11 @@ empirically.
 | **Runtime residency** | Total GPU memory of all currently loaded textures |
 
 These are four different numbers. Asset decisions must be based on GPU memory
-and runtime residency, not disk size.
+and runtime residency, not disk size. Furthermore, disk compression ratios
+(e.g., PNG, WebP) vary based on visual complexity and entropy of the image,
+whereas ETC2 GPU texture compression is a fixed-rate block format (8 bits/pixel
+for ETC2 RGBA, ~25% of RGBA8) whose GPU residency depends on format and
+dimensions rather than visual content.
 
 ---
 
@@ -1647,7 +1685,7 @@ the game repository.
 |---|---|---|
 | `.godot/` directory (all contents) | **NO** | Already in `.gitignore`; import cache, generated files |
 | `.godot/imported/` (import cache) | **NO** | Auto-generated; regenerated on next editor launch |
-| Source masters (`.kra`, `.psd`, `.ase`, `.xcf`) | **NO** | Too large; editable source masters belong outside repo |
+| Source masters (`.kra`, `.psd`, `.ase`, `.xcf`) | **NO** | Too large; editable source masters normally belong outside repo (see §3.2 and §28.3) |
 | Failed concept iteration exports | **NO** | Stochastic output; do not accumulate |
 | Temporary test exports | **NO** | Delete after validation |
 | `.DS_Store`, `Thumbs.db`, editor state | **NO** | Already in `.gitignore` |
@@ -1666,6 +1704,11 @@ Without Git LFS (not introduced in Task 4.3):
 - If source masters must be tracked, use a separate storage mechanism
   (cloud drive, separate repository, or future Git LFS adoption with owner
   approval).
+- If the owner later intentionally approves tracking source masters inside the same
+  repository under the project root (e.g., `art_sources/`), an empty `.gdignore` file
+  must be placed in that folder so Godot ignores it from project scanning and import
+  (see §3.2). Do not confuse `.gitignore` (which stops Git tracking) with
+  `.gdignore` (which stops Godot scanning/importing).
 - Only the runtime export PNG is what the game needs; only that is committed.
 
 ### 28.4 Godot Import Sidecar Files
@@ -1773,6 +1816,11 @@ When an image file is placed in the Godot project tree and the editor is open:
 sidecar files encode the import settings. Unlike Godot 3 where import files
 were sometimes also cached data, in Godot 4 these sidecar files are the
 authoritative record of the import configuration. Commit them.
+
+**Note on `.gdignore`:** If non-game files or source masters are intentionally placed
+within the project tree and tracked in Git under an approved policy (e.g., `art_sources/`),
+an empty `.gdignore` file prevents Godot from scanning and importing them. `.gdignore`
+affects Godot resource indexing, while `.gitignore` affects Git tracking.
 
 ### 30.3 Regenerating the Import Cache
 
@@ -1983,9 +2031,14 @@ Key metrics to record:
 - **Visual artifacts:** Document any visible artifacting under 1:1 reference canvas
   and real screen DPI.
 - **Imported GPU memory estimate:** Calculate uncompressed RGBA8 vs ETC2 (~25% / 4:1)
-  residency for the spike asset set.
+  residency for the spike asset set across import choices.
 - **Device performance & runtime results:** Profile actual frame rate, launch time,
   and VRAM residency on target Android hardware when available.
+
+Memory measurements during the spike serve as descriptive evidence, not a
+pass/fail threshold against a predeclared scene budget. Task 4.3 does not define
+a total scene VRAM budget; any future budget decision occurs only after
+representative hardware profiling evidence exists.
 
 The spike outcome **decides whether any asset category should change from the
 Lossless baseline to VRAM Compressed**.
@@ -2004,7 +2057,7 @@ The spike produces:
 - Confirmed compression settings per category (Lossless confirmed or VRAM Compressed justified with visual/device evidence)
 - Confirmed mipmap policy
 - Confirmed padding and pivot correctness
-- A preliminary VRAM estimate for the vertical-slice scene
+- Recorded actual measured/estimated VRAM residency across import options for the vertical-slice scene (without a predeclared pass/fail budget)
 - Updated PROVISIONAL → LOCKED decisions where evidence is sufficient
 
 ---
@@ -2051,8 +2104,13 @@ APPROXIMATE TOTAL (Lossless sprites + ETC2 background)            ~6.4 MB
   in uncompressed RGBA8 in GPU memory, ~4.3 MB total), while large background
   panels are candidates for ETC2 (~2.07 MB). Total scene residency is approximately
   ~6.4 MB, well within modern mobile headroom.
-- Actual compression ratios depend on image content. Measure actual residency
-  during the technical spike.
+- **Fixed-rate GPU residency vs. variable disk size:** Disk compression ratios
+  (PNG, WebP, Lossy) may vary with image content and encoder settings. ETC2
+  GPU-memory residency is fixed-rate for a given format and dimension (8 bits/pixel
+  for ETC2 RGBA, ~25% of RGBA8 / ~4:1 ratio), aside from block alignment (padding
+  to 4×4 block multiples), mipmaps, format/channel selection, and resource overhead;
+  it does not vary based on whether visual content is simple or complex. Measure
+  actual residency and disk footprints during the technical spike.
 
 ### 35.3 Sprite Sheet Growth
 
@@ -2110,9 +2168,9 @@ empirical comparison of Lossless vs Lossy vs ETC2 during the technical spike.
 | **Git: .import files committed** | LOCKED TECHNICAL PIPELINE | Import settings are intentional configuration |
 | **Git: .godot/ not committed** | LOCKED TECHNICAL PIPELINE | Already in .gitignore |
 | **Git LFS not introduced** | LOCKED TECHNICAL PIPELINE (Task 4.3 scope) | Future decision required |
-| **Source master storage location** | TBD / OWNER DECISION REQUIRED | See Section 3.2 |
+| **Source master storage location** | TBD / OWNER DECISION REQUIRED | Preferred outside project root; .gdignore alternative if same-repo tracked masters chosen (see §3.2) |
 | **Exact per-asset pixel dimensions** | TBD / REQUIRES EMPIRICAL VALIDATION | Calibration during technical spike |
-| **Total scene texture memory budget** | TBD / REQUIRES EMPIRICAL VALIDATION | Measure during spike on target hardware |
+| **Total scene texture memory budget** | TBD / REQUIRES EMPIRICAL VALIDATION | Measure actual residency during spike; no predeclared pass/fail target; future budget requires device evidence (see §10.4) |
 | **Final font family** | TBD | Future UI asset task |
 | **Final shader architecture** | TBD | Future implementation milestone |
 | **Wet surface overlay approach** | TBD / PROVISIONAL | Shader vs sprite; validate in spike |
@@ -2158,6 +2216,7 @@ The following Godot 4.7.2 technical claims were verified:
 | **I.** `<asset>.import` sidecar files should be committed to VCS | Official Godot 4.7 documentation (*Import process*): "Make sure to commit these files to your version control system, as these files contain important metadata." |
 | **J.** `.godot/` directory should NOT be committed to VCS | Official Godot 4.7 documentation (*Import process*); confirmed in project `.gitignore` (`.godot/`). |
 | **K.** `Sprite2D.centered = false` only shifts texture from center to top-left; not a bottom-center anchor | Official Godot 4.7 `Sprite2D` class reference: `centered` determines whether texture is centered around origin; an additional drawing offset is required to achieve a bottom-center anchor. |
+| **L.** `.gdignore` ignores a directory from Godot project scanning and import | Official Godot 4.7 documentation (*Project organization*): An empty `.gdignore` file completely excludes a folder and its contents from Godot resource scanning and import. Does not affect Git tracking (which is managed by `.gitignore`). |
 | Engine version `4.7.2.stable.official.ed1daf0bf` | `godot --version` command run in project directory |
 | Viewport 1080×1920 portrait, Compatibility renderer | Direct inspection of `project.godot` |
 | NPOT textures supported natively | Official Godot 4 documentation; GL Compatibility 2D renderer handles NPOT |
