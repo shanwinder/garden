@@ -1,6 +1,6 @@
 # Garden Asset Technical Pipeline
 
-> Status: **Authoritative Asset Technical Pipeline — Milestone 4 (Task 4.3)**
+> Status: **Authoritative Asset Technical Pipeline — Milestone 4 (Task 4.4B Spike Decisions Recorded)**
 >
 > Engine: Godot 4.7.2.stable.official.ed1daf0bf
 >
@@ -38,6 +38,8 @@ document prevails and this document must be updated.
 
 ## 1. Decision Status Legend
 
+The baseline pipeline status model distinguishes three core categories:
+
 **LOCKED TECHNICAL PIPELINE** — technically mandated by architecture,
 approved visual direction, or strong project-specific reasoning. May only be
 changed with explicit owner review and update to this document.
@@ -49,6 +51,40 @@ with real asset and device evidence.
 **TBD / REQUIRES EMPIRICAL VALIDATION** — intentionally undecided; requires
 real production assets, profiling, or device testing before a responsible
 decision can be made. Do not invent a permanent answer.
+
+### 1.1 Evidence Qualification Suffixes
+
+Where empirical evidence from technical spikes has been gathered, the status is
+qualified by one of the following evidence qualifiers:
+
+- **MECHANICALLY VALIDATED — Task 4.4A**: Verified through configuration,
+  resource structure, scene serialization, geometry, or build execution in the
+  local Godot engine environment.
+- **DEVICE VALIDATION REQUIRED**: Requires observation, profiling, or visual
+  inspection on authorized representative physical Android hardware.
+- **UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED**: Direct rendered visual
+  comparison was not captured in the headless terminal environment (due to the
+  Dummy Rendering Server); requires rendered visual capture or on-device review.
+
+### 1.2 Empirical Validation Record (Task 4.4A Spike)
+
+- **Authoritative Evidence Document:** `ASSET_PIPELINE_SPIKE_REPORT.md`
+- **Overall Spike Result:**
+  `PARTIAL — local/import/build validation completed; device-dependent evidence remains unavailable`
+- **Validated Environment:**
+  - Godot Engine: `4.7.2.stable.official.ed1daf0bf`
+  - Renderer: GL Compatibility 2D
+  - Reference Canvas: 1080 × 1920 Portrait
+  - Export Target: Android Debug APK (apksigner verified v2/v3)
+- **Scope Distinction:**
+  - *Mechanically Validated:* Import mode mapping, Lossless and VRAM import
+    configuration, mipmap math and cache growth, bottom-center pivot Option A,
+    animation frame bounds and anchor registration, CanvasItem filter
+    configuration locus, and Android debug export/signing.
+  - *Visually / Device Unverified:* Rendered visual quality comparison of
+    Linear vs Nearest, on-device ETC2 visual artifact acceptability, actual
+    Android GPU residency, real frame timing, animation pacing/feel, battery
+    behavior, and total scene texture-memory budget.
 
 ---
 
@@ -367,7 +403,7 @@ Examples:
 
 ## 6. Reference-Canvas Scale Contract
 
-**Status: LOCKED TECHNICAL PIPELINE**
+**Status: LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A)**
 
 ### 6.1 Architecture Constraints (Already Locked)
 
@@ -396,6 +432,15 @@ The canonical scale approach for this project:
 
 A sprite that should appear 200 × 400 px on the 1080 × 1920 reference canvas
 is exported at 200 × 400 px. Its `Sprite2D` node uses `scale = Vector2(1, 1)`.
+
+**Task 4.4A Empirical Validation:**
+The 1:1 authored/export/display principle was mechanically validated on
+representative reference-size subjects:
+- 1080 × 1920 background (`full_canvas_background.png`) placed at `(540, 960)`
+  displayed at `scale = Vector2(1, 1)`, covering the canvas exactly.
+- Grounded pivot diagnostic sprites (512 × 512) displayed at `scale = Vector2(1, 1)`.
+- Fine foliage diagnostic sprites (512 × 512) displayed at `scale = Vector2(1, 1)`.
+- Animation diagnostic sequence (256 × 256) displayed at `scale = Vector2(1, 1)`.
 
 ### 6.3 Why No Separate PPU Concept Is Needed
 
@@ -434,6 +479,15 @@ The pipeline must not allow:
 
 The canonical on-canvas pixel size must be expressed at the export step,
 not by per-node scale corrections.
+
+**Diagnostic Fixture Layout Exception (Task 4.4A):**
+In the Task 4.4A technical spike scene, two 1024 × 1024 gradient comparison
+sprites (`GradientLossless` and `GradientVRAM`) intentionally used
+`scale = Vector2(0.45, 0.45)` solely to fit side-by-side within the 1080 px
+diagnostic comparison fixture. This layout scaling was specific to the technical
+test fixture; it does NOT constitute an asset-corrective production scale and
+does not invalidate the 1:1 production principle. Arbitrary corrective scale
+for production game assets remains strictly forbidden.
 
 ---
 
@@ -568,7 +622,7 @@ exception process in Section 33 before production.
 
 ## 10. Texture Memory Model
 
-**Status: LOCKED TECHNICAL PIPELINE (formula and awareness requirement)**
+**Status: LOCKED TECHNICAL PIPELINE — MATHEMATICALLY & MECHANICALLY VALIDATED (Task 4.4A)**
 
 Understanding GPU memory is essential for Android decision-making.
 A PNG file size on disk is irrelevant to runtime GPU memory cost.
@@ -591,23 +645,50 @@ GPU memory (bytes) = width × height × 4
 ### 10.2 Mipmap Overhead
 
 When mipmaps are enabled, memory cost increases by approximately 1/3
-(geometric series: 1 + 1/4 + 1/16 + ... ≈ 1.33×):
+(geometric series: 1 + 1/4 + 1/16 + ... ≈ 1.333×):
 
 ```
-RGBA8 with mipmaps ≈ width × height × 4 × 1.33
+RGBA8 with mipmaps ≈ width × height × 4 × 1.333
 ```
 
 A 512 × 512 RGBA8 texture with mipmaps: ~1.33 MB.
+
+**Task 4.4A Empirical Mipmap Observation:**
+Task 4.4A mathematically validated the ~33.3% GPU VRAM overhead.
+Empirically, the spike also observed that the import cache file on disk
+(`painted_gradient_mipmap_on.png`) grew from 172,218 bytes to 281,980 bytes
+(+63.7% on disk) because Godot stores all mip levels inside the `.ctex` container.
+This confirmed the critical distinction: **disk cache growth != GPU mipmap overhead**.
+The observed disk cache percentage is an artifact of file packaging and must
+NOT be generalized as a GPU residency figure.
 
 ### 10.3 VRAM Compression Factor
 
 ETC2 reduces GPU memory substantially compared to RGBA8:
 
-- **RGBA8:** 32 bits/pixel (baseline)
+- **RGBA8:** 32 bits/pixel (baseline: `width × height × 4 bytes`)
 - **ETC2 RGBA (8 bits/pixel):** 8 ÷ 32 = **~25% of RGBA8** (≈ 4:1 compression ratio)
-  - 512 × 512 RGBA8 without mipmaps: 1,048,576 bytes ≈ 1 MiB
-  - 512 × 512 ETC2 RGBA without mipmaps: 262,144 bytes ≈ 256 KiB
-  - With full mipmaps: multiply both by approximately 1.33
+
+**Exact Block Formula:**
+Because ETC2 operates on 4×4 pixel blocks, the exact memory formula is:
+```
+ETC2 bytes = ceil(width / 4) × ceil(height / 4) × 16
+```
+For dimensions divisible by 4, this equals exactly 25% of RGBA8.
+
+**Representative Values Validated in Task 4.4A:**
+- 512 × 512:
+  - RGBA8: 1,048,576 bytes (1.00 MiB)
+  - ETC2 RGBA: 262,144 bytes (0.25 MiB / 256 KiB)
+- 1024 × 1024:
+  - RGBA8: 4,194,304 bytes (4.00 MiB)
+  - ETC2 RGBA: 1,048,576 bytes (1.00 MiB)
+- 1080 × 1920:
+  - RGBA8: 8,294,400 bytes ≈ 7.91 MiB
+  - ETC2 RGBA: `(1080 / 4) × (1920 / 4) × 16 = 270 × 480 × 16 = 2,073,600 bytes` ≈ 1.98 MiB
+
+*Note:* Do not infer production acceptability from these mathematical numbers alone.
+Visual acceptability on mobile requires on-device evidence.
 
 **ASTC 6×6 (mathematical context only — see §10.4 and §17.1 for renderer path):**
 - 128 bits per 6×6 block = 128 ÷ 36 ≈ 3.56 bits/pixel
@@ -625,7 +706,7 @@ mobile. See Section 17 (Compression Policy).
 
 ### 10.4 Scene Texture Memory Budget
 
-**TBD / REQUIRES EMPIRICAL VALIDATION**
+**TBD / REQUIRES EMPIRICAL VALIDATION (DEVICE VALIDATION REQUIRED)**
 
 A total scene GPU texture memory budget cannot be responsibly invented without:
 
@@ -634,30 +715,33 @@ A total scene GPU texture memory budget cannot be responsibly invented without:
 - Representative target Android hardware
 - Profiling evidence
 
-Task 4.3 does NOT define a 64 MB, 128 MB, or any other hard or provisional
-budget target. The total scene texture-memory budget remains TBD.
+Task 4.4A did NOT define or accept any total scene-memory budget threshold.
+The total scene texture-memory budget remains **TBD / DEVICE VALIDATION REQUIRED**.
 
-During the future technical spike (§34), actual and estimated residency for
-the representative scene will be recorded and compared across import choices.
-A future scene memory budget may be established only after representative
-Android device profiling evidence exists. Until then, memory measurements
-serve as descriptive evidence, not pass/fail thresholds.
+Memory measurements in Task 4.4A serve as descriptive technical evidence,
+not a pass/fail threshold. A future scene memory budget may be established only
+after representative Android device profiling evidence exists.
 
 ### 10.5 Distinctions
 
-| Term | Meaning |
-|---|---|
-| **Disk size** | Compressed PNG bytes on storage |
-| **APK size** | Packaged distribution size (affected by compression level) |
-| **GPU memory** | VRAM residency when texture is loaded on GPU |
-| **Runtime residency** | Total GPU memory of all currently loaded textures |
+**Core Distinction Confirmed by Task 4.4A:**
+```
+Source PNG disk bytes != Godot imported .ctex cache bytes != GPU residency != APK size
+```
 
-These are four different numbers. Asset decisions must be based on GPU memory
-and runtime residency, not disk size. Furthermore, disk compression ratios
-(e.g., PNG, WebP) vary based on visual complexity and entropy of the image,
-whereas ETC2 GPU texture compression is a fixed-rate block format (8 bits/pixel
-for ETC2 RGBA, ~25% of RGBA8) whose GPU residency depends on format and
-dimensions rather than visual content.
+| Metric | Meaning | Task 4.4A Empirical Behavior |
+|---|---|---|
+| **Source PNG disk size** | Deflate-compressed PNG on filesystem | Reflects image entropy; 25.8 KB for 512×512 soft alpha |
+| **Imported cache (.ctex) size** | Intermediate cache in `.godot/imported/` packaged into APK | Lossless `.ctex` uses Lossless WebP (17.5 KB for 512×512); ETC2 `.ctex` contains raw ETC2 block payload + 52-byte header (262,196 bytes) |
+| **GPU VRAM residency** | Memory consumed when texture is uploaded to GPU VRAM | Lossless expands to full uncompressed RGBA8 (1,048,576 bytes / 1.00 MiB); ETC2 occupies block-compressed footprint (262,144 bytes / 256 KiB) |
+| **Packaged APK size** | Final Android application package distribution | 30,681,193 bytes (~29.26 MiB) in Task 4.4A debug export |
+
+These are four distinct numbers. Asset decisions must be evaluated on GPU memory
+and runtime residency, not disk size or cache file size. Lossless `.ctex` files
+are small on disk while expanding to full uncompressed RGBA8 on the GPU.
+Conversely, ETC2 `.ctex` files are larger on disk than lossless WebP cache files,
+yet result in 4× smaller VRAM residency on mobile GPUs.
+Do NOT use `.ctex` file size as a universal GPU measurement.
 
 ---
 
@@ -690,15 +774,35 @@ filtered edges on device.
 
 ### 11.3 Animation Frame Consistency
 
-For animation sequences (e.g., `cat_idle_00.png` through `cat_idle_04.png`):
+**Status: LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A)**
 
-- **All frames MUST share identical pixel dimensions.**
-- The bounding box is determined by the LARGEST frame in the sequence.
-- Individual frames that are smaller pad to that shared size with transparency.
-- This prevents the animated sprite from visually jumping when frames cause
-  the pivot/origin to shift.
+For frame-based grounded animations (e.g., `cat_idle_00.png` through `cat_idle_04.png`):
 
-**Failure to maintain consistent animation bounds is a production defect.**
+- **Consistent Runtime Canvas Dimensions:** All frames in one animation sequence
+  MUST share identical pixel dimensions. The bounding box is determined by the
+  envelope required for the full motion cycle.
+- **Stable Anchor / Contact Preservation:** The intended contact/pivot point
+  (e.g., base of paws or ground contact) must remain at the exact same coordinate
+  relative to the frame canvas across all frames.
+- **No Independent Auto-Trimming:** Do not auto-trim or crop individual frames
+  independently in a way that alters the anchor coordinate or canvas footprint.
+- **Transparent Padding for Registration:** Individual frames where the painted
+  silhouette is smaller must include transparent padding as necessary to maintain
+  spatial registration and keep the anchor fixed.
+- **Failure to maintain consistent animation bounds is a production defect.**
+
+**Task 4.4A Empirical Validation:**
+Task 4.4A mechanically validated this contract using an `AnimatedSprite2D` node
+with `SpriteFrames` containing 4 diagnostic frames (`anim_frame_00.png` to `03.png`).
+All frames were authored at 256 × 256 with the ground-contact anchor pinned to
+`(128, 248)`. By construction, common canvas dimensions and common anchor
+configuration remove frame-bound-induced positional displacement.
+
+**Visual Qualification:**
+Rendered smoothness, absence of GPU jitter, and frame pacing were NOT visually
+confirmed in Task 4.4A because the headless terminal environment prevented direct
+frame capture (see §15.4 and §34). Mechanical stability is locked; rendered
+animation feel remains subject to device verification.
 
 ### 11.4 Pivot Stability
 
@@ -760,33 +864,42 @@ garden coordinate places the sprite's base at that point.
 An additional drawing offset is still required to place the texture's bottom-center
 at the node origin.
 
-**Implementation approaches (PROVISIONAL — confirm in technical spike):**
+**Default Grounded-Sprite Mechanism (Option A):**
 
-Option A (with `centered = true`, recommended for clarity):
-```
+**Status: LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A)**
+
+```gdscript
+Sprite2D.centered = true
 offset.x = 0
 offset.y = -(texture_height / 2)
 ```
-This shifts the texture upward so its bottom edge aligns with the node origin,
-which then becomes the effective ground-contact point.
 
-Option B (with `centered = false`):
-```
-centered = false
-offset.x = -(texture_width / 2)
-offset.y = -texture_height
-```
-This also places the texture's bottom-center at the node origin, but requires
-both x and y offsets to be maintained correctly.
+Task 4.4A mechanically compared Option A (`centered = true, offset.y = -h/2`)
+against Option B (`centered = false, offset = (-w/2, -h)`) using 512 × 512
+sprites anchored to `y = 1000`. Both produce mathematically identical bottom-center
+geometry. Task 4.4A confirmed Option A is simpler and significantly less
+error-prone in production because `offset.x = 0` remains constant by virtue of
+centering, requiring only `offset.y = -(texture_height / 2)`.
 
-**The canonical anchor PRINCIPLE is LOCKED:** the sprite's bottom-center must
-coincide with the node's `position` (the ground-contact point). The specific
-implementation mechanism (Option A or B) is **PROVISIONAL** and must be
-confirmed during the technical spike when the first production sprites are
-placed in Godot scenes.
+Option A is therefore locked as the **project-wide default mechanism for all
+grounded gameplay sprites**.
 
-Establish one consistent approach for all gameplay sprites before production
-begins.
+**Important Qualification:**
+If transparent bounds or the intended contact point do not coincide with the
+bottom edge of the runtime export canvas, asset authoring/padding must be
+corrected or an explicitly documented asset-specific anchor exception used.
+Do NOT blindly assume every future sprite's visible foot or ground contact
+coincides with the bottommost pixel row of its canvas.
+*(Scene files are not modified in Task 4.4B).*
+
+**Category-Specific Non-Grounded Anchors Preserved:**
+This bottom-center Option A promotion applies specifically to **grounded gameplay
+sprites** (plants, ground visitors, standing decorations). Other categories retain
+their category-specific anchors as defined in §12.1:
+- **Flying visitors (butterfly, bird):** Center of body mass
+- **Floating effects (firefly):** Center
+- **UI icons:** Center
+- **Background / environment panels:** Top-left or explicit scene-layout anchor
 
 ### 12.3 What Is Forbidden
 
@@ -900,7 +1013,7 @@ To prevent colored fringe at transparent edges when using linear filtering:
 
 ## 15. Texture Filtering Policy
 
-**Status: LOCKED TECHNICAL PIPELINE**
+**Status: LOCKED TECHNICAL PIPELINE (policy & configuration mechanics) / UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED (empirical render comparison)**
 
 ### 15.1 Default Filter: Linear
 
@@ -921,6 +1034,23 @@ approved Balanced Storybook Hybrid visual direction.
 `Nearest`, `Linear Mipmap`, `Nearest Mipmap`, `Linear Mipmap Anisotropic`,
 and `Inherit` modes. Default project canvas texture filter is controllable
 via Project Settings > Rendering > Textures > Canvas Textures.)
+
+**Task 4.4A Empirical Verification & Visual Qualification:**
+- **Mechanically Validated (Task 4.4A):** `CanvasItem.texture_filter` can be
+  explicitly configured per node; baseline subjects were assigned
+  `TEXTURE_FILTER_LINEAR` (Enum 2) and the comparison subject was assigned
+  `TEXTURE_FILTER_NEAREST` (Enum 1); scene serialization and resource loading
+  are mechanically valid.
+- **Visual Evidence Limitation:** Task 4.4A did NOT visually validate Linear
+  vs Nearest in rendered output because:
+  `LOCAL RENDER SCREENSHOT BLOCKED BY ENVIRONMENT`
+  (The macOS headless terminal environment invoked Godot's Dummy Rendering
+  Server `PN13RendererDummy`, returning null viewport textures and rendering no
+  genuine hardware frames; see §15.4 and §34).
+- **Pipeline Baseline Status:** Linear remains the approved pipeline default
+  based on visual direction and engine policy. However, direct rendered visual
+  comparison remains **UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED**.
+  Task 4.4A does NOT claim empirical visual proof of Linear superiority.
 
 ### 15.2 Allowed Exceptions
 
@@ -960,6 +1090,10 @@ Texture filtering is configured through:
 
 They do NOT encode the runtime CanvasItem `texture_filter` choice.
 
+Task 4.4A mechanically verified this distinction: the `.import` files generated
+for the spike contained purely import parameters, confirming that filtering
+configuration resides exclusively in scene node definitions or project settings.
+
 Therefore, **committing `.import` files does NOT reproduce the Linear filtering
 policy** for individual nodes. Linear filtering reproducibility requires:
 
@@ -968,8 +1102,7 @@ policy** for individual nodes. Linear filtering reproducibility requires:
 - Setting `texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR` on individual
   nodes in scene files.
 
-**Task 4.3C corrects this documentation only; no modification is made to
-`project.godot` or scene files in this task.**
+*(No modification is made to `project.godot` or scene files in Task 4.4B).*
 
 ### 15.5 Project Default Versus Per-Node
 
@@ -1078,19 +1211,40 @@ runtime path on Android remains ETC2, not ASTC.
 
 Do not infer active ASTC runtime use merely from this project setting name.
 
+**Task 4.4A Import Path Validation:**
+Task 4.4A mechanically verified this dual-target behavior. Under `compress/mode=2`
+with `import_etc2_astc=true`, Godot generated two distinct cache files in
+`.godot/imported/`:
+- `.s3tc.ctex`: Desktop S3TC/BC format for desktop preview/testing
+- `.etc2.ctex`: Android ETC2 RGBA format for Android export
+
+This mechanically validates the **IMPORT AND BUILD PATH**. It does NOT validate
+the visual acceptability of ETC2 compression on Android hardware.
+
 ### 17.2 Available Import Modes in Godot 4
 
-(Verified against Godot 4.7 importing images documentation.)
+(Verified against Godot 4.7 importing images documentation and binary property hints in Task 4.4A.)
 
-| Godot Import Compress Mode | GPU Memory Behavior | Disk Behavior |
-|---|---|---|
-| **Lossless** | Full GPU memory (RGBA8 at runtime); NO VRAM compression | Stored as lossless WebP/PNG; no quality loss |
-| **Lossy** | Full GPU memory — same as Lossless/Uncompressed; NOT reduced | Smaller disk size (WebP lossy); some quality loss |
-| **VRAM Compressed** | GPU-native compression; reduced VRAM (~4:1 for ETC2 RGBA on Android/Compatibility) | GPU-native format in cache |
-| **VRAM Uncompressed** | Full RGBA8 GPU memory | Uncompressed; useful for formats that can't be compressed |
-| **Basis Universal** | Transcodes to VRAM-compressed format; similar VRAM to VRAM Compressed | Very small files; slower compression; some quality loss |
+The underlying integer enum mapping for `compress/mode` verified in Godot 4.7.2:
+- `0`: **Lossless** (default 2D mode)
+- `1`: **Lossy** (disk-only WebP compression; no VRAM reduction)
+- `2`: **VRAM Compressed** (block compression: S3TC desktop / ETC2 Android Compatibility)
+- `3`: **VRAM Uncompressed** (raw uncompressed RGBA8)
+- `4`: **Basis Universal** (transcoded VRAM container)
 
-**Important clarifications verified against Godot 4.7 docs:**
+*(Note: This integer mapping is documented as empirical evidence. Production
+tooling and editor workflows must use named configuration properties rather
+than magic numbers).*
+
+| Godot Import Compress Mode | Mode Enum | GPU Memory Behavior | Disk Behavior |
+|---|---|---|---|
+| **Lossless** | `0` | Full GPU memory (RGBA8 at runtime); NO VRAM compression | Stored as lossless WebP container (.ctex); no quality loss |
+| **Lossy** | `1` | Full GPU memory — same as Lossless/Uncompressed; NOT reduced | Smaller disk size (WebP lossy); some quality loss |
+| **VRAM Compressed** | `2` | GPU-native compression; reduced VRAM (~4:1 for ETC2 RGBA on Android/Compatibility) | GPU-native format in cache (.etc2.ctex / .s3tc.ctex) |
+| **VRAM Uncompressed** | `3` | Full RGBA8 GPU memory | Uncompressed; useful for formats that can't be compressed |
+| **Basis Universal** | `4` | Transcodes to VRAM-compressed format; similar VRAM to VRAM Compressed | Very small files; slower compression; some quality loss |
+
+**Important clarifications verified against Godot 4.7 docs and Task 4.4A spike:**
 
 - **Lossless** does NOT silently become VRAM Compressed when ETC2/ASTC import
   support is enabled. The `textures/vram_compression/import_etc2_astc=true`
@@ -1102,7 +1256,7 @@ Do not infer active ASTC runtime use merely from this project setting name.
 
 ### 17.3 Decision Matrix
 
-**Status: PROVISIONAL TECHNICAL PIPELINE — pending visual quality comparison**
+**Status: PROVISIONAL TECHNICAL PIPELINE — pending on-device visual quality comparison**
 
 Per Godot 4.7 official documentation:
 
@@ -1120,15 +1274,23 @@ gouache texture):
 
 | Asset Category | Baseline Import Mode | Notes |
 |---|---|---|
-| **Plants (all stages)** | **Lossless** | Painterly with soft alpha; quality baseline |
-| **Visitors (cat, butterfly, etc.)** | **Lossless** | Soft painted edges; quality baseline |
-| **Decorations** | **Lossless** | Quality baseline |
-| **Animated sprite frames** | **Lossless** | Quality baseline; do not assume VRAM Compressed is essential |
-| **UI icons/panels** | **Lossless** | Small; quality critical; minimal VRAM impact |
-| **Small effect sprites** | **Lossless** | Default quality baseline |
+| **Plants (all stages)** | **Lossless** | Painterly with soft alpha; quality baseline (PROVISIONAL) |
+| **Visitors (cat, butterfly, etc.)** | **Lossless** | Soft painted edges; quality baseline (PROVISIONAL) |
+| **Decorations** | **Lossless** | Quality baseline (PROVISIONAL) |
+| **Animated sprite frames** | **Lossless** | Quality baseline; do not assume VRAM Compressed is essential (PROVISIONAL) |
+| **UI icons/panels** | **Lossless** | Small; quality critical; minimal VRAM impact (PROVISIONAL) |
+| **Small effect sprites** | **Lossless** | Default quality baseline (PROVISIONAL) |
 | **Large environment/background** | **PROVISIONAL / EMPIRICAL COMPARISON REQUIRED** | See below |
 
-**Large environment/background textures — comparison required in spike:**
+**Status of Lossless Baseline Remains PROVISIONAL:**
+Task 4.4A mechanically confirmed the import configuration and cache generation
+for both Lossless (`compress/mode=0`) and VRAM Compressed (`compress/mode=2`).
+However, because direct on-device visual comparison and profiling remain deferred,
+**no production asset category is promoted permanently to Lossless or to ETC2 by Task 4.4B**.
+Lossless remains the provisional baseline; VRAM Compressed remains an optimization
+candidate.
+
+**Large environment/background textures — comparison required on device:**
 
 Compare Lossless vs Lossy vs VRAM Compressed (ETC2) for:
 - bg_house_wall.png, ground layers, sky panel, fence
@@ -1136,15 +1298,11 @@ Compare Lossless vs Lossy vs VRAM Compressed (ETC2) for:
 - ETC2 may be approved for background layers if artifacts are acceptable and
   memory savings are material
 
-**VRAM Compressed is NOT permanently forbidden for 2D.** It is an
-optimization candidate that requires visual and device evidence before
-adoption. The technical spike makes that determination per asset category.
-
-**When VRAM Compressed may be approved (per-asset basis after spike):**
+**When VRAM Compressed may be approved (per-asset basis after device gate):**
 - Visual artifacts are acceptable on target devices
 - Memory savings are material (large textures benefit most)
 - Soft alpha edges, dark semi-transparent shadows, fine gradients have been
-  visually reviewed under ETC2 on Android
+  visually reviewed under ETC2 on Android hardware
 
 **Do NOT claim VRAM compression is "essential" for animated sprite frames**
 prior to empirical comparison showing unacceptable memory usage under Lossless.
@@ -1152,7 +1310,7 @@ prior to empirical comparison showing unacceptable memory usage under Lossless.
 **PROVISIONAL NOTE:** ETC2 compression of sprites with fine painted texture and
 soft gradient alpha edges may introduce visible block artifacts, particularly
 on dark semi-transparent shadows and soft watercolor edges. Visual quality
-comparison must be performed during the technical spike before any category
+comparison must be performed on physical Android hardware before any category
 is changed from Lossless baseline to VRAM Compressed.
 
 ### 17.4 Source PNG Encoding
@@ -1530,7 +1688,7 @@ memory cost.
 
 ## 25. Animation Budget Ranges
 
-**Status: PROVISIONAL TECHNICAL PIPELINE (ranges); TBD (final values — vertical-slice validation required)**
+**Status: PROVISIONAL TECHNICAL TARGET (ranges); TBD / DEVICE VALIDATION REQUIRED (final calibration)**
 
 ### 25.1 Default Budget Ranges
 
@@ -1540,26 +1698,33 @@ gameplay timing requirements.
 | Animation | FPS Range | Estimated Frame Count | Notes |
 |---|---|---|---|
 | Plant ambient sway | N/A (transform) | 0 new frames | AnimationPlayer oscillation |
-| Cat idle / breathing | 8–12 fps | 4–8 frames | Subtle; quality over quantity |
-| Cat sleep (near-static) | 4–8 fps | 2–4 frames | Minimal chest-rise |
-| Cat walk cycle | 10–14 fps | 6–10 frames | Must read as natural |
-| Butterfly flutter | 12–16 fps | 4–8 frames | Wing-beat reads at small scale |
-| Butterfly rest | 6–10 fps | 2–4 frames | Near-static |
-| Ripple animation | 8–12 fps | 4–6 frames | Short play-once loop |
-| Harvest feedback puff | 10–14 fps | 4–6 frames | Play-once |
+| Cat idle / breathing | 8–12 fps | 4–8 frames | Subtle; quality over quantity (PROVISIONAL) |
+| Cat sleep (near-static) | 4–8 fps | 2–4 frames | Minimal chest-rise (PROVISIONAL) |
+| Cat walk cycle | 10–14 fps | 6–10 frames | Must read as natural (PROVISIONAL) |
+| Butterfly flutter | 12–16 fps | 4–8 frames | Wing-beat reads at small scale (PROVISIONAL) |
+| Butterfly rest | 6–10 fps | 2–4 frames | Near-static (PROVISIONAL) |
+| Ripple animation | 8–12 fps | 4–6 frames | Short play-once loop (PROVISIONAL) |
+| Harvest feedback puff | 10–14 fps | 4–6 frames | Play-once (PROVISIONAL) |
 | Lamp glow pulse | N/A (property) | 0 new frames | AnimationPlayer modulate |
 | Firefly drift | N/A (path) | 0 new frames | AnimationPlayer position |
 | UI fade/transition | N/A (property) | 0 new frames | AnimationPlayer |
 
 ### 25.2 Validation Gate
 
-All frame counts and FPS values above are **PROVISIONAL**. Validation must
-occur during the technical spike:
+All frame counts and FPS values above remain **PROVISIONAL**.
 
-1. Produce a small number of test frames at the proposed FPS.
-2. Import into Godot, run on Android.
-3. Assess visual quality: is the motion readable? Is it too fast/slow?
-4. Assess memory: do 8 frames of cat_idle at 512 px produce acceptable VRAM?
+**Task 4.4A Empirical Verification:**
+Task 4.4A mechanically configured an 8 FPS playback speed on `SpriteFrames`
+for the diagnostic 4-frame animation loop. The scene serialization and playback
+initialization functioned without error.
+
+**Visual & Device Limitation:**
+Perceived smoothness, absence of rendered GPU jitter, frame pacing, and motion
+feel were NOT observed because headless execution prevented direct visual capture.
+Therefore, the **8–12 FPS range remains a PROVISIONAL TECHNICAL TARGET**. Neither
+8 FPS nor 8–12 FPS is permanently locked. Final calibration requires rendered
+visual observation and device profiling using real representative production art
+on physical Android hardware.
 5. Adjust ranges based on evidence; record final approved values in the
    per-entity art spec.
 
@@ -1991,86 +2156,75 @@ Do NOT produce these assets in Task 4.3.
 
 ---
 
-## 34. Future Technical Spike Definition
+## 34. Empirical Validation: Completed Spike & Remaining Device Gate
 
-**Status: LOCKED TECHNICAL PIPELINE (definition); TBD (execution — after this document)**
+**Status: LOCKED TECHNICAL PIPELINE (framework & completed evidence) / TBD (device execution)**
 
-The technical spike is a small empirical validation task that MUST precede
-full vertical-slice production.
+The empirical validation strategy is split into two phases: local/build validation
+(completed in Task 4.4A) and physical on-device validation (deferred to a future
+owner-approved task).
 
-### 34.1 Spike Scope
+### 34.1 Completed Local and Build Validation (Task 4.4A Spike)
 
-Test a **minimal representative subset** in Godot on Android:
+- **Authoritative Evidence Document:** `ASSET_PIPELINE_SPIKE_REPORT.md`
+- **Spike Outcome:** `PARTIAL — local/import/build validation completed; device-dependent evidence remains unavailable`
+- **Completed Baseline:**
+  - Godot Engine: `4.7.2.stable.official.ed1daf0bf`
+  - Render Pipeline: GL Compatibility 2D
+  - Reference Canvas: 1080 × 1920
+  - APK Build & Signing: Android Debug APK produced (exit 0), signed with v2/v3 schemes
 
-- 2 plants (1 stage each, e.g., holy basil mature + sprout)
-- 1 visitor (cat idle, 4 frames)
-- 1 decoration (bench)
-- 1 simple background
+**Mechanically Validated Outcomes:**
+1. **Import Mode Mapping:** Verified `compress/mode` enum (0=Lossless, 1=Lossy, 2=VRAM Compressed, 3=VRAM Uncompressed, 4=Basis Universal).
+2. **Import Configuration & Sidecars:** Verified Lossless generates `.ctex` and VRAM Compressed generates both `.s3tc.ctex` (desktop) and `.etc2.ctex` (Android Compatibility) in `.godot/imported/`.
+3. **Mipmap Math & Storage:** Mathematically validated ~33.3% GPU residency overhead; empirically demonstrated disk cache growth (+63.7%) does not equal GPU VRAM overhead.
+4. **Metric Distinctions:** Formally demonstrated that Source PNG disk bytes != imported `.ctex` cache bytes != GPU residency != APK size.
+5. **Reference-Canvas Scale:** Validated 1:1 authoring/display on representative reference-size subjects (background, pivot, foliage, animation).
+6. **Bottom-Center Pivot Default:** Confirmed Option A (`centered = true`, `offset.y = -h/2`) is mechanically simpler and less error-prone than Option B.
+7. **Animation Registration:** Confirmed uniform 256 × 256 canvas dimensions and identical (128, 248) contact coordinates eliminate frame-bound-induced jump by construction.
+8. **Filtering Locus:** Confirmed filtering configuration belongs to CanvasItem nodes and ProjectSettings, not `.import` sidecars.
+9. **Android Export Viability:** Confirmed headless Android debug export (exit 0) and APK signing (v2/v3 valid).
 
-### 34.2 What the Spike Measures and Compares
+**Visually / Device Unverified in Task 4.4A:**
+- Direct visual comparison of Linear vs Nearest in rendered Compatibility output (blocked by headless Dummy Rendering Server).
+- On-device ETC2 visual artifact acceptability on fine watercolor washes and soft alpha edges.
+- Perceived animation smoothness, absence of GPU jitter, and frame pacing at 8–12 FPS.
+- Actual on-device GPU residency, real frame timing, battery behavior, and total scene memory budget.
 
-The spike must explicitly compare representative painterly assets under:
+### 34.2 Remaining Device Validation Gate
 
-**Lossless baseline** versus **VRAM Compressed (ETC2)** (and Lossy where appropriate).
+The remaining empirical validation gate requires physical Android hardware.
 
-Specific visual and technical evaluations:
+**Prerequisite:** Connected-device testing and APK installation must require
+**explicit owner approval**. No automatic APK installation is defined or permitted.
 
-- **Soft alpha edges:** Compare watercolor/gouache translucent stroke boundaries
-  under Lossless vs ETC2 block compression on phone displays.
-- **Painted texture:** Assess whether subtle gouache brushwork and paper tooth
-  survive ETC2 or exhibit muddy compression blocks.
-- **Dark semi-transparent shadows:** Inspect contact shadows beneath the bench,
-  clay jar, and plant mounds for ETC2 block artifacts or color fringing.
-- **Holy basil foliage:** Check fine branch, leaf contour, and vein readability.
-- **Marigold detail:** Inspect dense petal clusters and warm blossom gradient tones.
-- **Cat contours and fur:** Check silhouette softness and subtle breathing frame edges.
-- **Environment gradients:** Evaluate smooth sky, house wall, and soil gradients
-  for compression banding under ETC2.
+When authorized, a future dedicated device validation task must evaluate:
 
-Key metrics to record:
-- **Visual artifacts:** Document any visible artifacting under 1:1 reference canvas
-  and real screen DPI.
-- **Imported GPU memory estimate:** Calculate uncompressed RGBA8 vs ETC2 (~25% / 4:1)
-  residency for the spike asset set across import choices.
-- **Device performance & runtime results:** Profile actual frame rate, launch time,
-  and VRAM residency on target Android hardware when available.
+1. **Lossless vs. ETC2 Visual Comparison:**
+   - Inspect soft watercolor/gouache translucent stroke boundaries on physical phone displays.
+   - Inspect dark semi-transparent contact shadows under bench, jar, and plants for ETC2 block artifacts or color fringing.
+   - Evaluate fine foliage detail (holy basil) and petal clusters (marigold) under ETC2.
+   - Inspect large background gradients (sky, wall) for compression banding.
+2. **Real Rendering & Performance Metrics:**
+   - Measure actual frame timing, pacing, and potential frame drops on representative hardware.
+   - Record actual GPU residency and memory metrics where measurable.
+   - Assess perceived animation feel and smoothness at 8–12 FPS.
+   - Assess battery/power consumption only if a responsible, non-distorted measurement method is available.
 
-Memory measurements during the spike serve as descriptive evidence, not a
-pass/fail threshold against a predeclared scene budget. Task 4.3 does not define
-a total scene VRAM budget; any future budget decision occurs only after
-representative hardware profiling evidence exists.
-
-The spike outcome **decides whether any asset category should change from the
-Lossless baseline to VRAM Compressed**.
-
-### 34.3 Hardware Requirement
-
-At minimum, test on one real Android device when hardware is available.
-Emulator testing is insufficient for GPU-quality (compression artifacts,
-filtering behavior) and performance validation.
-
-### 34.4 Output
-
-The spike produces:
-
-- Updated/confirmed pixel dimensions for the first validation set
-- Confirmed compression settings per category (Lossless confirmed or VRAM Compressed justified with visual/device evidence)
-- Confirmed mipmap policy
-- Confirmed padding and pivot correctness
-- Recorded actual measured/estimated VRAM residency across import options for the vertical-slice scene (without a predeclared pass/fail budget)
-- Updated PROVISIONAL → LOCKED decisions where evidence is sufficient
+The device gate will formally decide whether any asset category is justified
+to promote from the Lossless baseline to VRAM Compressed (ETC2).
 
 ---
 
 ## 35. Performance Formulas Reference
 
-**Status: LOCKED TECHNICAL PIPELINE (reference formulas)**
+**Status: LOCKED TECHNICAL PIPELINE — MATHEMATICALLY & MECHANICALLY VALIDATED (Task 4.4A)**
 
 ### 35.1 RGBA8 Memory
 
 ```
 Uncompressed RGBA8 memory (bytes) = width × height × 4
-Uncompressed RGBA8 with mipmaps  = width × height × 4 × 1.33
+Uncompressed RGBA8 with mipmaps  = width × height × 4 × 1.333
 ```
 
 ### 35.2 Representative Sprite Set Example
@@ -2099,18 +2253,17 @@ APPROXIMATE TOTAL (Lossless sprites + ETC2 background)            ~6.4 MB
   renderer on Android, VRAM compression uses ETC2 RGBA (8 bpp = ~25% of RGBA8 / 4:1
   ratio), NOT ASTC. ASTC requires High Quality VRAM compression, which is
   unconditionally disabled in Compatibility (see §17.1).
-- **Lossless baseline impact:** Under the project's quality baseline (§17.3),
-  gameplay sprites (plants, visitors, decorations) default to Lossless (remaining
-  in uncompressed RGBA8 in GPU memory, ~4.3 MB total), while large background
-  panels are candidates for ETC2 (~2.07 MB). Total scene residency is approximately
-  ~6.4 MB, well within modern mobile headroom.
+- **Illustrative Arithmetic Only:** The estimated ~6.4 MB total residency is
+  purely illustrative arithmetic demonstrating the formula. No total scene-memory
+  acceptability threshold has been established, and this calculation does not
+  constitute an approved budget. Total scene texture-memory budget remains
+  **TBD / REQUIRES REPRESENTATIVE DEVICE EVIDENCE**.
 - **Fixed-rate GPU residency vs. variable disk size:** Disk compression ratios
-  (PNG, WebP, Lossy) may vary with image content and encoder settings. ETC2
+  (PNG, WebP, Lossy) vary with image content and encoder settings. ETC2
   GPU-memory residency is fixed-rate for a given format and dimension (8 bits/pixel
   for ETC2 RGBA, ~25% of RGBA8 / ~4:1 ratio), aside from block alignment (padding
   to 4×4 block multiples), mipmaps, format/channel selection, and resource overhead;
-  it does not vary based on whether visual content is simple or complex. Measure
-  actual residency and disk footprints during the technical spike.
+  it does not vary based on whether visual content is simple or complex.
 
 ### 35.3 Sprite Sheet Growth
 
@@ -2125,57 +2278,63 @@ Memory is proportional to total pixel area regardless of packing.
 
 ### 35.4 Full-Screen Texture Cost
 
-A full-canvas background at 1080 × 1920 RGBA8: **~8.3 MB uncompressed** (8,294,400 bytes).
-With ETC2 RGBA (8 bpp, 25% / 4:1): approximately **~2.07 MB** (2,073,600 bytes).
+A full-canvas background at 1080 × 1920 RGBA8: **~7.91 MiB uncompressed** (8,294,400 bytes).
+With ETC2 RGBA (8 bpp, 25% / 4:1): approximately **~1.98 MiB** (2,073,600 bytes).
 
 *(For mathematical context, ASTC 6×6 would theoretically yield ~11.1% or ~920 KB,
 but ASTC is not the runtime format under Compatibility renderer on Android).*
 
 This is the single most expensive texture in the vertical slice; it justifies
-empirical comparison of Lossless vs Lossy vs ETC2 during the technical spike.
+empirical comparison of Lossless vs Lossy vs ETC2 during the remaining device gate.
 
 ---
 
 ## 36. Locked vs Provisional vs TBD Summary Table
 
-**Status: This table is the authoritative decision status summary for Task 4.3.**
+**Status: Authoritative decision status ledger updated with Task 4.4A empirical spike decisions (Task 4.4B).**
 
 | Decision Area | Status | Notes |
 |---|---|---|
 | **Runtime directory structure** | LOCKED TECHNICAL PIPELINE | `assets/{category}/{entity}/` |
 | **Naming conventions** | LOCKED TECHNICAL PIPELINE | Lowercase snake_case ASCII |
-| **Reference-canvas scale strategy** | LOCKED TECHNICAL PIPELINE | 1:1 canvas pixel; no PPU concept; corrective scale forbidden |
-| **Pivot rules by category** | LOCKED TECHNICAL PIPELINE | Bottom-center default; center for flying; see Section 12 |
-| **Texture filtering default** | LOCKED TECHNICAL PIPELINE | Linear for all painterly sprites |
+| **Reference-canvas scale strategy** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | 1:1 canvas pixel; no PPU concept; arbitrary corrective scale forbidden. Validated on 1080×1920 background, grounded pivot, foliage, and animation reference subjects in Task 4.4A. (Note: two gradient comparison sprites used `scale = Vector2(0.45, 0.45)` solely for side-by-side diagnostic fixture layout, not production corrective scaling). |
+| **Pivot rules by category / Grounded default (Option A)** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Option A (`centered = true, offset.x = 0, offset.y = -(height / 2)`) confirmed mechanically as canonical default for grounded gameplay sprites; center pivot for flying/UI/environment items (see Section 12). |
+| **Texture filtering configuration locus** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Texture filtering is controlled via `CanvasItem.texture_filter` and project defaults, not `.import` sidecars. Linear default retained. |
+| **Texture filtering rendered visual comparison (Linear vs Nearest)** | UNVERIFIED — RENDERED VISUAL EVIDENCE REQUIRED | Direct rendered visual difference was not captured in Task 4.4A due to macOS headless dummy rendering server (`PN13RendererDummy`). |
 | **Power-of-two not required** | LOCKED TECHNICAL PIPELINE | Verified Godot 4 NPOT support |
 | **Source vs. runtime boundary** | LOCKED TECHNICAL PIPELINE (principle) | Source masters outside game tree |
 | **JPEG forbidden for sprites** | LOCKED TECHNICAL PIPELINE | No transparency support |
-| **PNG as primary format** | LOCKED TECHNICAL PIPELINE | |
-| **4 px transparent gutter minimum** | PROVISIONAL TECHNICAL PIPELINE | May adjust to 8 px with device evidence |
-| **Mipmap defaults (plants/visitors/deco)** | PROVISIONAL TECHNICAL PIPELINE (OFF) | Validate in technical spike |
-| **Mipmap defaults (backgrounds/effects)** | PROVISIONAL TECHNICAL PIPELINE (ON) | Validate in technical spike |
-| **Compression: Lossless baseline for 2D sprites** | PROVISIONAL TECHNICAL PIPELINE | Initial quality baseline per Godot 4.7 2D defaults; VRAM Compressed (ETC2) is optimization candidate |
-| **Compression: Large environment/background** | PROVISIONAL / EMPIRICAL COMPARISON | Compare Lossless vs Lossy vs VRAM Compressed (ETC2) in spike |
+| **PNG as primary format** | LOCKED TECHNICAL PIPELINE | Canonical lossless master format |
+| **4 px transparent gutter minimum** | PROVISIONAL TECHNICAL PIPELINE | Retained provisional; not directly isolated or challenged in Task 4.4A; to be validated with production art assets. |
+| **Mipmap defaults (plants/visitors/deco)** | PROVISIONAL TECHNICAL PIPELINE (OFF) | Theoretical +33.33% overhead validated; actual GPU residency and filtering benefit require device validation. |
+| **Mipmap defaults (backgrounds/effects)** | PROVISIONAL TECHNICAL PIPELINE (ON) | Theoretical +33.33% overhead validated; device validation required. |
+| **Compression: Lossless baseline for 2D sprites** | PROVISIONAL TECHNICAL PIPELINE | Mechanically validated import/build path via `compress/mode=0`; retains provisional baseline status pending device visual/memory confirmation. |
+| **Compression: Large environment/background** | PROVISIONAL / EMPIRICAL COMPARISON REQUIRED | Dual `.ctex` generated in build; choice between Lossless vs Lossy vs ETC2 requires device visual comparison. |
 | **Atlas strategy: no premature atlas** | PROVISIONAL TECHNICAL PIPELINE | Profiling-driven optimization only |
-| **AnimatedSprite2D for character animation** | PROVISIONAL TECHNICAL PIPELINE | Preferred; validate animation quality |
+| **AnimatedSprite2D for character animation** | PROVISIONAL TECHNICAL PIPELINE | Mechanically validated via SpriteFrames in Task 4.4A; visual pacing/smoothness requires device evaluation. |
+| **Animation frame consistency contract** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Uniform frame canvas (e.g. 256×256) + identical contact coordinate eliminate frame-bound jump by construction. |
 | **AnimationPlayer for property animation** | PROVISIONAL TECHNICAL PIPELINE | Leaf sway, lamp, firefly |
-| **Animation budget ranges** | PROVISIONAL TECHNICAL PIPELINE | See Section 25; validate in spike |
-| **Motion density target (3–5 concurrent)** | PROVISIONAL TECHNICAL TARGET | Validate in spike; calm motion principle is inherited visual direction |
+| **Animation budget ranges (8–12 FPS)** | PROVISIONAL TECHNICAL TARGET | 8 FPS mechanically loaded in Task 4.4A; visual smoothness and pacing remain unverified on device. |
+| **Motion density target (3–5 concurrent)** | PROVISIONAL TECHNICAL TARGET | Validate in future gameplay integration; calm motion principle is inherited visual direction |
 | **sRGB color space for runtime exports** | LOCKED TECHNICAL PIPELINE | Godot 4 default assumption |
 | **Straight alpha (not premultiplied)** | LOCKED TECHNICAL PIPELINE | Godot 4 default import behavior |
 | **Lighting-neutral base art** | PROVISIONAL TECHNICAL PIPELINE | Form-shadow OK; baked directional forbidden |
 | **No separate day/night sprite sets by default** | PROVISIONAL TECHNICAL PIPELINE | CanvasModulate preferred |
-| **Git: .import files committed** | LOCKED TECHNICAL PIPELINE | Import settings are intentional configuration |
-| **Git: .godot/ not committed** | LOCKED TECHNICAL PIPELINE | Already in .gitignore |
-| **Git LFS not introduced** | LOCKED TECHNICAL PIPELINE (Task 4.3 scope) | Future decision required |
-| **Source master storage location** | TBD / OWNER DECISION REQUIRED | Preferred outside project root; .gdignore alternative if same-repo tracked masters chosen (see §3.2) |
-| **Exact per-asset pixel dimensions** | TBD / REQUIRES EMPIRICAL VALIDATION | Calibration during technical spike |
-| **Total scene texture memory budget** | TBD / REQUIRES EMPIRICAL VALIDATION | Measure actual residency during spike; no predeclared pass/fail target; future budget requires device evidence (see §10.4) |
+| **Git: .import files committed** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Import settings are intentional configuration; validated in build pipeline. |
+| **Git: .godot/ not committed** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Excluded via .gitignore; clean headless build validated. |
+| **Git LFS not introduced** | LOCKED TECHNICAL PIPELINE (Milestone 4 scope) | Future decision required if source assets exceed git comfort |
+| **Source master storage location** | PROVISIONAL / OWNER DECISION REQUIRED | Preferred outside project root; .gdignore alternative if same-repo tracked masters chosen (see §3.2) |
+| **Memory sizing formulas (RGBA8, ETC2, Mipmaps)** | LOCKED TECHNICAL PIPELINE — MATHEMATICALLY & MECHANICALLY VALIDATED (Task 4.4A) | 4 bytes/px (RGBA8 uncompressed), 8 bpp / 25% (ETC2 4×4 block), +33.33% mipmaps; 4 distinct metrics confirmed. |
+| **Android debug export & v2/v3 signing viability** | LOCKED TECHNICAL PIPELINE — MECHANICALLY VALIDATED (Task 4.4A) | Clean APK build and valid signature verified via apksigner. |
+| **ETC2 visual artifact acceptance** | TBD / DEVICE VALIDATION REQUIRED | Block compression artifacts on painterly gradients unverified due to headless dummy rendering server. |
+| **Total scene texture memory budget** | TBD / DEVICE VALIDATION REQUIRED | Mathematical formulas validated; actual GPU residency and budget ceiling require connected device profiling (see §10.4). |
+| **Real Android frame timing & battery behavior** | TBD / DEVICE VALIDATION REQUIRED | Requires connected Android device profiling. |
+| **Exact per-asset pixel dimensions** | TBD / REQUIRES EMPIRICAL VALIDATION | Calibration during technical spike / production asset authoring |
 | **Final font family** | TBD | Future UI asset task |
 | **Final shader architecture** | TBD | Future implementation milestone |
-| **Wet surface overlay approach** | TBD / PROVISIONAL | Shader vs sprite; validate in spike |
-| **WebP for sprite runtime format** | TBD | Evaluate vs PNG in spike |
-| **Lossless vs ETC2 quality trade-off** | TBD / REQUIRES EMPIRICAL COMPARISON | Compare on device during spike (Section 17.3, Section 34) |
+| **Wet surface overlay approach** | TBD / PROVISIONAL | Shader vs sprite; validate in future spike |
+| **WebP for sprite runtime format** | TBD | Evaluate vs PNG in spike if package size requires |
+| **Lossless vs ETC2 quality trade-off** | TBD / REQUIRES EMPIRICAL COMPARISON | Compare on device during future device validation gate (Section 17.3, Section 34) |
 
 ---
 
@@ -2212,15 +2371,20 @@ The following Godot 4.7.2 technical claims were verified:
 | **E.** Compatibility renderer disables High Quality VRAM compression | Official Godot 4.7 documentation (*Importing images*): "High-quality VRAM texture compression is only supported in the Forward+ and Mobile renderers. When using the Compatibility renderer, High Quality is always considered disabled." |
 | **F.** With High Quality disabled, desktop uses S3TC and Android/mobile uses ETC2 | Official Godot 4.7 documentation (*Importing images*): "uses S3TC on desktop platforms and ETC2 on mobile/web platforms." ASTC is therefore not the runtime format under Compatibility on Android. |
 | **G.** Full mipmaps add ~33% additional memory | Standard graphics engineering formula (geometric series: 1 + 1/4 + 1/16 + ... ≈ 1.333×); confirmed in engine asset pipeline context. |
-| **H.** 2D texture filtering is CanvasItem / project-default based, not in `.import` | Official Godot 4.7 documentation (*Importing images*): "Since Godot 4.0, texture filter and repeat modes are set in the CanvasItem properties in 2D (with a project setting acting as a default)..." |
+| **H.** 2D texture filtering is CanvasItem / project-default based, not in `.import` | Official Godot 4.7 documentation (*Importing images*): "Since Godot 4.0, texture filter and repeat modes are set in the CanvasItem properties in 2D (with a project setting acting as a default)..." Verified in Task 4.4A. |
 | **I.** `<asset>.import` sidecar files should be committed to VCS | Official Godot 4.7 documentation (*Import process*): "Make sure to commit these files to your version control system, as these files contain important metadata." |
 | **J.** `.godot/` directory should NOT be committed to VCS | Official Godot 4.7 documentation (*Import process*); confirmed in project `.gitignore` (`.godot/`). |
-| **K.** `Sprite2D.centered = false` only shifts texture from center to top-left; not a bottom-center anchor | Official Godot 4.7 `Sprite2D` class reference: `centered` determines whether texture is centered around origin; an additional drawing offset is required to achieve a bottom-center anchor. |
+| **K.** `Sprite2D.centered = false` only shifts texture from center to top-left; not a bottom-center anchor | Official Godot 4.7 `Sprite2D` class reference: `centered` determines whether texture is centered around origin; an additional drawing offset is required to achieve a bottom-center anchor. Verified in Task 4.4A Option A vs Option B comparison. |
 | **L.** `.gdignore` ignores a directory from Godot project scanning and import | Official Godot 4.7 documentation (*Project organization*): An empty `.gdignore` file completely excludes a folder and its contents from Godot resource scanning and import. Does not affect Git tracking (which is managed by `.gitignore`). |
+| **M.** Android debug export viability with v2/v3 signing | Mechanically verified in Task 4.4A: Godot 4.7.2 CLI export produced 30,681,193-byte APK (~29.26 MiB) verified with `apksigner verify --verbose` (v2/v3 true). |
+| **N.** Dual texture compilation under GL Compatibility | Mechanically verified in Task 4.4A: `.s3tc.ctex` (desktop) and `.etc2.ctex` (mobile) both compiled into `.godot/imported/`. |
+| **O.** Headless environment on macOS uses Dummy Rendering Server | Mechanically verified in Task 4.4A: `PN13RendererDummy` used in headless terminal execution, blocking direct visual screenshot capture and rendered visual verification. |
+| **P.** Sprite2D Option A grounded pivot mechanism | Mechanically verified in Task 4.4A: `centered = true, offset.x = 0, offset.y = -(height / 2)` grounds bottom-center directly at node origin. |
+| **Q.** AnimatedSprite2D uniform frame bounds contract | Mechanically verified in Task 4.4A: 256×256 canvas with fixed contact point (128, 248) eliminates frame-bound jumps by construction. |
 | Engine version `4.7.2.stable.official.ed1daf0bf` | `godot --version` command run in project directory |
 | Viewport 1080×1920 portrait, Compatibility renderer | Direct inspection of `project.godot` |
 | NPOT textures supported natively | Official Godot 4 documentation; GL Compatibility 2D renderer handles NPOT |
-| AnimatedSprite2D + SpriteFrames valid for 2D animation | Official Godot 4 class reference |
+| AnimatedSprite2D + SpriteFrames valid for 2D animation | Official Godot 4 class reference; verified in Task 4.4A |
 | WebP import support | Official Godot 4 supported image formats documentation |
 Claims based solely on web search results (not directly verifiable in the local
 project) are marked PROVISIONAL and flagged for validation in the technical spike.
@@ -2228,5 +2392,5 @@ project) are marked PROVISIONAL and flagged for validation in the technical spik
 ---
 
 *End of ASSET_PIPELINE.md*
-*Task 4.3 — Asset Technical Pipeline*
+*Task 4.3 / Task 4.4B — Asset Technical Pipeline (Spike Decisions Recorded)*
 *Milestone 4 — Visual Direction and Asset Pipeline*
