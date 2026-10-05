@@ -66,3 +66,22 @@ func try_add_plant(state: PlantState) -> bool:
 
 	_plants_by_runtime_instance_id[instance_id] = state
 	return true
+
+
+## Returns all PlantState instances in the collection in deterministic ascending order
+## of runtime instance ID.
+##
+## Architectural and persistence contract:
+## - Returns a new Array[PlantState] instance; mutating the returned array does not mutate collection membership.
+## - Contains the exact stored PlantState references (does not clone PlantState).
+## - Empty collection returns an empty Array[PlantState].
+## - Order is deterministic: sorted by runtime instance ID ascending.
+## - Does not expose internal storage Dictionary.
+## - No dependencies on SceneTree, FileAccess, GameClock, or RandomSource.
+func get_all_plants() -> Array[PlantState]:
+	var keys: Array = _plants_by_runtime_instance_id.keys()
+	keys.sort()
+	var result: Array[PlantState] = []
+	for key: String in keys:
+		result.append(_plants_by_runtime_instance_id[key])
+	return result

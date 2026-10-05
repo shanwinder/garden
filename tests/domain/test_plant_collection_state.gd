@@ -11,6 +11,7 @@
 ## 7. Multiple instances of same definition: distinct runtime instance IDs can share definition_id.
 ## 8. Invalid states: null, empty instance_id, invalid definition_id, negative planted_at are rejected.
 ## 9. Independent collections: separate PlantCollectionState instances do not share state.
+## 10. get_all_plants query: returns deterministic array copy ordered by runtime instance ID ascending.
 class_name TestPlantCollectionState
 extends TestSuiteBase
 
@@ -28,6 +29,7 @@ func run_tests() -> void:
 	_test_same_definition_multiple_instances()
 	_test_invalid_state_rejection()
 	_test_independent_collections()
+	_test_get_all_plants()
 
 
 func _test_type_contract_and_fresh_state() -> void:
@@ -227,3 +229,70 @@ func _test_independent_collections() -> void:
 		collection_b.get_plant("plant-001") == null,
 		"collection_b.get_plant('plant-001') must be null"
 	)
+
+
+func _test_get_all_plants() -> void:
+	describe("get_all_plants() returns deterministic array copy ordered by runtime instance ID ascending")
+	var collection: PlantCollectionState = PlantCollectionState.new()
+
+	# Empty collection
+	var empty_list: Array[PlantState] = collection.get_all_plants()
+	assert_eq(empty_list.size(), 0, "Empty collection must return empty array")
+
+	# Single plant
+	var plant_b: PlantState = PlantState.new("plant-002", "plant.holy_basil", 2000)
+	var add_b_ok: bool = collection.try_add_plant(plant_b)
+	assert_true(add_b_ok, "Adding plant_b should succeed")
+	var single_list: Array[PlantState] = collection.get_all_plants()
+	assert_eq(single_list.size(), 1, "Single plant collection must return array of size 1")
+	assert_eq(single_list[0], plant_b, "Returned element must be exact PlantState reference")
+
+	# Multiple plants added out-of-order (plant-003, plant-001)
+	var plant_c: PlantState = PlantState.new("plant-003", "plant.chili", 3000)
+	var plant_a: PlantState = PlantState.new("plant-001", "plant.jasmine", 1000)
+	var add_c_ok: bool = collection.try_add_plant(plant_c)
+	var add_a_ok: bool = collection.try_add_plant(plant_a)
+	assert_true(add_c_ok, "Adding plant_c should succeed")
+	assert_true(add_a_ok, "Adding plant_a should succeed")
+
+	assert_eq(collection.get_count(), 3, "Collection count must be 3")
+
+	var all_plants: Array[PlantState] = collection.get_all_plants()
+	assert_eq(all_plants.size(), 3, "get_all_plants() must return all 3 plants")
+
+	# Deterministic ascending order by runtime instance ID: plant-001, plant-002, plant-003
+	assert_eq(all_plants[0].get_runtime_instance_id(), "plant-001", "First item must be plant-001")
+	assert_eq(all_plants[1].get_runtime_instance_id(), "plant-002", "Second item must be plant-002")
+	assert_eq(all_plants[2].get_runtime_instance_id(), "plant-003", "Third item must be plant-003")
+
+	# Exact PlantState references preserved
+	assert_eq(all_plants[0], plant_a, "plant-001 must match plant_a reference")
+	assert_eq(all_plants[1], plant_b, "plant-002 must match plant_b reference")
+	assert_eq(all_plants[2], plant_c, "plant-003 must match plant_c reference")
+
+	# Repeated calls produce deterministic ordering
+	var second_call: Array[PlantState] = collection.get_all_plants()
+	assert_eq(second_call.size(), 3, "Repeated call must have size 3")
+	assert_eq(second_call[0], all_plants[0], "Repeated call index 0 must match")
+	assert_eq(second_call[1], all_plants[1], "Repeated call index 1 must match")
+	assert_eq(second_call[2], all_plants[2], "Repeated call index 2 must match")
+
+	# Returned Array is a copy - mutating returned array must not mutate collection
+	all_plants.clear()
+	assert_eq(all_plants.size(), 0, "Cleared local array is empty")
+	assert_eq(collection.get_count(), 3, "Collection count unchanged after clearing returned array")
+	assert_true(collection.has_runtime_instance_id("plant-001"), "Collection still contains plant-001")
+
+	var third_call: Array[PlantState] = collection.get_all_plants()
+	assert_eq(third_call.size(), 3, "Collection still returns 3 items after local clear")
+
+	var dummy_plant: PlantState = PlantState.new("plant-999", "plant.holy_basil", 9999)
+	third_call.append(dummy_plant)
+	assert_eq(third_call.size(), 4, "Appended local array has 4 items")
+	assert_eq(collection.get_count(), 3, "Collection count unchanged after local append")
+	assert_false(collection.has_runtime_instance_id("plant-999"), "Collection does not have plant-999")
+
+	third_call.remove_at(0)
+	assert_eq(third_call.size(), 3, "Local array after remove has 3 items")
+	assert_eq(collection.get_count(), 3, "Collection count unchanged after local remove")
+	assert_true(collection.has_runtime_instance_id("plant-001"), "Collection still contains plant-001")
