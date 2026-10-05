@@ -3,8 +3,8 @@
 ##
 ## Verifies:
 ## 1. Type contract: RefCounted, pure codec.
-## 2. Success tests (A-L):
-##    - Default empty GameState encode shape
+## 2. Success tests:
+##    - Default empty GameState encode shape (currency: "0", plants: [])
 ##    - Default GameState decode
 ##    - Economy-only nonzero balance round trip
 ##    - Single plant round trip
@@ -12,14 +12,18 @@
 ##    - Deterministic ascending order of plants by runtime instance ID
 ##    - Full GameState round trip (currency + multiple plants)
 ##    - JSON stringify and parse round trip
+##    - Int64 fidelity boundary round trips (0, 1, 2^53-1, 2^53, 2^53+1, MAX_INT64)
+##    - Planted_at timestamp fidelity boundary round trips
+##    - Full max-boundary GameState round trip (MAX_CURRENCY + MAX_INT64 timestamp)
 ##    - Reconstructed state, EconomyState, and PlantStates are new objects
 ##    - Encoding does not mutate source GameState
 ## 3. Failure tests:
 ##    - Null / non-dictionary snapshot
-##    - Missing / invalid / unsupported schema_version (0, 2, strings, fractional floats)
-##    - Missing / invalid / negative / overflow / fractional currency
+##    - Missing / invalid / unsupported schema_version (0, 2, strings, fractional floats; accepts 1 and 1.0)
+##    - Missing / invalid / negative / overflow / non-canonical decimal strings / numeric currency
 ##    - Missing / invalid plants array
 ##    - Missing / invalid / empty plant fields
+##    - Missing / invalid / non-canonical decimal strings / numeric planted_at
 ##    - Invalid definition ID / non-plant namespace
 ##    - Duplicate runtime instance IDs
 ##    - Unexpected keys in root, economy, and plant entries
@@ -42,6 +46,9 @@ func run_tests() -> void:
 	_test_multiple_plants_round_trip_and_ordering()
 	_test_full_game_state_round_trip()
 	_test_json_round_trip()
+	_test_currency_boundary_round_trips()
+	_test_planted_at_boundary_round_trips()
+	_test_full_max_boundary_game_state()
 	_test_object_independence_and_no_source_mutation()
 	_test_determinism_differing_insertion_order()
 	_test_failure_root_validation()
@@ -81,7 +88,7 @@ func _test_default_state_encode_and_decode() -> void:
 
 	var economy_data: Variant = encoded.get("economy")
 	assert_true(economy_data is Dictionary, "economy must be a Dictionary")
-	assert_eq((economy_data as Dictionary).get("currency"), 0, "Default currency must be 0")
+	assert_eq((economy_data as Dictionary).get("currency"), "0", "Default currency must be '0'")
 
 	var plants_data: Variant = encoded.get("plants")
 	assert_true(plants_data is Array, "plants must be an Array")
@@ -100,6 +107,10 @@ func _test_economy_round_trip() -> void:
 	assert_true(grant_ok, "Grant currency to original state should succeed")
 
 	var encoded: Dictionary = GameStateCodec.encode(original)
+	var economy_data: Variant = encoded.get("economy")
+	assert_true(economy_data is Dictionary, "economy must be a Dictionary")
+	assert_eq((economy_data as Dictionary).get("currency"), "12345", "Currency must be encoded as string '12345'")
+
 	var decoded: GameState = GameStateCodec.decode(encoded)
 
 	assert_true(decoded != null, "Decoded GameState must not be null")
@@ -115,6 +126,10 @@ func _test_single_plant_round_trip() -> void:
 	assert_true(add_ok, "Adding plant to original should succeed")
 
 	var encoded: Dictionary = GameStateCodec.encode(original)
+	var plants_data: Array = encoded.get("plants") as Array
+	assert_eq(plants_data.size(), 1, "Plants array size must be 1")
+	assert_eq((plants_data[0] as Dictionary).get("planted_at"), "1700000000", "planted_at must be encoded as string '1700000000'")
+
 	var decoded: GameState = GameStateCodec.decode(encoded)
 
 	assert_true(decoded != null, "Decoded GameState must not be null")
@@ -142,8 +157,11 @@ func _test_multiple_plants_round_trip_and_ordering() -> void:
 
 	# Check deterministic ascending order in serialized array
 	assert_eq((raw_plants[0] as Dictionary).get("instance_id"), "a-001", "First serialized plant must be a-001")
+	assert_eq((raw_plants[0] as Dictionary).get("planted_at"), "1000", "First serialized planted_at string")
 	assert_eq((raw_plants[1] as Dictionary).get("instance_id"), "m-050", "Second serialized plant must be m-050")
+	assert_eq((raw_plants[1] as Dictionary).get("planted_at"), "2000", "Second serialized planted_at string")
 	assert_eq((raw_plants[2] as Dictionary).get("instance_id"), "z-999", "Third serialized plant must be z-999")
+	assert_eq((raw_plants[2] as Dictionary).get("planted_at"), "3000", "Third serialized planted_at string")
 
 	var decoded: GameState = GameStateCodec.decode(encoded)
 	assert_true(decoded != null, "Decoded GameState must not be null")
@@ -210,6 +228,99 @@ func _test_json_round_trip() -> void:
 	assert_true(p2 != null, "plant-b must exist")
 	assert_eq(p2.get_definition_id(), "plant.marigold", "plant-b definition_id")
 	assert_eq(p2.get_planted_at(), 1700000500, "plant-b planted_at")
+
+
+func _test_currency_boundary_round_trips() -> void:
+	describe("Boundary tests: currency values round-trip exactly through JSON stringify/parse")
+	var boundary_values: Array[int] = [
+		0,
+		1,
+		9007199254740991,
+		9007199254740992,
+		9007199254740993,
+		EconomyState.MAX_CURRENCY,
+	]
+	for val: int in boundary_values:
+		var original: GameState = GameState.new()
+		if val > 0:
+			var grant_ok: bool = original.get_economy().grant_currency(val)
+			assert_true(grant_ok, "Granting %d currency must succeed" % val)
+		var encoded: Dictionary = GameStateCodec.encode(original)
+		assert_eq(
+			(encoded.get("economy") as Dictionary).get("currency"),
+			str(val),
+			"Encoded currency for %d must be exact string '%s'" % [val, str(val)]
+		)
+		var json_text: String = JSON.stringify(encoded)
+		var parsed: Variant = JSON.parse_string(json_text)
+		assert_true(parsed is Dictionary, "Parsed JSON must be Dictionary for currency %d" % val)
+		var decoded: GameState = GameStateCodec.decode(parsed)
+		assert_true(decoded != null, "Decoded GameState for currency %d must not be null" % val)
+		var decoded_currency: int = decoded.get_economy().get_currency()
+		assert_eq(decoded_currency, val, "Decoded currency for %d must equal original exactly" % val)
+		assert_eq(typeof(decoded_currency), TYPE_INT, "Decoded currency type must remain TYPE_INT")
+
+
+func _test_planted_at_boundary_round_trips() -> void:
+	describe("Boundary tests: planted_at values round-trip exactly through JSON stringify/parse")
+	var boundary_values: Array[int] = [
+		0,
+		1700000000,
+		9007199254740991,
+		9007199254740992,
+		9007199254740993,
+		9223372036854775807,
+	]
+	for val: int in boundary_values:
+		var original: GameState = GameState.new()
+		var plant: PlantState = PlantState.new("plant-boundary", "plant.holy_basil", val)
+		var add_ok: bool = original.get_plants().try_add_plant(plant)
+		assert_true(add_ok, "Adding plant with planted_at %d must succeed" % val)
+		var encoded: Dictionary = GameStateCodec.encode(original)
+		var raw_plants: Array = encoded.get("plants") as Array
+		assert_eq(
+			(raw_plants[0] as Dictionary).get("planted_at"),
+			str(val),
+			"Encoded planted_at for %d must be exact string '%s'" % [val, str(val)]
+		)
+		var json_text: String = JSON.stringify(encoded)
+		var parsed: Variant = JSON.parse_string(json_text)
+		assert_true(parsed is Dictionary, "Parsed JSON must be Dictionary for planted_at %d" % val)
+		var decoded: GameState = GameStateCodec.decode(parsed)
+		assert_true(decoded != null, "Decoded GameState for planted_at %d must not be null" % val)
+		var decoded_plant: PlantState = decoded.get_plants().get_plant("plant-boundary")
+		assert_true(decoded_plant != null, "Decoded plant must not be null for planted_at %d" % val)
+		var decoded_planted_at: int = decoded_plant.get_planted_at()
+		assert_eq(decoded_planted_at, val, "Decoded planted_at for %d must equal original exactly" % val)
+		assert_eq(typeof(decoded_planted_at), TYPE_INT, "Decoded planted_at type must remain TYPE_INT")
+
+
+func _test_full_max_boundary_game_state() -> void:
+	describe("Full GameState max-boundary JSON round-trip: MAX_CURRENCY + MAX_INT64 planted_at")
+	var original: GameState = GameState.new()
+	var grant_ok: bool = original.get_economy().grant_currency(EconomyState.MAX_CURRENCY)
+	assert_true(grant_ok, "Grant MAX_CURRENCY must succeed")
+
+	var plant: PlantState = PlantState.new("plant-max-bound", "plant.holy_basil", 9223372036854775807)
+	var add_ok: bool = original.get_plants().try_add_plant(plant)
+	assert_true(add_ok, "Add plant with max planted_at must succeed")
+
+	var encoded: Dictionary = GameStateCodec.encode(original)
+	var json_text: String = JSON.stringify(encoded)
+	var parsed: Variant = JSON.parse_string(json_text)
+	assert_true(parsed is Dictionary, "Parsed JSON must be Dictionary")
+
+	var decoded: GameState = GameStateCodec.decode(parsed)
+	assert_true(decoded != null, "Decoded GameState from parsed JSON must not be null")
+	assert_eq(decoded.get_economy().get_currency(), EconomyState.MAX_CURRENCY, "Decoded currency must be exact MAX_CURRENCY")
+	assert_eq(decoded.get_plants().get_count(), 1, "Decoded plant count must be 1")
+	assert_true(decoded.get_plants().has_runtime_instance_id("plant-max-bound"), "Decoded collection must contain plant-max-bound")
+
+	var decoded_plant: PlantState = decoded.get_plants().get_plant("plant-max-bound")
+	assert_true(decoded_plant != null, "Retrieved plant must not be null")
+	assert_eq(decoded_plant.get_runtime_instance_id(), "plant-max-bound", "Runtime instance ID matches")
+	assert_eq(decoded_plant.get_definition_id(), "plant.holy_basil", "Definition ID matches")
+	assert_eq(decoded_plant.get_planted_at(), 9223372036854775807, "Planted_at matches max int64 exactly")
 
 
 func _test_object_independence_and_no_source_mutation() -> void:
@@ -286,7 +397,7 @@ func _test_failure_root_validation() -> void:
 
 	# Missing root keys
 	var missing_version: Dictionary = {
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": []
 	}
 	assert_true(GameStateCodec.decode(missing_version) == null, "Reject missing schema_version")
@@ -299,18 +410,28 @@ func _test_failure_root_validation() -> void:
 
 	var missing_plants: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0}
+		"economy": {"currency": "0"}
 	}
 	assert_true(GameStateCodec.decode(missing_plants) == null, "Reject missing plants")
 
 
 func _test_failure_schema_version_validation() -> void:
-	describe("Schema version validation rejects non-1, missing, strings, floats, 0, 2")
+	describe("Schema version validation accepts 1 and 1.0; rejects 0, 2, 999, fractional floats, strings, booleans, null")
 	var valid_base: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": []
 	}
+
+	# Accepted: native integer 1
+	var v1_int: Dictionary = valid_base.duplicate(true)
+	v1_int["schema_version"] = 1
+	assert_true(GameStateCodec.decode(v1_int) != null, "Accept schema_version int 1")
+
+	# Accepted: JSON-deserialized float 1.0
+	var v1_float: Dictionary = valid_base.duplicate(true)
+	v1_float["schema_version"] = 1.0
+	assert_true(GameStateCodec.decode(v1_float) != null, "Accept schema_version float 1.0")
 
 	var v0: Dictionary = valid_base.duplicate(true)
 	v0["schema_version"] = 0
@@ -326,22 +447,26 @@ func _test_failure_schema_version_validation() -> void:
 
 	var v_str: Dictionary = valid_base.duplicate(true)
 	v_str["schema_version"] = "1"
-	assert_true(GameStateCodec.decode(v_str) == null, "Reject string schema_version")
+	assert_true(GameStateCodec.decode(v_str) == null, "Reject string schema_version '1'")
 
 	var v_float_frac: Dictionary = valid_base.duplicate(true)
 	v_float_frac["schema_version"] = 1.5
-	assert_true(GameStateCodec.decode(v_float_frac) == null, "Reject fractional float schema_version")
+	assert_true(GameStateCodec.decode(v_float_frac) == null, "Reject fractional float schema_version 1.5")
 
 	var v_bool: Dictionary = valid_base.duplicate(true)
 	v_bool["schema_version"] = true
-	assert_true(GameStateCodec.decode(v_bool) == null, "Reject boolean schema_version")
+	assert_true(GameStateCodec.decode(v_bool) == null, "Reject boolean schema_version true")
+
+	var v_null: Dictionary = valid_base.duplicate(true)
+	v_null["schema_version"] = null
+	assert_true(GameStateCodec.decode(v_null) == null, "Reject null schema_version")
 
 
 func _test_failure_economy_validation() -> void:
-	describe("Economy validation rejects wrong type, missing currency, negative, string, fractional float, overflow")
+	describe("Economy validation rejects non-dict, missing currency, invalid decimal strings, and numeric types")
 	var valid_base: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": []
 	}
 
@@ -353,37 +478,48 @@ func _test_failure_economy_validation() -> void:
 	missing_currency["economy"] = {}
 	assert_true(GameStateCodec.decode(missing_currency) == null, "Reject missing currency")
 
-	var neg_currency: Dictionary = valid_base.duplicate(true)
-	neg_currency["economy"] = {"currency": -1}
-	assert_true(GameStateCodec.decode(neg_currency) == null, "Reject negative currency")
+	# Rejections for currency: invalid canonical decimal strings and non-string types
+	var invalid_currencies: Array = [
+		"",
+		"00",
+		"01",
+		"+1",
+		"-1",
+		" 1",
+		"1 ",
+		"1.0",
+		"1e3",
+		"01e2",
+		"abc",
+		"１２３",
+		"9223372036854775808", # overflow
+		123,                   # numeric int rejected
+		123.0,                 # numeric float rejected
+		0,                     # numeric int 0 rejected
+		0.0,                   # numeric float 0.0 rejected
+		-1,                    # negative numeric rejected
+		10.5,                  # fractional float rejected
+		true,                  # bool rejected
+		false,                 # bool rejected
+		null,                  # null rejected
+		[],                    # array rejected
+		{},                    # dictionary rejected
+	]
 
-	var str_currency: Dictionary = valid_base.duplicate(true)
-	str_currency["economy"] = {"currency": "100"}
-	assert_true(GameStateCodec.decode(str_currency) == null, "Reject string currency")
-
-	var frac_currency: Dictionary = valid_base.duplicate(true)
-	frac_currency["economy"] = {"currency": 10.5}
-	assert_true(GameStateCodec.decode(frac_currency) == null, "Reject fractional float currency")
-
-	var bool_currency: Dictionary = valid_base.duplicate(true)
-	bool_currency["economy"] = {"currency": true}
-	assert_true(GameStateCodec.decode(bool_currency) == null, "Reject boolean currency")
-
-	var null_currency: Dictionary = valid_base.duplicate(true)
-	null_currency["economy"] = {"currency": null}
-	assert_true(GameStateCodec.decode(null_currency) == null, "Reject null currency")
-
-	var overflow_currency: Dictionary = valid_base.duplicate(true)
-	# 9223372036854775807 is MAX_CURRENCY. Any value > MAX_CURRENCY (or float representation overflowing it)
-	overflow_currency["economy"] = {"currency": 1e20}
-	assert_true(GameStateCodec.decode(overflow_currency) == null, "Reject currency exceeding MAX_CURRENCY")
+	for bad_val: Variant in invalid_currencies:
+		var bad_eco: Dictionary = valid_base.duplicate(true)
+		bad_eco["economy"] = {"currency": bad_val}
+		assert_true(
+			GameStateCodec.decode(bad_eco) == null,
+			"Reject invalid currency: %s (type %d)" % [str(bad_val), typeof(bad_val)]
+		)
 
 
 func _test_failure_plants_validation() -> void:
-	describe("Plants validation rejects wrong types, missing fields, invalid IDs, negative planted_at")
+	describe("Plants validation rejects wrong types, missing fields, invalid IDs, invalid planted_at decimal strings and numerics")
 	var valid_base: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": []
 	}
 
@@ -399,7 +535,7 @@ func _test_failure_plants_validation() -> void:
 	var missing_inst_id: Dictionary = valid_base.duplicate(true)
 	missing_inst_id["plants"] = [{
 		"definition_id": "plant.holy_basil",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(missing_inst_id) == null, "Reject missing instance_id")
 
@@ -408,7 +544,7 @@ func _test_failure_plants_validation() -> void:
 	int_inst_id["plants"] = [{
 		"instance_id": 123,
 		"definition_id": "plant.holy_basil",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(int_inst_id) == null, "Reject integer instance_id")
 
@@ -417,7 +553,7 @@ func _test_failure_plants_validation() -> void:
 	empty_inst_id["plants"] = [{
 		"instance_id": "",
 		"definition_id": "plant.holy_basil",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(empty_inst_id) == null, "Reject empty instance_id")
 
@@ -425,7 +561,7 @@ func _test_failure_plants_validation() -> void:
 	var missing_def_id: Dictionary = valid_base.duplicate(true)
 	missing_def_id["plants"] = [{
 		"instance_id": "p-1",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(missing_def_id) == null, "Reject missing definition_id")
 
@@ -434,7 +570,7 @@ func _test_failure_plants_validation() -> void:
 	int_def_id["plants"] = [{
 		"instance_id": "p-1",
 		"definition_id": 456,
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(int_def_id) == null, "Reject integer definition_id")
 
@@ -443,7 +579,7 @@ func _test_failure_plants_validation() -> void:
 	invalid_syntax_def["plants"] = [{
 		"instance_id": "p-1",
 		"definition_id": "plant..holy_basil",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(invalid_syntax_def) == null, "Reject invalid syntax definition_id")
 
@@ -452,7 +588,7 @@ func _test_failure_plants_validation() -> void:
 	non_plant_def["plants"] = [{
 		"instance_id": "p-1",
 		"definition_id": "visitor.butterfly",
-		"planted_at": 1000
+		"planted_at": "1000"
 	}]
 	assert_true(GameStateCodec.decode(non_plant_def) == null, "Reject non-plant namespace definition_id")
 
@@ -464,49 +600,62 @@ func _test_failure_plants_validation() -> void:
 	}]
 	assert_true(GameStateCodec.decode(missing_planted_at) == null, "Reject missing planted_at")
 
-	# Planted_at wrong type (string)
-	var str_planted_at: Dictionary = valid_base.duplicate(true)
-	str_planted_at["plants"] = [{
-		"instance_id": "p-1",
-		"definition_id": "plant.holy_basil",
-		"planted_at": "1000"
-	}]
-	assert_true(GameStateCodec.decode(str_planted_at) == null, "Reject string planted_at")
+	# Rejections for planted_at: invalid canonical decimal strings and non-string types
+	var invalid_planted_at: Array = [
+		"",
+		"00",
+		"01",
+		"+1",
+		"-1",
+		" 1",
+		"1 ",
+		"1.0",
+		"1e3",
+		"01e2",
+		"abc",
+		"１２３",
+		"9223372036854775808", # overflow
+		1000,                  # numeric int rejected
+		1000.0,                # numeric float rejected
+		0,                     # numeric int 0 rejected
+		0.0,                   # numeric float 0.0 rejected
+		-1,                    # negative numeric rejected
+		1000.5,                # fractional float rejected
+		true,                  # bool rejected
+		false,                 # bool rejected
+		null,                  # null rejected
+		[],                    # array rejected
+		{},                    # dictionary rejected
+	]
 
-	# Planted_at negative
-	var neg_planted_at: Dictionary = valid_base.duplicate(true)
-	neg_planted_at["plants"] = [{
-		"instance_id": "p-1",
-		"definition_id": "plant.holy_basil",
-		"planted_at": -1
-	}]
-	assert_true(GameStateCodec.decode(neg_planted_at) == null, "Reject negative planted_at")
-
-	# Planted_at fractional float
-	var frac_planted_at: Dictionary = valid_base.duplicate(true)
-	frac_planted_at["plants"] = [{
-		"instance_id": "p-1",
-		"definition_id": "plant.holy_basil",
-		"planted_at": 1000.5
-	}]
-	assert_true(GameStateCodec.decode(frac_planted_at) == null, "Reject fractional float planted_at")
+	for bad_val: Variant in invalid_planted_at:
+		var bad_plant: Dictionary = valid_base.duplicate(true)
+		bad_plant["plants"] = [{
+			"instance_id": "p-1",
+			"definition_id": "plant.holy_basil",
+			"planted_at": bad_val
+		}]
+		assert_true(
+			GameStateCodec.decode(bad_plant) == null,
+			"Reject invalid planted_at: %s (type %d)" % [str(bad_val), typeof(bad_val)]
+		)
 
 
 func _test_failure_duplicate_plant_instance_ids() -> void:
 	describe("Duplicate plant runtime instance IDs reject the entire snapshot")
 	var dup_snapshot: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 100},
+		"economy": {"currency": "100"},
 		"plants": [
 			{
 				"instance_id": "dup-id",
 				"definition_id": "plant.holy_basil",
-				"planted_at": 1000
+				"planted_at": "1000"
 			},
 			{
 				"instance_id": "dup-id",
 				"definition_id": "plant.chili",
-				"planted_at": 2000
+				"planted_at": "2000"
 			}
 		]
 	}
@@ -519,7 +668,7 @@ func _test_failure_unexpected_keys() -> void:
 	# Unexpected key in root
 	var extra_root: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": [],
 		"unexpected_root_key": "bad"
 	}
@@ -529,7 +678,7 @@ func _test_failure_unexpected_keys() -> void:
 	var extra_eco: Dictionary = {
 		"schema_version": 1,
 		"economy": {
-			"currency": 0,
+			"currency": "0",
 			"extra_eco_key": 999
 		},
 		"plants": []
@@ -539,12 +688,12 @@ func _test_failure_unexpected_keys() -> void:
 	# Unexpected key in plant entry
 	var extra_plant: Dictionary = {
 		"schema_version": 1,
-		"economy": {"currency": 0},
+		"economy": {"currency": "0"},
 		"plants": [
 			{
 				"instance_id": "p-1",
 				"definition_id": "plant.holy_basil",
-				"planted_at": 1000,
+				"planted_at": "1000",
 				"growth_stage": "mature" # derived field strictly forbidden
 			}
 		]

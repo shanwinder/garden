@@ -19,6 +19,13 @@
 ##   GameClock, or RandomSource dependencies.
 ## - Decode is all-or-nothing: invalid or corrupted data returns null and never exposes
 ##   a partially reconstructed GameState.
+## - JSON number is not a safe lossless wire representation for arbitrary Garden int64
+##   persistent facts under Godot's JSON implementation (Godot JSON parses numbers as 64-bit float).
+## - Persistent int64 domain values (currency, planted_at) are encoded as canonical decimal Strings
+##   to prevent 64-bit float precision loss through Godot JSON stringify/parse.
+## - Runtime domain values remain int; string conversion exists only at the persistence wire boundary.
+## - schema_version remains a small numeric discriminator (accepts native int 1 and JSON-parsed float 1.0).
+## - No schema migration exists because V1 has not yet reached filesystem persistence.
 class_name GameStateCodec
 extends RefCounted
 
@@ -38,11 +45,18 @@ const KEY_INSTANCE_ID: String = "instance_id"
 const KEY_DEFINITION_ID: String = "definition_id"
 const KEY_PLANTED_AT: String = "planted_at"
 
+## Maximum representable signed 64-bit integer in GDScript (2^63 - 1 = 0x7FFFFFFFFFFFFFFF).
+const MAX_INT64: int = 9223372036854775807
+const MAX_INT64_DIV_10: int = 922337203685477580
+const MAX_INT64_MOD_10: int = 7
+
 
 ## Encodes an authoritative [param state] into a JSON-compatible V1 snapshot dictionary.
 ##
 ## Requirements and guarantees:
 ## - Returns a new Dictionary containing only JSON-compatible primitive types (Dictionary, Array, String, int).
+## - Persistent int64 domain values (currency, planted_at) are encoded as exact canonical decimal Strings
+##   to prevent 64-bit float precision loss through Godot JSON stringify/parse.
 ## - Plants are serialized in deterministic ascending order of runtime instance ID.
 ## - Does not serialize derived growth data or static definition resources.
 ## - Does not mutate [param state].
@@ -53,7 +67,7 @@ static func encode(state: GameState) -> Dictionary:
 
 	var economy: EconomyState = state.get_economy()
 	var economy_data: Dictionary = {
-		KEY_CURRENCY: economy.get_currency(),
+		KEY_CURRENCY: str(economy.get_currency()),
 	}
 
 	var plants_collection: PlantCollectionState = state.get_plants()
@@ -64,7 +78,7 @@ static func encode(state: GameState) -> Dictionary:
 		plants_data.append({
 			KEY_INSTANCE_ID: plant.get_runtime_instance_id(),
 			KEY_DEFINITION_ID: plant.get_definition_id(),
-			KEY_PLANTED_AT: plant.get_planted_at(),
+			KEY_PLANTED_AT: str(plant.get_planted_at()),
 		})
 
 	return {
@@ -78,10 +92,14 @@ static func encode(state: GameState) -> Dictionary:
 ##
 ## Validation and guarantees:
 ## - [param snapshot] must be a Dictionary with exact allowed root keys.
-## - schema_version must be integer 1 (rejects unsupported versions, 0, 2, strings, floats).
-## - economy must be a Dictionary with exact allowed keys and non-negative integer currency.
-## - currency must satisfy 0 <= currency <= EconomyState.MAX_CURRENCY.
+## - schema_version must be an integral JSON number exactly equal to 1 (accepts native int 1
+##   and JSON-deserialized float 1.0; rejects unsupported versions, 0, 2, strings, booleans, fractional floats).
+## - economy must be a Dictionary with exact allowed keys and canonical decimal String currency.
+## - currency must be a canonical decimal String satisfying 0 <= currency <= EconomyState.MAX_CURRENCY.
+## - Numeric currency (int, float) is strictly rejected to enforce string wire fidelity.
 ## - plants must be an Array of Dictionaries with exact allowed keys.
+## - planted_at must be a canonical decimal String satisfying 0 <= planted_at <= MAX_INT64.
+## - Numeric planted_at (int, float) is strictly rejected to enforce string wire fidelity.
 ## - Each plant entry must satisfy PlantState.is_valid().
 ## - Duplicate runtime instance IDs reject the entire snapshot.
 ## - Unknown/unexpected keys in root, economy, or plant objects are rejected.
@@ -104,11 +122,9 @@ static func decode(snapshot: Variant) -> GameState:
 		if key_str != KEY_SCHEMA_VERSION and key_str != KEY_ECONOMY and key_str != KEY_PLANTS:
 			return null
 
-	# Validate schema_version.
+	# Validate schema_version (accepts int 1 or JSON-parsed float 1.0).
 	var raw_version: Variant = root_dict[KEY_SCHEMA_VERSION]
-	if not _is_integral(raw_version):
-		return null
-	if _to_int(raw_version) != CURRENT_SCHEMA_VERSION:
+	if not _is_valid_schema_version(raw_version):
 		return null
 
 	# Validate economy dictionary.
@@ -128,15 +144,11 @@ static func decode(snapshot: Variant) -> GameState:
 			return null
 
 	var raw_currency: Variant = economy_dict[KEY_CURRENCY]
-	if not _is_integral(raw_currency):
+	var parsed_currency: Variant = _parse_canonical_non_negative_int(raw_currency)
+	if parsed_currency == null:
 		return null
 
-	if typeof(raw_currency) == TYPE_FLOAT:
-		var f_cur: float = raw_currency
-		if f_cur < 0.0 or f_cur > float(EconomyState.MAX_CURRENCY):
-			return null
-
-	var currency: int = _to_int(raw_currency)
+	var currency: int = parsed_currency
 	if currency < 0 or currency > EconomyState.MAX_CURRENCY:
 		return null
 
@@ -179,15 +191,15 @@ static func decode(snapshot: Variant) -> GameState:
 			return null
 		if typeof(raw_definition_id) != TYPE_STRING:
 			return null
-		if not _is_integral(raw_planted_at):
+
+		var parsed_planted_at: Variant = _parse_canonical_non_negative_int(raw_planted_at)
+		if parsed_planted_at == null:
 			return null
 
-		if typeof(raw_planted_at) == TYPE_FLOAT:
-			var f_planted: float = raw_planted_at
-			if f_planted < 0.0 or f_planted > float(EconomyState.MAX_CURRENCY):
-				return null
+		var planted_at: int = parsed_planted_at
+		if planted_at < 0 or planted_at > MAX_INT64:
+			return null
 
-		var planted_at: int = _to_int(raw_planted_at)
 		var plant_state: PlantState = PlantState.new(
 			raw_instance_id,
 			raw_definition_id,
@@ -217,24 +229,54 @@ static func decode(snapshot: Variant) -> GameState:
 	return reconstructed
 
 
-## Returns true if [param value] represents an integral numeric value.
-##
-## Handles both GDScript native TYPE_INT and JSON-deserialized TYPE_FLOAT without fractional parts.
-## Rejects boolean, string, null, NaN, INF, out-of-range floats, and floats with non-zero fractional parts.
-static func _is_integral(value: Variant) -> bool:
-	var val_type: int = typeof(value)
+## Validates that [param raw_version] is an integral numeric value representing CURRENT_SCHEMA_VERSION.
+## Accepts native int 1 and JSON-deserialized float 1.0.
+## Rejects boolean, string, null, NaN, INF, unsupported versions (0, 2), and non-integral floats.
+static func _is_valid_schema_version(raw_version: Variant) -> bool:
+	var val_type: int = typeof(raw_version)
 	if val_type == TYPE_INT:
-		return true
+		return raw_version == CURRENT_SCHEMA_VERSION
 	if val_type == TYPE_FLOAT:
-		var f: float = value
-		if not is_finite(f) or floor(f) != f:
-			return false
-		if f > float(EconomyState.MAX_CURRENCY) or f < -float(EconomyState.MAX_CURRENCY):
-			return false
-		return true
+		var f: float = raw_version
+		return is_finite(f) and floor(f) == f and int(f) == CURRENT_SCHEMA_VERSION
 	return false
 
 
-## Converts an integer-compatible Variant to [code]int[/code].
-static func _to_int(value: Variant) -> int:
-	return int(value)
+## Parses a canonical non-negative integer decimal string into an [code]int[/code].
+##
+## Requirements and guarantees:
+## - Requires TYPE_STRING.
+## - Accepts exactly "0" or "1"-"9" followed by zero or more "0"-"9" digits (ASCII only).
+## - Detects signed 64-bit integer overflow BEFORE multiplication and addition.
+## - Never converts through float.
+## - Never silently clamps or saturates.
+## - Returns the parsed [code]int[/code] on success, or [code]null[/code] on any validation/overflow failure.
+static func _parse_canonical_non_negative_int(value: Variant) -> Variant:
+	if typeof(value) != TYPE_STRING:
+		return null
+
+	var text: String = value
+	var length: int = text.length()
+	if length == 0:
+		return null
+
+	# "0" is the only valid number with leading zero.
+	if text == "0":
+		return 0
+
+	# Any other valid canonical number must start with '1'..'9'.
+	var first_code: int = text.unicode_at(0)
+	if first_code < 49 or first_code > 57: # ASCII '1' to '9'
+		return null
+
+	var result: int = 0
+	for i in range(length):
+		var code: int = text.unicode_at(i)
+		if code < 48 or code > 57: # ASCII '0' to '9'
+			return null
+		var digit: int = code - 48
+		if result > MAX_INT64_DIV_10 or (result == MAX_INT64_DIV_10 and digit > MAX_INT64_MOD_10):
+			return null
+		result = result * 10 + digit
+
+	return result
