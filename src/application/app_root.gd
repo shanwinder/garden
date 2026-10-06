@@ -12,10 +12,11 @@
 ##
 ## Composition:
 ##   AppRoot
-##   ├── game_clock:      GameClock           -> SystemGameClock
-##   ├── random_source:   RandomSource        -> GodotRandomSource
-##   ├── save_repository: LocalSaveRepository -> LocalSaveRepository
-##   └── game_session:    GameSession         -> owns GameState (null until bootstrapped)
+##   ├── game_clock:            GameClock            -> SystemGameClock
+##   ├── random_source:         RandomSource         -> GodotRandomSource
+##   ├── save_repository:       LocalSaveRepository  -> LocalSaveRepository
+##   ├── lifecycle_coordinator: LifecycleCoordinator -> LifecycleCoordinator
+##   └── game_session:          GameSession          -> owns GameState (null until bootstrapped)
 ##
 ## Dependency direction:
 ##   AppRoot constructs infrastructure services and the active game session.
@@ -25,7 +26,8 @@
 ## Autoload rule:
 ##   Only one Autoload exists in this project: App -> res://src/application/app_root.gd.
 ##   GameClock, SystemGameClock, FakeGameClock, GodotRandomSource, FakeRandomSource,
-##   LocalSaveRepository, GameSession, and GameState must not become Autoloads.
+##   LocalSaveRepository, LifecycleCoordinator, GameSession, and GameState must
+##   not become Autoloads.
 class_name AppRoot
 extends Node
 
@@ -44,6 +46,10 @@ var random_source: RandomSource
 ## The persistence repository for local state storage.
 ## Constructed once at composition time or injected during testing.
 var save_repository: LocalSaveRepository
+
+## The coordinator for mobile pause/resume persistence checkpoints.
+## Constructed once at composition time using save_repository; never replaced at runtime.
+var lifecycle_coordinator: LifecycleCoordinator
 
 ## The active gameplay session for this application instance.
 ## Constructed during startup bootstrap; null prior to bootstrap or if
@@ -65,11 +71,29 @@ func _init(save_repository_override: LocalSaveRepository = null) -> void:
 		save_repository = save_repository_override
 	else:
 		save_repository = LocalSaveRepository.new()
+	lifecycle_coordinator = LifecycleCoordinator.new(save_repository)
 	game_session = null
 
 
 func _ready() -> void:
 	bootstrap_session()
+
+
+## Centralized Godot lifecycle notification handler.
+##
+## Routes mobile pause and resume notifications to lifecycle_coordinator.
+## Safely ignores early construction-time notifications if coordinator is null.
+## Focus events (FOCUS_IN, FOCUS_OUT) are intentionally not handled here as
+## they are not persistence checkpoint boundaries.
+func _notification(what: int) -> void:
+	if lifecycle_coordinator == null:
+		return
+
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED:
+			lifecycle_coordinator.on_application_paused(game_session)
+		NOTIFICATION_APPLICATION_RESUMED:
+			lifecycle_coordinator.on_application_resumed()
 
 
 ## One-time bootstrap of the active GameSession from local persistence.

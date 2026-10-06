@@ -53,6 +53,17 @@ func run_tests() -> void:
 	_test_ready_integration()
 	_test_autoload_registration()
 	_test_no_unapproved_autoloads()
+	_test_lifecycle_coordinator_composition()
+	_test_notification_routing_pause_and_resume()
+	_test_duplicate_pause_routing()
+	_test_focus_out_does_not_save()
+	_test_invalid_data_startup_followed_by_paused()
+	_test_io_error_startup_followed_by_paused()
+	_test_no_save_startup_pause_creates_primary()
+	_test_valid_primary_mutation_pause_checkpoint()
+	_test_backup_recovered_session_pause_checkpoint()
+	_test_missing_primary_backup_recovered_pause_checkpoint()
+	_test_early_notification_safety()
 
 
 func _test_instantiation() -> void:
@@ -64,6 +75,13 @@ func _test_instantiation() -> void:
 	assert_true(root.game_clock != null, "game_clock must not be null")
 	assert_true(root.random_source != null, "random_source must not be null")
 	assert_true(root.save_repository != null, "save_repository must not be null")
+	assert_true(root.lifecycle_coordinator != null, "lifecycle_coordinator must not be null")
+	assert_true(root.lifecycle_coordinator is LifecycleCoordinator, "lifecycle_coordinator must be LifecycleCoordinator")
+	assert_eq(
+		root.lifecycle_coordinator.get_save_repository(),
+		root.save_repository,
+		"lifecycle_coordinator must use the exact same save_repository instance"
+	)
 	assert_eq(root.game_session, null, "game_session must be null before bootstrap")
 	assert_false(root.is_session_bootstrapped(), "is_session_bootstrapped must be false before bootstrap")
 	assert_false(root.has_active_session(), "has_active_session must be false before bootstrap")
@@ -394,3 +412,318 @@ func _create_sample_state(currency: int, plant_count: int = 0) -> GameState:
 		var plant: PlantState = PlantState.new("plant_%d" % i, "plant.holy_basil", 1700000000 + i)
 		state.get_plants().try_add_plant(plant)
 	return state
+
+
+func _test_lifecycle_coordinator_composition() -> void:
+	describe("AppRoot composes LifecycleCoordinator with the exact same save_repository instance")
+	_cleanup_test_files()
+	var custom_repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(custom_repo)
+
+	assert_true(root.lifecycle_coordinator != null, "coordinator must not be null")
+	assert_true(root.lifecycle_coordinator is LifecycleCoordinator, "must be LifecycleCoordinator")
+	assert_eq(
+		root.lifecycle_coordinator.get_save_repository(),
+		custom_repo,
+		"coordinator must share exact injected save_repository reference"
+	)
+	assert_eq(
+		root.lifecycle_coordinator.get_save_repository(),
+		root.save_repository,
+		"coordinator repository must match root.save_repository"
+	)
+	assert_false(
+		root.lifecycle_coordinator.is_application_paused(),
+		"coordinator must start in active (not paused) state"
+	)
+	root.free()
+
+
+func _test_notification_routing_pause_and_resume() -> void:
+	describe("AppRoot routes NOTIFICATION_APPLICATION_PAUSED and RESUMED to LifecycleCoordinator")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+
+	assert_true(root.has_active_session(), "active session required")
+	assert_false(root.lifecycle_coordinator.is_application_paused(), "initially active")
+
+	# Pause notification.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_true(root.lifecycle_coordinator.is_application_paused(), "must be marked paused")
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"pause outcome must be SAVED"
+	)
+	assert_true(FileAccess.file_exists(TEST_PRIMARY), "PRIMARY must be saved on pause")
+
+	# Resume notification.
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_false(root.lifecycle_coordinator.is_application_paused(), "must be active after resume")
+
+	# Second pause after resume.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_true(root.lifecycle_coordinator.is_application_paused(), "must be paused again")
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"second pause outcome must be SAVED"
+	)
+	root.free()
+
+
+func _test_duplicate_pause_routing() -> void:
+	describe("Duplicate NOTIFICATION_APPLICATION_PAUSED does not save twice")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"first pause must save"
+	)
+
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.IGNORED_DUPLICATE_PAUSE,
+		"second pause must be ignored duplicate"
+	)
+
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.IGNORED_DUPLICATE_PAUSE,
+		"third pause must be ignored duplicate"
+	)
+	root.free()
+
+
+func _test_focus_out_does_not_save() -> void:
+	describe("FOCUS_OUT and FOCUS_IN do not trigger persistence or alter pause state")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+
+	assert_false(root.lifecycle_coordinator.is_application_paused(), "initially active")
+
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	assert_false(root.lifecycle_coordinator.is_application_paused(), "FOCUS_OUT must not pause")
+	assert_eq(root.lifecycle_coordinator.get_last_pause_outcome(), null, "FOCUS_OUT must not record outcome")
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "FOCUS_OUT must not create PRIMARY save")
+
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	assert_false(root.lifecycle_coordinator.is_application_paused(), "FOCUS_IN must not change state")
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "FOCUS_IN must not create save")
+	root.free()
+
+
+func _test_invalid_data_startup_followed_by_paused() -> void:
+	describe("INVALID_DATA startup followed by PAUSED does not touch save files")
+	_cleanup_test_files()
+	_write_raw_file(TEST_PRIMARY, "{\"corrupt_primary\": true,")
+	_write_raw_file(TEST_BACKUP, "{\"corrupt_backup\": true,")
+	var pri_bytes: String = _read_raw_file(TEST_PRIMARY)
+	var bak_bytes: String = _read_raw_file(TEST_BACKUP)
+
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(load_result.get_status(), LocalSaveLoadResult.INVALID_DATA, "bootstrap must be INVALID_DATA")
+	assert_false(root.has_active_session(), "game_session must be null")
+
+	# Dispatch PAUSED notification.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"pause must return SKIPPED_NO_ACTIVE_SESSION when session is blocked"
+	)
+	assert_eq(_read_raw_file(TEST_PRIMARY), pri_bytes, "PRIMARY bytes must remain untouched")
+	assert_eq(_read_raw_file(TEST_BACKUP), bak_bytes, "BACKUP bytes must remain untouched")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "no TEMP file must be created")
+	assert_false(FileAccess.file_exists(TEST_CORRUPT), "no CORRUPT file must be created by pause")
+	root.free()
+
+
+func _test_io_error_startup_followed_by_paused() -> void:
+	describe("IO_ERROR startup followed by PAUSED does not create session or save")
+	var invalid_repo: LocalSaveRepository = LocalSaveRepository.new("", "", "", "")
+	var root: AppRoot = AppRoot.new(invalid_repo)
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(load_result.get_status(), LocalSaveLoadResult.IO_ERROR, "bootstrap must be IO_ERROR")
+	assert_false(root.has_active_session(), "game_session must be null")
+
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"pause must skip save on IO_ERROR blocked startup"
+	)
+	assert_false(root.has_active_session(), "session must remain null")
+	root.free()
+
+
+func _test_no_save_startup_pause_creates_primary() -> void:
+	describe("NO_SAVE startup followed by PAUSED creates first valid PRIMARY save")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(load_result.get_status(), LocalSaveLoadResult.NO_SAVE, "status must be NO_SAVE")
+	assert_true(root.has_active_session(), "session must be active fresh state")
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "PRIMARY must not exist before pause")
+
+	# First PAUSED transition.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"pause save must succeed"
+	)
+	assert_true(FileAccess.file_exists(TEST_PRIMARY), "PRIMARY must exist after pause")
+
+	# Verify created save on disk.
+	var verify_load: LocalSaveLoadResult = repo.load()
+	assert_eq(verify_load.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "persisted file must be valid PRIMARY")
+	assert_eq(verify_load.get_state().get_economy().get_currency(), 0, "currency must match fresh session")
+	root.free()
+
+
+func _test_valid_primary_mutation_pause_checkpoint() -> void:
+	describe("Valid PRIMARY startup followed by runtime mutation persists correctly at PAUSED")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var initial_state: GameState = _create_sample_state(100, 1)
+	assert_true(repo.save(initial_state), "setup save must succeed")
+
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+	assert_eq(root.game_session.get_currency(), 100, "initial loaded currency must be 100")
+
+	# Mutate authoritative runtime state through session.
+	assert_true(root.game_session.grant_currency(75), "grant currency must succeed")
+	assert_eq(root.game_session.get_currency(), 175, "mutated currency must be 175")
+
+	# Dispatch PAUSED checkpoint.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"pause outcome must be SAVED"
+	)
+
+	# Verify PRIMARY holds mutated state (175) and BACKUP holds previous state A (100).
+	var verify_repo: LocalSaveRepository = _create_test_repo()
+	var primary_cand: LocalSaveRepository.CandidateReadResult = verify_repo._read_and_validate(TEST_PRIMARY)
+	var backup_cand: LocalSaveRepository.CandidateReadResult = verify_repo._read_and_validate(TEST_BACKUP)
+
+	assert_true(primary_cand.is_valid(), "PRIMARY must be valid")
+	assert_eq(primary_cand.state.get_economy().get_currency(), 175, "PRIMARY must have mutated currency 175")
+	assert_true(backup_cand.is_valid(), "BACKUP must be valid")
+	assert_eq(backup_cand.state.get_economy().get_currency(), 100, "BACKUP must preserve previous currency 100")
+	root.free()
+
+
+func _test_backup_recovered_session_pause_checkpoint() -> void:
+	describe("Backup-recovered session persists safely at PAUSED using repository rotation policy")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state_a: GameState = _create_sample_state(80, 1)
+	var state_b: GameState = _create_sample_state(160, 2)
+	assert_true(repo.save(state_a), "save state_a")
+	assert_true(repo.save(state_b), "save state_b (state_a is now BACKUP)")
+
+	# Corrupt PRIMARY.
+	_write_raw_file(TEST_PRIMARY, "{corrupted primary content}")
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+	assert_eq(load_result.get_status(), LocalSaveLoadResult.LOADED_BACKUP, "must recover from BACKUP")
+	assert_eq(root.game_session.get_currency(), 80, "recovered currency must be 80")
+
+	# Mutate recovered session.
+	assert_true(root.game_session.grant_currency(20), "grant 20 currency")
+	assert_eq(root.game_session.get_currency(), 100, "session currency is now 100")
+
+	# Pause checkpoint.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"pause outcome must be SAVED"
+	)
+
+	# Verify: new PRIMARY has 100, BACKUP has 80, CORRUPT has old corrupt PRIMARY.
+	var verify_repo: LocalSaveRepository = _create_test_repo()
+	var pri_res: LocalSaveRepository.CandidateReadResult = verify_repo._read_and_validate(TEST_PRIMARY)
+	var bak_res: LocalSaveRepository.CandidateReadResult = verify_repo._read_and_validate(TEST_BACKUP)
+
+	assert_true(pri_res.is_valid(), "PRIMARY must be valid")
+	assert_eq(pri_res.state.get_economy().get_currency(), 100, "PRIMARY must have 100")
+	assert_true(bak_res.is_valid(), "BACKUP must be valid")
+	assert_eq(bak_res.state.get_economy().get_currency(), 80, "BACKUP must preserve recovered state 80")
+	assert_true(FileAccess.file_exists(TEST_CORRUPT), "corrupt PRIMARY must be quarantined to CORRUPT")
+	root.free()
+
+
+func _test_missing_primary_backup_recovered_pause_checkpoint() -> void:
+	describe("Missing-PRIMARY backup-recovered session persists safely as new PRIMARY on PAUSED")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state_a: GameState = _create_sample_state(60, 1)
+	var state_b: GameState = _create_sample_state(120, 2)
+	assert_true(repo.save(state_a), "save state_a")
+	assert_true(repo.save(state_b), "save state_b")
+
+	# Remove PRIMARY so only BACKUP exists.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_PRIMARY))
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "PRIMARY removed")
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+	assert_eq(load_result.get_status(), LocalSaveLoadResult.LOADED_BACKUP, "recovered from BACKUP")
+	assert_eq(root.game_session.get_currency(), 60, "recovered currency 60")
+
+	# Mutate and pause.
+	root.game_session.grant_currency(15)
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SAVED,
+		"pause outcome must be SAVED"
+	)
+	assert_true(FileAccess.file_exists(TEST_PRIMARY), "new PRIMARY must be created")
+	assert_true(FileAccess.file_exists(TEST_BACKUP), "BACKUP must still exist")
+
+	var verify_repo: LocalSaveRepository = _create_test_repo()
+	var pri_res: LocalSaveRepository.CandidateReadResult = verify_repo._read_and_validate(TEST_PRIMARY)
+	assert_true(pri_res.is_valid(), "PRIMARY valid")
+	assert_eq(pri_res.state.get_economy().get_currency(), 75, "PRIMARY currency 75")
+	root.free()
+
+
+func _test_early_notification_safety() -> void:
+	describe("AppRoot._notification() tolerates early notifications before coordinator initialization")
+	var root: AppRoot = AppRoot.new()
+	# Simulate pre-init or null coordinator state safely.
+	root.lifecycle_coordinator = null
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	assert_true(true, "early notifications on null coordinator must not crash")
+	root.free()
