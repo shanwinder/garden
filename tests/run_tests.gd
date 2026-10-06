@@ -35,6 +35,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestPlantCollectionState.new(),
 		TestGameStateCodec.new(),
 		TestLocalSaveRepository.new(),
+		TestPersistenceLifecycleIntegration.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────

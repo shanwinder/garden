@@ -797,11 +797,13 @@ The MVP uses local on-device persistence.
 
 ### Save format
 
-Use a versioned, inspectable data format composed only of explicit serializable primitives. **JSON is the preferred initial format** unless implementation reveals a concrete reason to change it.
+Use a versioned, inspectable data format composed only of explicit serializable primitives. **JSON is the active format.**
 
 Do not serialize live scene trees or arbitrary Node graphs as the save contract.
 
-Conceptual save shape:
+#### Original Conceptual Shape (Historical / Non-Normative)
+
+During early architectural planning, a conceptual save structure was outlined as follows:
 
 ```json
 {
@@ -818,52 +820,113 @@ Conceptual save shape:
 }
 ```
 
-The exact schema will be specified when persistence is implemented, but `schema_version` is required from version 1.
+This conceptual shape served to illustrate versioning and modular data groupings before persistence was implemented.
 
-### Save pipeline
+#### Current Implemented V1 Contract (Normative)
 
-Conceptually:
+Persistence is now implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. The canonical V1 wire format is:
 
-```text
-GameState
-  ↓
-SaveMapper / DTO conversion
-  ↓
-Validation / serialization
-  ↓
-temporary file
-  ↓
-safe replacement of primary save
-  ↓
-optional last-known-good backup
+```json
+{
+  "schema_version": 1,
+  "economy": {
+    "currency": "250"
+  },
+  "plants": [
+    {
+      "instance_id": "plant-instance-a",
+      "definition_id": "plant.holy_basil",
+      "planted_at": "1700000000"
+    }
+  ]
+}
 ```
 
-### Load pipeline
+#### Int64 Wire Encoding Rule
 
-Conceptually:
+Important: `currency` and `planted_at` are canonical non-negative decimal **strings** at the JSON wire boundary.
 
-```text
-read bytes/text
-  ↓
-parse
-  ↓
-validate structure/types/ranges
-  ↓
-migrate old schema if needed
-  ↓
-map into GameState
-  ↓
-validate invariants
-  ↓
-start GameSession
-```
+- Runtime/domain types remain `int` (signed 64-bit integer).
+- Reason: Godot's built-in `JSON` parser represents numeric values as 64-bit floating-point numbers (`float`). A 64-bit IEEE-754 float cannot losslessly represent arbitrary signed 64-bit integers beyond $2^{53}$ (9,007,199,254,740,992). To avoid precision loss on large values up to `9223372036854775807`, persistent int64 domain values are encoded as exact decimal strings on the wire.
+- These strings are persistence-wire encoding only; they are not domain-level string types.
+- Canonical decimal string rules:
+  - Exact ASCII decimal digits without leading zeros (except the single value `"0"`).
+  - No explicit sign (`+` or `-`), no decimal point, and no scientific notation.
+  - Valid wire examples: `"0"`, `"42"`, `"9007199254740993"`, `"9223372036854775807"`.
+  - Invalid wire examples: `"01"` (leading zero), `"+1"` (explicit plus), `"-1"` (negative), `"1.0"` (float), `"1e3"` (exponent).
 
-### Save corruption behavior
+#### Strict V1 Validation Rules
 
-- Do not silently treat malformed data as a valid empty save.
-- Preserve diagnostics in development.
-- If a last-known-good backup exists, recovery may be attempted explicitly.
-- Never overwrite a potentially recoverable save with an empty replacement before determining what failed.
+The V1 codec enforces strict schema integrity:
+
+- `CURRENT_SCHEMA_VERSION = 1`
+- Root exact required keys: `schema_version`, `economy`, `plants`.
+- Economy exact required key: `currency`.
+- Plant exact required keys: `instance_id`, `definition_id`, `planted_at`.
+- Unexpected keys in root, economy, or plant objects: rejected.
+- Unsupported schema versions: rejected.
+- Duplicate plant runtime `instance_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
+- Malformed required data: rejected.
+- `ContentCatalog` existence validation: not implemented yet (syntax and namespace prefix validation only).
+- Derived plant growth stage: not persisted (computed at runtime from `planted_at`).
+- `PlantDefinition` static data: not duplicated into save.
+
+#### Local Storage File Layout
+
+The on-device local storage contract uses four defined paths:
+
+- **PRIMARY (`user://garden_save.json`)**: Active canonical save file.
+- **TEMP (`user://garden_save.tmp`)**: Transient file used during safe write operations.
+- **BACKUP (`user://garden_save.bak`)**: Last-known-good backup rotated from the preceding valid PRIMARY.
+- **CORRUPT (`user://garden_save.corrupt`)**: Quarantine file for corrupt PRIMARY when a valid BACKUP exists.
+
+Rules:
+- `TEMP` and `CORRUPT` are **not** normal load candidates.
+- Load authority hierarchy:
+  - Valid `PRIMARY`
+  - → otherwise valid `BACKUP`
+  - → otherwise typed failure / `NO_SAVE` result.
+
+#### Safe-Write Implementation Status
+
+The save pipeline implements an application-level safe replacement strategy rather than relying on OS-level atomic filesystem transactions:
+
+1. Encode authoritative `GameState` using `GameStateCodec.encode()`.
+2. Write serialized JSON to `TEMP`.
+3. Flush and close `TEMP`.
+4. Read, parse, and decode `TEMP` via `GameStateCodec.decode()` to verify write integrity.
+5. Inspect and validate existing `PRIMARY`.
+6. Safe promotion/rotation:
+   - **First save (no PRIMARY)**: promote `TEMP` → `PRIMARY`.
+   - **Normal rotation (valid PRIMARY)**: rotate `PRIMARY` → `BACKUP`, promote `TEMP` → `PRIMARY` (with rollback `BACKUP` → `PRIMARY` if promotion fails).
+   - **Corrupt PRIMARY with valid BACKUP**: quarantine `PRIMARY` → `CORRUPT`, promote `TEMP` → `PRIMARY`.
+   - **Corrupt PRIMARY with missing/invalid BACKUP**: abort save to preserve potentially recoverable data.
+7. PRIMARY is never directly truncated during ordinary save.
+
+#### Load Outcomes and Startup Policy
+
+`LocalSaveRepository.load()` returns a strongly-typed `LocalSaveLoadResult` with five possible statuses:
+
+- `LOADED_PRIMARY`: Valid state loaded from primary save.
+- `LOADED_BACKUP`: Valid state recovered from backup.
+- `NO_SAVE`: No save files found (clean first run).
+- `INVALID_DATA`: Files exist but contain corrupt or malformed data.
+- `IO_ERROR`: Unrecoverable filesystem I/O error occurred.
+
+AppRoot startup policy:
+- `LOADED_PRIMARY` ⇒ Active `GameSession` constructed from loaded state.
+- `LOADED_BACKUP` ⇒ Active `GameSession` constructed from recovered state.
+- `NO_SAVE` ⇒ Fresh in-memory `GameSession` constructed.
+- `INVALID_DATA` ⇒ No `GameSession` created (`game_session == null`).
+- `IO_ERROR` ⇒ No `GameSession` created (`game_session == null`).
+
+Reason: Blocked startup must not create an empty session that a later lifecycle pause checkpoint could use to overwrite recoverable on-disk data.
+
+#### Presentation and Recovery UX Status
+
+`INVALID_DATA` and `IO_ERROR` are currently exposed through AppRoot startup results (`get_startup_load_result()`) for future presentation and recovery handling.
+
+Player-facing recovery UI (such as "Reset Save", "Restore Backup", "Delete Save", or "Continue Anyway" buttons) is intentionally out of scope for Milestone 5 and will be designed alongside the actual presentation layer in a dedicated task.
 
 ---
 
@@ -910,6 +973,13 @@ Do not rely exclusively on a graceful application-exit callback; Android may ter
 
 Save frequency must balance data safety with unnecessary storage writes.
 
+#### Implementation Status (Milestone 5)
+
+Milestone 5 currently implements exactly one approved meaningful boundary:
+- `APPLICATION_PAUSED`: Persists authoritative `GameSession` state via `LifecycleCoordinator` upon mobile pause notifications.
+
+All other save triggers (after purchase, planting, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
+
 ---
 
 ## 25. Android Lifecycle Architecture
@@ -950,6 +1020,23 @@ Do not apply offline progression independently in multiple places such as:
 - plant nodes individually.
 
 That pattern causes double counting. One coordinator/application operation owns the transition.
+
+#### Implementation Status (Milestone 5)
+
+This section remains the **LOCKED** target architecture. Milestone 5 implements the foundation lifecycle checkpoint:
+
+- **Currently implemented**:
+  - Startup load and bootstrap (`AppRoot.bootstrap_session()`);
+  - Pause persistence checkpoint (`LifecycleCoordinator.on_application_paused(game_session)`);
+  - Duplicate-pause suppression (`IGNORED_DUPLICATE_PAUSE`);
+  - Resume transition gate reset (`LifecycleCoordinator.on_application_resumed()`);
+  - Corruption-safe null-session behavior (`SKIPPED_NO_ACTIVE_SESSION`).
+
+- **Still NOT implemented**:
+  - Persisted lifecycle/session timestamp (`saved_at_utc`);
+  - Elapsed/offline progression calculation and application on resume;
+  - Weather/time-context advancement;
+  - Presentation and audio pause policies.
 
 ---
 
