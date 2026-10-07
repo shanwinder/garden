@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PlantDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/domain/plants/plant_definition.gd" id="1_plant_def"]
+
+[resource]
+script = ExtResource("1_plant_def")
+id = "plant.jasmine"
+sprout_after_seconds = 300
+growing_after_seconds = 1200
+mature_after_seconds = 3600
