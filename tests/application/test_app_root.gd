@@ -41,6 +41,13 @@ func teardown() -> void:
 func run_tests() -> void:
 	_test_instantiation()
 	_test_construction_io_free()
+	_test_plant_content_loader_composition()
+	_test_content_catalog_successful_bootstrap()
+	_test_content_catalog_idempotent_bootstrap()
+	_test_content_load_failure_blocks_session()
+	_test_content_invalid_definitions_blocks_session()
+	_test_content_success_with_persistence_failure_preserves_catalog()
+	_test_content_success_no_disk_writes_at_startup()
 	_test_no_save_bootstrap()
 	_test_primary_startup()
 	_test_backup_recovery_startup()
@@ -75,6 +82,8 @@ func _test_instantiation() -> void:
 	assert_true(root.game_clock != null, "game_clock must not be null")
 	assert_true(root.random_source != null, "random_source must not be null")
 	assert_true(root.save_repository != null, "save_repository must not be null")
+	assert_true(root.plant_content_loader != null, "plant_content_loader must not be null")
+	assert_true(root.plant_content_loader is PlantContentLoader, "plant_content_loader must be PlantContentLoader")
 	assert_true(root.lifecycle_coordinator != null, "lifecycle_coordinator must not be null")
 	assert_true(root.lifecycle_coordinator is LifecycleCoordinator, "lifecycle_coordinator must be LifecycleCoordinator")
 	assert_eq(
@@ -82,6 +91,15 @@ func _test_instantiation() -> void:
 		root.save_repository,
 		"lifecycle_coordinator must use the exact same save_repository instance"
 	)
+	assert_eq(root.content_catalog, null, "content_catalog must be null before bootstrap")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.NOT_ATTEMPTED,
+		"content bootstrap status must be NOT_ATTEMPTED before bootstrap"
+	)
+	assert_false(root.has_content_catalog(), "has_content_catalog must be false before bootstrap")
+	assert_eq(root.get_content_catalog(), null, "get_content_catalog must be null before bootstrap")
+	assert_eq(root.get_content_load_result(), null, "get_content_load_result must be null before bootstrap")
 	assert_eq(root.game_session, null, "game_session must be null before bootstrap")
 	assert_false(root.is_session_bootstrapped(), "is_session_bootstrapped must be false before bootstrap")
 	assert_false(root.has_active_session(), "has_active_session must be false before bootstrap")
@@ -94,6 +112,15 @@ func _test_construction_io_free() -> void:
 	_cleanup_test_files()
 	var repo: LocalSaveRepository = _create_test_repo()
 	var root: AppRoot = AppRoot.new(repo)
+	assert_eq(root.content_catalog, null, "content_catalog must be null upon construction")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.NOT_ATTEMPTED,
+		"content status must be NOT_ATTEMPTED upon construction"
+	)
+	assert_false(root.has_content_catalog(), "has_content_catalog must be false upon construction")
+	assert_eq(root.get_content_catalog(), null, "get_content_catalog must be null upon construction")
+	assert_eq(root.get_content_load_result(), null, "get_content_load_result must be null upon construction")
 	assert_eq(root.game_session, null, "game_session must be null upon construction")
 	assert_false(root.is_session_bootstrapped(), "is_session_bootstrapped must be false")
 	assert_false(root.has_active_session(), "has_active_session must be false")
@@ -102,6 +129,331 @@ func _test_construction_io_free() -> void:
 	assert_false(FileAccess.file_exists(TEST_TEMP), "construction must not create TEMP")
 	assert_false(FileAccess.file_exists(TEST_BACKUP), "construction must not create BACKUP")
 	assert_false(FileAccess.file_exists(TEST_CORRUPT), "construction must not create CORRUPT")
+	root.free()
+
+
+func _test_plant_content_loader_composition() -> void:
+	describe("AppRoot composes PlantContentLoader and supports optional constructor injection")
+	_cleanup_test_files()
+	var root_default: AppRoot = AppRoot.new()
+	assert_true(root_default.plant_content_loader != null, "default plant_content_loader must not be null")
+	assert_true(root_default.plant_content_loader is PlantContentLoader, "must be PlantContentLoader")
+	assert_eq(root_default.content_catalog, null, "content_catalog must be null upon construction")
+	assert_eq(
+		root_default.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.NOT_ATTEMPTED,
+		"content status must be NOT_ATTEMPTED before bootstrap"
+	)
+	assert_false(root_default.has_content_catalog(), "has_content_catalog must be false before bootstrap")
+	assert_eq(root_default.get_content_catalog(), null, "get_content_catalog must be null before bootstrap")
+	assert_eq(root_default.get_content_load_result(), null, "get_content_load_result must be null before bootstrap")
+	root_default.free()
+
+	var custom_loader: PlantContentLoader = PlantContentLoader.new()
+	var custom_repo: LocalSaveRepository = _create_test_repo()
+	var root_injected: AppRoot = AppRoot.new(custom_repo, custom_loader)
+	assert_eq(
+		root_injected.plant_content_loader,
+		custom_loader,
+		"injected plant_content_loader must match constructor argument"
+	)
+	assert_eq(
+		root_injected.save_repository,
+		custom_repo,
+		"injected save_repository must match constructor argument"
+	)
+	root_injected.free()
+
+
+func _test_content_catalog_successful_bootstrap() -> void:
+	describe("Successful bootstrap creates ContentCatalog with five expected production plant IDs and exact Resource references")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	var load_result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_true(load_result != null, "bootstrap result must not be null on successful content loading")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"status must be READY after successful content bootstrap"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true")
+	assert_true(root.content_catalog != null, "content_catalog must be non-null")
+	assert_eq(root.get_content_catalog(), root.content_catalog, "get_content_catalog must return content_catalog")
+
+	var catalog: ContentCatalog = root.get_content_catalog()
+	assert_eq(catalog.get_plant_count(), 5, "catalog must contain exactly 5 plants")
+
+	var expected_ids: Array[String] = [
+		"plant.banana",
+		"plant.chili",
+		"plant.holy_basil",
+		"plant.jasmine",
+		"plant.marigold",
+	]
+	assert_eq(catalog.get_all_plant_ids(), expected_ids, "catalog plant IDs must match expected 5 IDs in order")
+
+	for plant_id: String in expected_ids:
+		assert_true(catalog.has_plant(plant_id), "catalog must contain plant ID %s" % plant_id)
+		var plant_def: PlantDefinition = catalog.get_plant(plant_id)
+		assert_true(plant_def != null, "plant definition for %s must not be null" % plant_id)
+		assert_eq(plant_def.id, plant_id, "definition ID must match %s" % plant_id)
+		assert_true(plant_def.is_valid(), "plant definition %s must be valid" % plant_id)
+
+	# Verify exact Resource references (no deep cloning).
+	var loader: PlantContentLoader = PlantContentLoader.new()
+	var direct_load: PlantContentLoadResult = loader.load_production_definitions()
+	assert_true(direct_load.is_loaded(), "direct production load must succeed")
+	for def: PlantDefinition in direct_load.get_definitions():
+		var from_catalog: PlantDefinition = catalog.get_plant(def.id)
+		assert_eq(
+			from_catalog,
+			def,
+			"catalog definition for %s must be exact Resource reference from loader (no deep cloning)" % def.id
+		)
+
+	root.free()
+
+
+func _test_content_catalog_idempotent_bootstrap() -> void:
+	describe("Repeated bootstrap does not reload content and preserves identical ContentCatalog reference")
+	_cleanup_test_files()
+	var spy_loader: SpyPlantContentLoader = SpyPlantContentLoader.new()
+	var root: AppRoot = AppRoot.new(_create_test_repo(), spy_loader)
+
+	var res1: LocalSaveLoadResult = root.bootstrap_session()
+	assert_eq(spy_loader.load_call_count, 1, "first bootstrap must call loader once")
+	var catalog1: ContentCatalog = root.get_content_catalog()
+	assert_true(catalog1 != null, "catalog must exist after first bootstrap")
+
+	var res2: LocalSaveLoadResult = root.bootstrap_session()
+	assert_eq(spy_loader.load_call_count, 1, "second bootstrap must NOT call loader again")
+	var catalog2: ContentCatalog = root.get_content_catalog()
+	assert_eq(catalog1, catalog2, "repeated bootstrap must preserve identical ContentCatalog instance")
+	assert_eq(res1, res2, "repeated bootstrap must preserve identical save result")
+	root.free()
+
+
+func _test_content_load_failure_blocks_session() -> void:
+	describe("LOAD_FAILED content blocks session, suppresses save loading, preserves diagnostics, and prevents writes on pause")
+	_cleanup_test_files()
+	# Pre-populate PRIMARY with valid save data.
+	_write_raw_file(TEST_PRIMARY, "{\"schema_version\": 1, \"economy\": {\"currency\": \"100\"}, \"plants\": []}")
+	var primary_bytes_before: String = _read_raw_file(TEST_PRIMARY)
+
+	var failing_loader: FailingPlantContentLoader = FailingPlantContentLoader.new(
+		"res://content/plants/missing_test.tres",
+		"Simulated missing file"
+	)
+	var spy_repo: SpySaveRepository = _create_spy_repo()
+	var root: AppRoot = AppRoot.new(spy_repo, failing_loader)
+
+	var boot_result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(boot_result, null, "bootstrap_session must return null on content LOAD_FAILED")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.LOAD_FAILED,
+		"content status must be LOAD_FAILED"
+	)
+	assert_false(root.has_content_catalog(), "has_content_catalog must be false on LOAD_FAILED")
+	assert_eq(root.get_content_catalog(), null, "get_content_catalog must return null on LOAD_FAILED")
+	assert_eq(root.content_catalog, null, "content_catalog property must be null on LOAD_FAILED")
+	assert_eq(root.game_session, null, "game_session must be null on LOAD_FAILED")
+	assert_false(root.has_active_session(), "has_active_session must be false on LOAD_FAILED")
+	assert_true(root.is_session_bootstrapped(), "is_session_bootstrapped must be true after bootstrap attempt")
+	assert_eq(root.get_startup_load_result(), null, "get_startup_load_result must be null because persistence load was skipped")
+	assert_eq(spy_repo.load_call_count, 0, "save_repository.load() must NOT be called on content failure")
+
+	# Diagnostics verification.
+	var load_diag: PlantContentLoadResult = root.get_content_load_result()
+	assert_true(load_diag != null, "get_content_load_result must return diagnostic failure result")
+	assert_eq(load_diag.get_status(), PlantContentLoadResult.Status.LOAD_FAILED, "diagnostic status must be LOAD_FAILED")
+	assert_eq(load_diag.get_failed_path(), "res://content/plants/missing_test.tres", "failed path must be preserved")
+	assert_eq(load_diag.get_error_message(), "Simulated missing file", "error message must be preserved")
+
+	# Lifecycle pause anti-data-loss verification.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"pause must skip save when session is null"
+	)
+	assert_eq(spy_repo.save_call_count, 0, "save_repository.save() must NOT be called")
+	assert_eq(_read_raw_file(TEST_PRIMARY), primary_bytes_before, "PRIMARY save bytes must remain untouched")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "no TEMP file must be created")
+	assert_false(FileAccess.file_exists(TEST_BACKUP), "no BACKUP file must be created")
+	assert_false(FileAccess.file_exists(TEST_CORRUPT), "no CORRUPT file must be created")
+
+	# Repeated bootstrap idempotence on failure.
+	var second_boot: LocalSaveLoadResult = root.bootstrap_session()
+	assert_eq(second_boot, null, "repeated bootstrap on failed content must return null")
+	assert_eq(failing_loader.load_call_count, 1, "repeated bootstrap must NOT retry content loader")
+	assert_eq(spy_repo.load_call_count, 0, "persistence load still must not be called")
+
+	root.free()
+
+
+func _test_content_invalid_definitions_blocks_session() -> void:
+	describe("INVALID_DEFINITIONS blocks session, suppresses save loading, and prevents writes on pause")
+	_cleanup_test_files()
+	_write_raw_file(TEST_PRIMARY, "{\"valid_json\": true}")
+	var primary_bytes_before: String = _read_raw_file(TEST_PRIMARY)
+
+	# Case 1: Duplicate definition IDs.
+	var def_banana: PlantDefinition = _create_test_plant_definition("plant.banana")
+	var def_chili: PlantDefinition = _create_test_plant_definition("plant.chili")
+	var def_chili_dup: PlantDefinition = _create_test_plant_definition("plant.chili")
+	var def_jasmine: PlantDefinition = _create_test_plant_definition("plant.jasmine")
+	var def_marigold: PlantDefinition = _create_test_plant_definition("plant.marigold")
+	var dup_defs: Array[PlantDefinition] = [def_banana, def_chili, def_chili_dup, def_jasmine, def_marigold]
+
+	var loader_dup: CustomDefinitionsPlantContentLoader = CustomDefinitionsPlantContentLoader.new(dup_defs)
+	var spy_repo_dup: SpySaveRepository = _create_spy_repo()
+	var root_dup: AppRoot = AppRoot.new(spy_repo_dup, loader_dup)
+	var result_dup: LocalSaveLoadResult = root_dup.bootstrap_session()
+
+	assert_eq(result_dup, null, "bootstrap must return null on duplicate IDs")
+	assert_eq(
+		root_dup.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.INVALID_DEFINITIONS,
+		"status must be INVALID_DEFINITIONS on duplicate IDs"
+	)
+	assert_false(root_dup.has_content_catalog(), "has_content_catalog must be false")
+	assert_eq(root_dup.get_content_catalog(), null, "get_content_catalog must be null")
+	assert_eq(root_dup.game_session, null, "game_session must be null")
+	assert_false(root_dup.has_active_session(), "has_active_session must be false")
+	assert_eq(root_dup.get_startup_load_result(), null, "startup load result must be null")
+	assert_eq(spy_repo_dup.load_call_count, 0, "persistence load must not be called")
+
+	root_dup._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root_dup.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"pause must skip save on duplicate IDs"
+	)
+	assert_eq(spy_repo_dup.save_call_count, 0, "save must not be called")
+	root_dup.free()
+
+	# Case 2: Structurally invalid definition (growing <= sprout).
+	var def_invalid: PlantDefinition = _create_test_plant_definition("plant.holy_basil", 100, 50, 200)
+	var invalid_defs: Array[PlantDefinition] = [def_banana, def_chili, def_invalid, def_jasmine, def_marigold]
+	var loader_inv: CustomDefinitionsPlantContentLoader = CustomDefinitionsPlantContentLoader.new(invalid_defs)
+	var spy_repo_inv: SpySaveRepository = _create_spy_repo()
+	var root_inv: AppRoot = AppRoot.new(spy_repo_inv, loader_inv)
+	var result_inv: LocalSaveLoadResult = root_inv.bootstrap_session()
+
+	assert_eq(result_inv, null, "bootstrap must return null on invalid definition")
+	assert_eq(
+		root_inv.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.INVALID_DEFINITIONS,
+		"status must be INVALID_DEFINITIONS on invalid growth threshold"
+	)
+	assert_false(root_inv.has_content_catalog(), "has_content_catalog must be false")
+	assert_eq(root_inv.game_session, null, "game_session must be null")
+	assert_eq(spy_repo_inv.load_call_count, 0, "persistence load must not be called")
+	root_inv.free()
+
+	# Case 3: Incomplete definition set (fewer than 5 plants).
+	var def_basil: PlantDefinition = _create_test_plant_definition("plant.holy_basil")
+	var fewer_defs: Array[PlantDefinition] = [def_banana, def_chili, def_basil, def_jasmine]
+	var loader_fewer: CustomDefinitionsPlantContentLoader = CustomDefinitionsPlantContentLoader.new(fewer_defs)
+	var spy_repo_fewer: SpySaveRepository = _create_spy_repo()
+	var root_fewer: AppRoot = AppRoot.new(spy_repo_fewer, loader_fewer)
+	var result_fewer: LocalSaveLoadResult = root_fewer.bootstrap_session()
+
+	assert_eq(result_fewer, null, "bootstrap must return null on fewer than 5 plants")
+	assert_eq(
+		root_fewer.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.INVALID_DEFINITIONS,
+		"status must be INVALID_DEFINITIONS on incomplete count"
+	)
+	assert_false(root_fewer.has_content_catalog(), "has_content_catalog must be false")
+	assert_eq(root_fewer.game_session, null, "game_session must be null")
+	assert_eq(spy_repo_fewer.load_call_count, 0, "persistence load must not be called")
+	root_fewer.free()
+
+	# Case 4: 5 valid definitions, but wrong ID (e.g. plant.cactus instead of plant.banana).
+	var def_cactus: PlantDefinition = _create_test_plant_definition("plant.cactus")
+	var wrong_defs: Array[PlantDefinition] = [def_cactus, def_chili, def_basil, def_jasmine, def_marigold]
+	var loader_wrong: CustomDefinitionsPlantContentLoader = CustomDefinitionsPlantContentLoader.new(wrong_defs)
+	var spy_repo_wrong: SpySaveRepository = _create_spy_repo()
+	var root_wrong: AppRoot = AppRoot.new(spy_repo_wrong, loader_wrong)
+	var result_wrong: LocalSaveLoadResult = root_wrong.bootstrap_session()
+
+	assert_eq(result_wrong, null, "bootstrap must return null on wrong plant ID")
+	assert_eq(
+		root_wrong.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.INVALID_DEFINITIONS,
+		"status must be INVALID_DEFINITIONS on wrong plant ID"
+	)
+	assert_false(root_wrong.has_content_catalog(), "has_content_catalog must be false")
+	assert_eq(root_wrong.game_session, null, "game_session must be null")
+	assert_eq(spy_repo_wrong.load_call_count, 0, "persistence load must not be called")
+	root_wrong.free()
+
+	# Verify primary save file was never touched throughout all invalid-definition attempts.
+	assert_eq(_read_raw_file(TEST_PRIMARY), primary_bytes_before, "PRIMARY save bytes must remain untouched")
+
+
+func _test_content_success_with_persistence_failure_preserves_catalog() -> void:
+	describe("Successful content loading preserves ContentCatalog even when persistence load fails (INVALID_DATA or IO_ERROR)")
+	_cleanup_test_files()
+	# Case A: INVALID_DATA save.
+	_write_raw_file(TEST_PRIMARY, "{corrupted json}")
+	_write_raw_file(TEST_BACKUP, "{corrupted backup}")
+	var root_invalid: AppRoot = AppRoot.new(_create_test_repo())
+	var res_invalid: LocalSaveLoadResult = root_invalid.bootstrap_session()
+
+	assert_eq(
+		root_invalid.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY even if persistence fails"
+	)
+	assert_true(root_invalid.has_content_catalog(), "has_content_catalog must be true")
+	assert_true(root_invalid.get_content_catalog() != null, "catalog must be retained")
+	assert_eq(root_invalid.get_content_catalog().get_plant_count(), 5, "catalog must contain all 5 plants")
+	assert_eq(res_invalid.get_status(), LocalSaveLoadResult.INVALID_DATA, "save status must be INVALID_DATA")
+	assert_eq(root_invalid.game_session, null, "game_session must be null on INVALID_DATA")
+	assert_false(root_invalid.has_active_session(), "has_active_session must be false")
+	root_invalid.free()
+
+	# Case B: IO_ERROR save repository.
+	var invalid_repo: LocalSaveRepository = LocalSaveRepository.new("", "", "", "")
+	var root_io: AppRoot = AppRoot.new(invalid_repo)
+	var res_io: LocalSaveLoadResult = root_io.bootstrap_session()
+
+	assert_eq(
+		root_io.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY on IO_ERROR save"
+	)
+	assert_true(root_io.has_content_catalog(), "has_content_catalog must be true on IO_ERROR save")
+	assert_true(root_io.get_content_catalog() != null, "catalog must be retained on IO_ERROR save")
+	assert_eq(res_io.get_status(), LocalSaveLoadResult.IO_ERROR, "save status must be IO_ERROR")
+	assert_eq(root_io.game_session, null, "game_session must be null on IO_ERROR")
+	root_io.free()
+
+
+func _test_content_success_no_disk_writes_at_startup() -> void:
+	describe("Successful content loading does not write any files at startup")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	var res: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_true(res != null, "startup load result must exist")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true")
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "startup must not create PRIMARY")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "startup must not create TEMP")
+	assert_false(FileAccess.file_exists(TEST_BACKUP), "startup must not create BACKUP")
+	assert_false(FileAccess.file_exists(TEST_CORRUPT), "startup must not create CORRUPT")
 	root.free()
 
 
@@ -114,6 +466,13 @@ func _test_no_save_bootstrap() -> void:
 
 	assert_true(result != null, "bootstrap result must not be null")
 	assert_eq(result.get_status(), LocalSaveLoadResult.NO_SAVE, "status must be NO_SAVE")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true")
+	assert_true(root.content_catalog != null, "content_catalog must not be null")
 	assert_true(root.is_session_bootstrapped(), "session must be marked bootstrapped")
 	assert_true(root.has_active_session(), "has_active_session must be true")
 	assert_true(root.game_session != null, "game_session must be non-null")
@@ -139,6 +498,13 @@ func _test_primary_startup() -> void:
 	var result: LocalSaveLoadResult = root.bootstrap_session()
 
 	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "status must be LOADED_PRIMARY")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true")
+	assert_true(root.content_catalog != null, "content_catalog must be non-null")
 	assert_true(root.has_active_session(), "has_active_session must be true")
 	assert_true(root.game_session != null, "game_session must not be null")
 	assert_eq(root.game_session.get_currency(), 150, "currency must match persisted state")
@@ -170,6 +536,13 @@ func _test_backup_recovery_startup() -> void:
 	var result: LocalSaveLoadResult = root.bootstrap_session()
 
 	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_BACKUP, "status must be LOADED_BACKUP")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true")
+	assert_true(root.content_catalog != null, "content_catalog must be non-null")
 	assert_true(root.has_active_session(), "has_active_session must be true")
 	assert_true(root.game_session != null, "game_session must be created from backup")
 	assert_eq(root.game_session.get_currency(), 100, "session must contain recovered state_a currency")
@@ -334,10 +707,18 @@ func _test_ready_integration() -> void:
 	var root: AppRoot = AppRoot.new(repo)
 	assert_false(root.is_session_bootstrapped(), "must not be bootstrapped before _ready")
 	assert_eq(root.game_session, null, "game_session must be null before _ready")
+	assert_false(root.has_content_catalog(), "has_content_catalog must be false before _ready")
 
 	root._ready()
 
 	assert_true(root.is_session_bootstrapped(), "must be bootstrapped after _ready")
+	assert_eq(
+		root.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.READY,
+		"content status must be READY after _ready"
+	)
+	assert_true(root.has_content_catalog(), "has_content_catalog must be true after _ready")
+	assert_true(root.content_catalog != null, "content_catalog must be non-null after _ready")
 	assert_true(root.has_active_session(), "has_active_session must be true after _ready")
 	assert_true(root.game_session != null, "game_session must be non-null after _ready")
 	assert_eq(root.game_session.get_currency(), 120, "currency must match persisted state after _ready")
@@ -412,6 +793,79 @@ func _create_sample_state(currency: int, plant_count: int = 0) -> GameState:
 		var plant: PlantState = PlantState.new("plant_%d" % i, "plant.holy_basil", 1700000000 + i)
 		state.get_plants().try_add_plant(plant)
 	return state
+
+
+class FailingPlantContentLoader extends PlantContentLoader:
+	var load_call_count: int = 0
+	var failure_path: String = "res://invalid/missing_plant.tres"
+	var failure_message: String = "Simulated resource load failure"
+
+	func _init(path: String = "res://invalid/missing_plant.tres", msg: String = "Simulated resource load failure") -> void:
+		failure_path = path
+		failure_message = msg
+
+	func load_production_definitions() -> PlantContentLoadResult:
+		load_call_count += 1
+		return PlantContentLoadResult.create_failed(failure_path, failure_message)
+
+
+class CustomDefinitionsPlantContentLoader extends PlantContentLoader:
+	var load_call_count: int = 0
+	var definitions_to_return: Array[PlantDefinition] = []
+
+	func _init(defs: Array[PlantDefinition] = []) -> void:
+		definitions_to_return = defs
+
+	func load_production_definitions() -> PlantContentLoadResult:
+		load_call_count += 1
+		return PlantContentLoadResult.create_loaded(definitions_to_return)
+
+
+class SpyPlantContentLoader extends PlantContentLoader:
+	var load_call_count: int = 0
+
+	func load_production_definitions() -> PlantContentLoadResult:
+		load_call_count += 1
+		return super.load_production_definitions()
+
+
+class SpySaveRepository extends LocalSaveRepository:
+	var load_call_count: int = 0
+	var save_call_count: int = 0
+
+	func _init(
+		p: String = LocalSaveRepository.DEFAULT_PRIMARY_PATH,
+		t: String = LocalSaveRepository.DEFAULT_TEMP_PATH,
+		b: String = LocalSaveRepository.DEFAULT_BACKUP_PATH,
+		c: String = LocalSaveRepository.DEFAULT_CORRUPT_PATH
+	) -> void:
+		super._init(p, t, b, c)
+
+	func load() -> LocalSaveLoadResult:
+		load_call_count += 1
+		return super.load()
+
+	func save(state: GameState) -> bool:
+		save_call_count += 1
+		return super.save(state)
+
+
+func _create_spy_repo() -> SpySaveRepository:
+	return SpySaveRepository.new(TEST_PRIMARY, TEST_TEMP, TEST_BACKUP, TEST_CORRUPT)
+
+
+func _create_test_plant_definition(
+	id: String,
+	sprout: int = 60,
+	growing: int = 180,
+	mature: int = 600
+) -> PlantDefinition:
+	var def: PlantDefinition = PlantDefinition.new()
+	def.id = id
+	def.sprout_after_seconds = sprout
+	def.growing_after_seconds = growing
+	def.mature_after_seconds = mature
+	return def
 
 
 func _test_lifecycle_coordinator_composition() -> void:
