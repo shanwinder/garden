@@ -71,6 +71,13 @@ func run_tests() -> void:
 	_test_backup_recovered_session_pause_checkpoint()
 	_test_missing_primary_backup_recovered_pause_checkpoint()
 	_test_early_notification_safety()
+	_test_saved_content_unknown_primary_blocks_session()
+	_test_saved_content_no_automatic_backup_fallback()
+	_test_saved_content_unknown_backup_blocks_session()
+	_test_saved_content_unknown_primary_pause_lifecycle_safety()
+	_test_saved_content_diagnostics_and_idempotence()
+	_test_saved_content_clean_empty_save_compatible()
+	_test_saved_content_all_five_production_plants_compatible()
 
 
 func _test_instantiation() -> void:
@@ -104,6 +111,11 @@ func _test_instantiation() -> void:
 	assert_false(root.is_session_bootstrapped(), "is_session_bootstrapped must be false before bootstrap")
 	assert_false(root.has_active_session(), "has_active_session must be false before bootstrap")
 	assert_eq(root.get_startup_load_result(), null, "get_startup_load_result must be null before bootstrap")
+	assert_eq(
+		root.get_saved_content_validation_result(),
+		null,
+		"get_saved_content_validation_result must be null before bootstrap"
+	)
 	root.free()
 
 
@@ -125,6 +137,11 @@ func _test_construction_io_free() -> void:
 	assert_false(root.is_session_bootstrapped(), "is_session_bootstrapped must be false")
 	assert_false(root.has_active_session(), "has_active_session must be false")
 	assert_eq(root.get_startup_load_result(), null, "startup load result must be null")
+	assert_eq(
+		root.get_saved_content_validation_result(),
+		null,
+		"get_saved_content_validation_result must be null upon construction"
+	)
 	assert_false(FileAccess.file_exists(TEST_PRIMARY), "construction must not create PRIMARY")
 	assert_false(FileAccess.file_exists(TEST_TEMP), "construction must not create TEMP")
 	assert_false(FileAccess.file_exists(TEST_BACKUP), "construction must not create BACKUP")
@@ -264,6 +281,7 @@ func _test_content_load_failure_blocks_session() -> void:
 	assert_false(root.has_active_session(), "has_active_session must be false on LOAD_FAILED")
 	assert_true(root.is_session_bootstrapped(), "is_session_bootstrapped must be true after bootstrap attempt")
 	assert_eq(root.get_startup_load_result(), null, "get_startup_load_result must be null because persistence load was skipped")
+	assert_eq(root.get_saved_content_validation_result(), null, "get_saved_content_validation_result must be null on LOAD_FAILED")
 	assert_eq(spy_repo.load_call_count, 0, "save_repository.load() must NOT be called on content failure")
 
 	# Diagnostics verification.
@@ -325,6 +343,11 @@ func _test_content_invalid_definitions_blocks_session() -> void:
 	assert_eq(root_dup.game_session, null, "game_session must be null")
 	assert_false(root_dup.has_active_session(), "has_active_session must be false")
 	assert_eq(root_dup.get_startup_load_result(), null, "startup load result must be null")
+	assert_eq(
+		root_dup.get_saved_content_validation_result(),
+		null,
+		"get_saved_content_validation_result must be null on INVALID_DEFINITIONS"
+	)
 	assert_eq(spy_repo_dup.load_call_count, 0, "persistence load must not be called")
 
 	root_dup._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
@@ -479,6 +502,11 @@ func _test_no_save_bootstrap() -> void:
 	assert_eq(root.game_session.get_currency(), 0, "fresh session currency must be 0")
 	assert_eq(root.game_session.get_state().get_plants().get_count(), 0, "fresh session plant count must be 0")
 	assert_eq(root.get_startup_load_result(), result, "get_startup_load_result must return bootstrap result")
+	assert_eq(
+		root.get_saved_content_validation_result(),
+		null,
+		"saved content validation result must be null for NO_SAVE"
+	)
 
 	assert_false(FileAccess.file_exists(TEST_PRIMARY), "NO_SAVE bootstrap must not create PRIMARY")
 	assert_false(FileAccess.file_exists(TEST_TEMP), "NO_SAVE bootstrap must not create TEMP")
@@ -514,6 +542,13 @@ func _test_primary_startup() -> void:
 		result.get_state(),
 		"GameSession.get_state() must be the exact GameState instance from load result"
 	)
+	assert_true(root.get_saved_content_validation_result() != null, "validation result must not be null")
+	assert_eq(
+		root.get_saved_content_validation_result().get_status(),
+		PlantSaveContentValidationResult.COMPATIBLE,
+		"validation status must be COMPATIBLE"
+	)
+	assert_true(root.get_saved_content_validation_result().is_compatible(), "is_compatible must be true")
 	root.free()
 
 
@@ -548,6 +583,13 @@ func _test_backup_recovery_startup() -> void:
 	assert_eq(root.game_session.get_currency(), 100, "session must contain recovered state_a currency")
 	assert_eq(root.game_session.get_state().get_plants().get_count(), 1, "session must contain recovered state_a plants")
 	assert_eq(root.game_session.get_state(), result.get_state(), "session must use exact state from backup result")
+	assert_true(root.get_saved_content_validation_result() != null, "validation result must not be null")
+	assert_eq(
+		root.get_saved_content_validation_result().get_status(),
+		PlantSaveContentValidationResult.COMPATIBLE,
+		"validation status must be COMPATIBLE for recovered backup"
+	)
+	assert_true(root.get_saved_content_validation_result().is_compatible(), "is_compatible must be true")
 
 	# Verify disk files remain untouched (read-only bootstrap, no repair).
 	assert_eq(_read_raw_file(TEST_PRIMARY), corrupt_bytes, "corrupt PRIMARY bytes must remain unchanged")
@@ -580,6 +622,12 @@ func _test_missing_primary_recovery() -> void:
 	assert_true(root.game_session != null, "game_session must be created")
 	assert_eq(root.game_session.get_currency(), 75, "currency must match recovered state")
 	assert_false(FileAccess.file_exists(TEST_PRIMARY), "PRIMARY must not be created during bootstrap")
+	assert_true(root.get_saved_content_validation_result() != null, "validation result must not be null")
+	assert_eq(
+		root.get_saved_content_validation_result().get_status(),
+		PlantSaveContentValidationResult.COMPATIBLE,
+		"validation status must be COMPATIBLE"
+	)
 	root.free()
 
 
@@ -600,6 +648,11 @@ func _test_invalid_data_blocks_session() -> void:
 	assert_false(root.has_active_session(), "has_active_session must be false on INVALID_DATA")
 	assert_true(root.is_session_bootstrapped(), "is_session_bootstrapped must be true")
 	assert_eq(root.get_startup_load_result(), result, "get_startup_load_result must preserve result")
+	assert_eq(
+		root.get_saved_content_validation_result(),
+		null,
+		"saved content validation result must be null on INVALID_DATA"
+	)
 
 	# Anti-data-loss verification: input files untouched, no temp or corrupt created.
 	assert_eq(_read_raw_file(TEST_PRIMARY), pri_bytes, "PRIMARY bytes must remain untouched")
@@ -620,6 +673,11 @@ func _test_io_error_blocks_session() -> void:
 	assert_false(root.has_active_session(), "has_active_session must be false on IO_ERROR")
 	assert_true(root.is_session_bootstrapped(), "is_session_bootstrapped must be true")
 	assert_eq(root.get_startup_load_result(), result, "get_startup_load_result must preserve result")
+	assert_eq(
+		root.get_saved_content_validation_result(),
+		null,
+		"saved content validation result must be null on IO_ERROR"
+	)
 	root.free()
 
 
@@ -1180,4 +1238,252 @@ func _test_early_notification_safety() -> void:
 	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
 	assert_true(true, "early notifications on null coordinator must not crash")
+	root.free()
+
+
+func _test_saved_content_unknown_primary_blocks_session() -> void:
+	describe("Structurally valid PRIMARY containing unknown definition ID blocks session creation and preserves save bytes")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state: GameState = GameState.new()
+	state.get_economy().grant_currency(50)
+	var unknown_plant: PlantState = PlantState.new("plant-0", "plant.some_future_plant", 1700000000)
+	assert_true(unknown_plant.is_valid(), "plant.some_future_plant must be structurally valid under V1 schema")
+	assert_true(state.get_plants().try_add_plant(unknown_plant), "adding plant to state must succeed")
+	assert_true(repo.save(state), "saving state with structurally valid future plant ID must succeed via repository")
+
+	var primary_bytes_before: String = _read_raw_file(TEST_PRIMARY)
+	assert_true(primary_bytes_before.length() > 0, "PRIMARY save file must exist on disk")
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var result: LocalSaveLoadResult = root.bootstrap_session()
+
+	# Persistence layer truth: file was structurally valid V1 JSON.
+	assert_true(result != null, "bootstrap result must not be null")
+	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "startup load status must remain LOADED_PRIMARY")
+	assert_eq(root.get_startup_load_result().get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "get_startup_load_result must be LOADED_PRIMARY")
+
+	# Content validation truth: unknown plant definition ID rejected.
+	var val_result: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+	assert_true(val_result != null, "saved content validation result must not be null")
+	assert_eq(val_result.get_status(), PlantSaveContentValidationResult.UNKNOWN_PLANT_IDS, "validation status must be UNKNOWN_PLANT_IDS")
+	assert_false(val_result.is_compatible(), "is_compatible must be false")
+	assert_eq(val_result.get_unknown_definition_ids(), ["plant.some_future_plant"], "must report plant.some_future_plant")
+
+	# Session construction blocked.
+	assert_eq(root.game_session, null, "game_session MUST remain null on unknown plant ID")
+	assert_false(root.has_active_session(), "has_active_session must be false")
+
+	# Save preservation: bytes untouched, no repair or temporary files.
+	assert_eq(_read_raw_file(TEST_PRIMARY), primary_bytes_before, "PRIMARY save bytes must remain untouched")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "no TEMP file must be created")
+	assert_false(FileAccess.file_exists(TEST_BACKUP), "no BACKUP file must be created")
+	assert_false(FileAccess.file_exists(TEST_CORRUPT), "no CORRUPT file must be created")
+	root.free()
+
+
+func _test_saved_content_no_automatic_backup_fallback() -> void:
+	describe("Unknown-ID PRIMARY with valid known-ID BACKUP preserves both files and does NOT fallback to BACKUP")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+
+	# State A: known plant (holy basil).
+	var state_a: GameState = GameState.new()
+	state_a.get_economy().grant_currency(100)
+	state_a.get_plants().try_add_plant(PlantState.new("p_known", "plant.holy_basil", 1700000000))
+	assert_true(repo.save(state_a), "first save must succeed (PRIMARY=state_a)")
+
+	# State B: unknown plant (future plant).
+	var state_b: GameState = GameState.new()
+	state_b.get_economy().grant_currency(200)
+	state_b.get_plants().try_add_plant(PlantState.new("p_unknown", "plant.some_future_plant", 1700000000))
+	assert_true(repo.save(state_b), "second save must succeed (PRIMARY=state_b, BACKUP=state_a)")
+
+	var pri_bytes_before: String = _read_raw_file(TEST_PRIMARY)
+	var bak_bytes_before: String = _read_raw_file(TEST_BACKUP)
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var result: LocalSaveLoadResult = root.bootstrap_session()
+
+	# Repository selected structurally valid PRIMARY.
+	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "repository must load PRIMARY")
+
+	# Validation rejects unknown plant in PRIMARY.
+	var val_result: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+	assert_true(val_result != null, "validation result must not be null")
+	assert_eq(val_result.get_status(), PlantSaveContentValidationResult.UNKNOWN_PLANT_IDS, "validation status must be UNKNOWN_PLANT_IDS")
+	assert_eq(val_result.get_unknown_definition_ids(), ["plant.some_future_plant"], "unknown ID must match")
+
+	# Session must NOT fall back to BACKUP.
+	assert_eq(root.game_session, null, "game_session MUST remain null; no automatic fallback to BACKUP")
+	assert_false(root.has_active_session(), "has_active_session must be false")
+
+	# Save preservation: both files remain identical.
+	assert_eq(_read_raw_file(TEST_PRIMARY), pri_bytes_before, "PRIMARY save bytes must remain untouched")
+	assert_eq(_read_raw_file(TEST_BACKUP), bak_bytes_before, "BACKUP save bytes must remain untouched")
+	root.free()
+
+
+func _test_saved_content_unknown_backup_blocks_session() -> void:
+	describe("Codec-invalid PRIMARY with unknown-ID BACKUP loads BACKUP but blocks active GameSession")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+
+	# State A: unknown plant.
+	var state_a: GameState = GameState.new()
+	state_a.get_economy().grant_currency(100)
+	state_a.get_plants().try_add_plant(PlantState.new("p_unknown", "plant.some_future_plant", 1700000000))
+	assert_true(repo.save(state_a), "first save must succeed")
+
+	# State B: known plant.
+	var state_b: GameState = GameState.new()
+	state_b.get_economy().grant_currency(200)
+	state_b.get_plants().try_add_plant(PlantState.new("p_known", "plant.holy_basil", 1700000000))
+	assert_true(repo.save(state_b), "second save must succeed (PRIMARY=state_b, BACKUP=state_a)")
+
+	# Corrupt PRIMARY so repository selects BACKUP (state_a).
+	_write_raw_file(TEST_PRIMARY, "{corrupted primary json}")
+	var bak_bytes_before: String = _read_raw_file(TEST_BACKUP)
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_BACKUP, "repository must select LOADED_BACKUP")
+	var val_result: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+	assert_true(val_result != null, "validation result must not be null")
+	assert_eq(val_result.get_status(), PlantSaveContentValidationResult.UNKNOWN_PLANT_IDS, "BACKUP validation status must be UNKNOWN_PLANT_IDS")
+	assert_eq(val_result.get_unknown_definition_ids(), ["plant.some_future_plant"], "BACKUP unknown ID must be reported")
+	assert_eq(root.game_session, null, "game_session MUST remain null when BACKUP has unknown IDs")
+	assert_false(root.has_active_session(), "has_active_session must be false")
+	assert_eq(_read_raw_file(TEST_BACKUP), bak_bytes_before, "BACKUP bytes must remain untouched")
+	root.free()
+
+
+func _test_saved_content_unknown_primary_pause_lifecycle_safety() -> void:
+	describe("Unknown-ID PRIMARY followed by PAUSED -> RESUMED -> PAUSED does not write or alter save files")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("p_unk", "plant.some_future_plant", 1700000000))
+	assert_true(repo.save(state), "setup save must succeed")
+
+	var pri_bytes_before: String = _read_raw_file(TEST_PRIMARY)
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	root.bootstrap_session()
+	assert_eq(root.game_session, null, "game_session must be null")
+
+	# First PAUSED.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"first pause must return SKIPPED_NO_ACTIVE_SESSION"
+	)
+
+	# RESUMED.
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	# Second PAUSED.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(
+		root.lifecycle_coordinator.get_last_pause_outcome(),
+		LifecycleCoordinator.SKIPPED_NO_ACTIVE_SESSION,
+		"second pause must return SKIPPED_NO_ACTIVE_SESSION"
+	)
+
+	# Bytes check.
+	assert_eq(_read_raw_file(TEST_PRIMARY), pri_bytes_before, "PRIMARY bytes must remain unchanged across lifecycle events")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "no TEMP file must be created")
+	assert_false(FileAccess.file_exists(TEST_BACKUP), "no BACKUP file must be created")
+	assert_false(FileAccess.file_exists(TEST_CORRUPT), "no CORRUPT file must be created")
+	root.free()
+
+
+func _test_saved_content_diagnostics_and_idempotence() -> void:
+	describe("Diagnostics expose sorted unique missing IDs and remain stable across repeated bootstrap calls")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("p1", "plant.unknown_zebra", 100))
+	state.get_plants().try_add_plant(PlantState.new("p2", "plant.unknown_alpha", 200))
+	state.get_plants().try_add_plant(PlantState.new("p3", "plant.unknown_zebra", 300))
+	assert_true(repo.save(state), "save must succeed")
+
+	var root: AppRoot = AppRoot.new(repo)
+	var res1: LocalSaveLoadResult = root.bootstrap_session()
+	var val1: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+
+	assert_true(val1 != null, "validation result must not be null")
+	assert_eq(val1.get_status(), PlantSaveContentValidationResult.UNKNOWN_PLANT_IDS, "status must be UNKNOWN_PLANT_IDS")
+	assert_eq(
+		val1.get_unknown_definition_ids(),
+		["plant.unknown_alpha", "plant.unknown_zebra"],
+		"unknown IDs must be deduplicated and sorted ascending"
+	)
+
+	# Repeated bootstrap call on same AppRoot.
+	var res2: LocalSaveLoadResult = root.bootstrap_session()
+	var val2: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+
+	assert_eq(res1, res2, "repeated bootstrap must return identical load result")
+	assert_eq(val1, val2, "repeated bootstrap must return identical validation result instance")
+	assert_eq(root.game_session, null, "game_session must remain null")
+	root.free()
+
+
+func _test_saved_content_clean_empty_save_compatible() -> void:
+	describe("Clean saved state without plants is COMPATIBLE and creates active GameSession")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state: GameState = GameState.new()
+	state.get_economy().grant_currency(300)
+	assert_true(repo.save(state), "save empty plants must succeed")
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "must be LOADED_PRIMARY")
+	var val_result: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+	assert_true(val_result != null, "validation result must not be null")
+	assert_eq(val_result.get_status(), PlantSaveContentValidationResult.COMPATIBLE, "empty plants must be COMPATIBLE")
+	assert_true(val_result.is_compatible(), "is_compatible must be true")
+	assert_eq(val_result.get_unknown_definition_ids(), [], "unknown IDs must be empty")
+	assert_true(root.has_active_session(), "has_active_session must be true")
+	assert_true(root.game_session != null, "game_session must be non-null")
+	assert_eq(root.game_session.get_currency(), 300, "currency must match")
+	assert_eq(root.game_session.get_state().get_plants().get_count(), 0, "plants count must be 0")
+	root.free()
+
+
+func _test_saved_content_all_five_production_plants_compatible() -> void:
+	describe("All five authored production plant definition IDs validate successfully in saved state")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var state: GameState = GameState.new()
+	var expected_ids: Array[String] = [
+		"plant.banana",
+		"plant.chili",
+		"plant.holy_basil",
+		"plant.jasmine",
+		"plant.marigold",
+	]
+	for i in range(expected_ids.size()):
+		var plant: PlantState = PlantState.new("plant_%d" % i, expected_ids[i], 1700000000 + i)
+		assert_true(state.get_plants().try_add_plant(plant), "add plant %s" % expected_ids[i])
+
+	assert_true(repo.save(state), "saving state with all 5 production plants must succeed")
+
+	var root: AppRoot = AppRoot.new(_create_test_repo())
+	var result: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(result.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "status must be LOADED_PRIMARY")
+	var val_result: PlantSaveContentValidationResult = root.get_saved_content_validation_result()
+	assert_true(val_result != null, "validation result must not be null")
+	assert_eq(val_result.get_status(), PlantSaveContentValidationResult.COMPATIBLE, "status must be COMPATIBLE")
+	assert_true(val_result.is_compatible(), "is_compatible must be true")
+	assert_eq(val_result.get_unknown_definition_ids(), [], "unknown IDs must be empty")
+	assert_true(root.has_active_session(), "has_active_session must be true")
+	assert_true(root.game_session != null, "game_session must be created")
+	assert_eq(root.game_session.get_state().get_plants().get_count(), 5, "session must have all 5 plants")
 	root.free()

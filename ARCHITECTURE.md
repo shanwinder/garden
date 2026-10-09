@@ -867,7 +867,7 @@ The V1 codec enforces strict schema integrity:
 - Unsupported schema versions: rejected.
 - Duplicate plant runtime `instance_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
 - Malformed required data: rejected.
-- `ContentCatalog` existence validation: not implemented yet (syntax and namespace prefix validation only).
+- `ContentCatalog` existence validation: intentionally NOT placed in `GameStateCodec` V1 (codec validates schema syntax and namespace prefixes only, keeping infrastructure persistence independent of the catalog).
 - Derived plant growth stage: not persisted (computed at runtime from `planted_at`).
 - `PlantDefinition` static data: not duplicated into save.
 
@@ -913,20 +913,37 @@ The save pipeline implements an application-level safe replacement strategy rath
 - `INVALID_DATA`: Files exist but contain corrupt or malformed data.
 - `IO_ERROR`: Unrecoverable filesystem I/O error occurred.
 
-AppRoot startup policy:
-- `LOADED_PRIMARY` ⇒ Active `GameSession` constructed from loaded state.
-- `LOADED_BACKUP` ⇒ Active `GameSession` constructed from recovered state.
-- `NO_SAVE` ⇒ Fresh in-memory `GameSession` constructed.
-- `INVALID_DATA` ⇒ No `GameSession` created (`game_session == null`).
-- `IO_ERROR` ⇒ No `GameSession` created (`game_session == null`).
+#### Application Startup Content-Reference Validation (Task 6.4)
 
-Reason: Blocked startup must not create an empty session that a later lifecycle pause checkpoint could use to overwrite recoverable on-disk data.
+At the application startup boundary (`AppRoot.bootstrap_session()`), decoded saved `PlantState` references from `LOADED_PRIMARY` or `LOADED_BACKUP` are validated against the successfully loaded production `ContentCatalog` using `PlantSaveContentValidator`:
+
+- **Distinction between structural validity and content compatibility**:
+  - `GameStateCodec` V1 validates file and schema syntax independently of the content catalog.
+  - `PlantSaveContentValidator` inspects whether each saved `PlantState.definition_id` exists in the current `ContentCatalog`.
+  - An unknown saved definition ID is a **content compatibility failure**, not JSON corruption or malformed schema.
+- **Preserve load-result truth**:
+  - The persistence result remains `LOADED_PRIMARY` (or `LOADED_BACKUP`), reflecting true schema validity.
+  - The content validation result (`PlantSaveContentValidationResult`) separately reports `UNKNOWN_PLANT_IDS` or `COMPATIBLE`.
+- **Startup session mapping**:
+  - `COMPATIBLE` (from `LOADED_PRIMARY` or `LOADED_BACKUP`) ⇒ Active `GameSession` constructed from the exact loaded `GameState`.
+  - `UNKNOWN_PLANT_IDS` or `INVALID_INPUT` ⇒ Active session blocked (`game_session == null`).
+  - `NO_SAVE` ⇒ Fresh in-memory `GameSession` constructed (validation result is null).
+  - `INVALID_DATA` or `IO_ERROR` ⇒ Active session blocked (`game_session == null`, validation result is null).
+- **Anti-data-loss and file preservation**:
+  - If `PRIMARY` references an unknown plant ID, the app does NOT automatically fall back to `BACKUP` (which could discard newer player progress).
+  - All save files on disk (`PRIMARY`, `BACKUP`, etc.) remain completely unchanged; no files are deleted, rewritten, or renamed.
+  - No fallback `GameState` is created, and no unknown plants are stripped from memory.
+  - Lifecycle pause persistence is safely suppressed via `LifecycleCoordinator`'s existing null-session gate (`SKIPPED_NO_ACTIVE_SESSION`).
+- **Scope limitation**:
+  - Validation occurs at the application startup boundary for loaded saves. It does not validate every internal write.
+  - Future plant-creation gameplay commands must enforce catalog membership before creating new persistent `PlantState` instances.
+  - Unknown saved IDs require future explicit migration or recovery workflows.
 
 #### Presentation and Recovery UX Status
 
-`INVALID_DATA` and `IO_ERROR` are currently exposed through AppRoot startup results (`get_startup_load_result()`) for future presentation and recovery handling.
+`INVALID_DATA`, `IO_ERROR`, and `UNKNOWN_PLANT_IDS` are exposed through AppRoot startup queries (`get_startup_load_result()` and `get_saved_content_validation_result()`) for future presentation and recovery handling.
 
-Player-facing recovery UI (such as "Reset Save", "Restore Backup", "Delete Save", or "Continue Anyway" buttons) is intentionally out of scope for Milestone 5 and will be designed alongside the actual presentation layer in a dedicated task.
+Player-facing recovery UI (such as "Reset Save", "Restore Backup", "Delete Save", or "Continue Anyway" buttons) is intentionally out of scope for Milestone 6 and will be designed alongside the presentation layer in a dedicated task.
 
 ---
 

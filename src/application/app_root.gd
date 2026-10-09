@@ -108,6 +108,9 @@ var _content_load_result: PlantContentLoadResult = null
 ## Retains the outcome of the startup load operation.
 var _startup_load_result: LocalSaveLoadResult = null
 
+## Retains the outcome of validating saved plant references against the content catalog.
+var _saved_content_validation_result: PlantSaveContentValidationResult = null
+
 
 func _init(
 	save_repository_override: LocalSaveRepository = null,
@@ -130,6 +133,7 @@ func _init(
 	_content_bootstrap_status = ContentBootstrapStatus.NOT_ATTEMPTED
 	_content_load_result = null
 	_startup_load_result = null
+	_saved_content_validation_result = null
 
 
 func _ready() -> void:
@@ -204,13 +208,22 @@ func bootstrap_session() -> LocalSaveLoadResult:
 	# Step 3: Load persistent GameState only after content is READY.
 	_startup_load_result = save_repository.load()
 
-	# Step 4: Construct GameSession according to persistence status.
+	# Step 4: Construct GameSession according to persistence status and catalog validation.
 	match _startup_load_result.get_status():
 		LocalSaveLoadResult.LOADED_PRIMARY, LocalSaveLoadResult.LOADED_BACKUP:
-			game_session = GameSession.new(_startup_load_result.get_state())
+			_saved_content_validation_result = PlantSaveContentValidator.validate(
+				_startup_load_result.get_state(),
+				content_catalog
+			)
+			if _saved_content_validation_result.is_compatible():
+				game_session = GameSession.new(_startup_load_result.get_state())
+			else:
+				game_session = null
 		LocalSaveLoadResult.NO_SAVE:
+			_saved_content_validation_result = null
 			game_session = GameSession.new()
 		LocalSaveLoadResult.INVALID_DATA, LocalSaveLoadResult.IO_ERROR:
+			_saved_content_validation_result = null
 			game_session = null
 
 	return _startup_load_result
@@ -249,3 +262,9 @@ func get_content_catalog() -> ContentCatalog:
 ## Returns the diagnostic PlantContentLoadResult, or null if content loading was not attempted.
 func get_content_load_result() -> PlantContentLoadResult:
 	return _content_load_result
+
+
+## Returns the result of validating saved plant references against the content catalog,
+## or null if content loading failed, or if persistence was NO_SAVE, INVALID_DATA, or IO_ERROR.
+func get_saved_content_validation_result() -> PlantSaveContentValidationResult:
+	return _saved_content_validation_result
