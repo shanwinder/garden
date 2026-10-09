@@ -78,6 +78,9 @@ func run_tests() -> void:
 	_test_saved_content_diagnostics_and_idempotence()
 	_test_saved_content_clean_empty_save_compatible()
 	_test_saved_content_all_five_production_plants_compatible()
+	_test_clock_and_random_source_injection()
+	_test_try_plant_and_checkpoint_preconditions()
+	_test_try_plant_and_checkpoint_delegation_and_stability()
 
 
 func _test_instantiation() -> void:
@@ -1486,4 +1489,128 @@ func _test_saved_content_all_five_production_plants_compatible() -> void:
 	assert_true(root.has_active_session(), "has_active_session must be true")
 	assert_true(root.game_session != null, "game_session must be created")
 	assert_eq(root.game_session.get_state().get_plants().get_count(), 5, "session must have all 5 plants")
+	root.free()
+
+
+func _test_clock_and_random_source_injection() -> void:
+	describe("AppRoot constructor supports optional clock and random_source injection with backward compatibility")
+	_cleanup_test_files()
+
+	# 0-arg
+	var root0: AppRoot = AppRoot.new()
+	assert_true(root0.game_clock is SystemGameClock, "0-arg clock must be SystemGameClock")
+	assert_true(root0.random_source is GodotRandomSource, "0-arg random_source must be GodotRandomSource")
+	assert_true(root0.save_repository is LocalSaveRepository, "0-arg save_repository must be LocalSaveRepository")
+	assert_true(root0.plant_content_loader is PlantContentLoader, "0-arg plant_content_loader must be PlantContentLoader")
+	root0.free()
+
+	# 1-arg
+	var repo1: LocalSaveRepository = _create_test_repo()
+	var root1: AppRoot = AppRoot.new(repo1)
+	assert_eq(root1.save_repository, repo1, "1-arg save_repository matches")
+	assert_true(root1.game_clock is SystemGameClock, "1-arg clock must be SystemGameClock")
+	assert_true(root1.random_source is GodotRandomSource, "1-arg random_source must be GodotRandomSource")
+	root1.free()
+
+	# 2-arg
+	var repo2: LocalSaveRepository = _create_test_repo()
+	var loader2: PlantContentLoader = PlantContentLoader.new()
+	var root2: AppRoot = AppRoot.new(repo2, loader2)
+	assert_eq(root2.save_repository, repo2, "2-arg save_repository matches")
+	assert_eq(root2.plant_content_loader, loader2, "2-arg loader matches")
+	assert_true(root2.game_clock is SystemGameClock, "2-arg clock must be SystemGameClock")
+	assert_true(root2.random_source is GodotRandomSource, "2-arg random_source must be GodotRandomSource")
+	root2.free()
+
+	# 3-arg
+	var repo3: LocalSaveRepository = _create_test_repo()
+	var loader3: PlantContentLoader = PlantContentLoader.new()
+	var fake_clock3: FakeGameClock = FakeGameClock.new(99999, 0)
+	var root3: AppRoot = AppRoot.new(repo3, loader3, fake_clock3)
+	assert_eq(root3.save_repository, repo3, "3-arg save_repository matches")
+	assert_eq(root3.plant_content_loader, loader3, "3-arg loader matches")
+	assert_eq(root3.game_clock, fake_clock3, "3-arg clock matches injected FakeGameClock")
+	assert_true(root3.random_source is GodotRandomSource, "3-arg random_source must be GodotRandomSource")
+	root3.free()
+
+	# 4-arg
+	var repo4: LocalSaveRepository = _create_test_repo()
+	var loader4: PlantContentLoader = PlantContentLoader.new()
+	var fake_clock4: FakeGameClock = FakeGameClock.new(88888, 0)
+	var fake_rng4: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var root4: AppRoot = AppRoot.new(repo4, loader4, fake_clock4, fake_rng4)
+	assert_eq(root4.save_repository, repo4, "4-arg save_repository matches")
+	assert_eq(root4.plant_content_loader, loader4, "4-arg loader matches")
+	assert_eq(root4.game_clock, fake_clock4, "4-arg clock matches injected FakeGameClock")
+	assert_eq(root4.random_source, fake_rng4, "4-arg random_source matches injected FakeRandomSource")
+
+	# Verify no I/O at construction
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "construction must not create PRIMARY")
+	assert_false(FileAccess.file_exists(TEST_TEMP), "construction must not create TEMP")
+	root4.free()
+
+
+func _test_try_plant_and_checkpoint_preconditions() -> void:
+	describe("try_plant_and_checkpoint enforces preconditions (unbootstrapped, content failure, persistence failure)")
+	_cleanup_test_files()
+
+	# 1. Unbootstrapped AppRoot returns NOT_READY
+	var repo: LocalSaveRepository = _create_test_repo()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var root_unboot: AppRoot = AppRoot.new(repo, null, clock, rng)
+	var res_unboot: PlantingCheckpointResult = root_unboot.try_plant_and_checkpoint("plant.holy_basil")
+	assert_eq(res_unboot.get_status(), PlantingCheckpointResult.NOT_READY, "unbootstrapped must return NOT_READY")
+	assert_false(FileAccess.file_exists(TEST_PRIMARY), "must not touch disk")
+	root_unboot.free()
+
+	# 2. Blocked content startup returns NOT_READY
+	var failing_loader: FailingPlantContentLoader = FailingPlantContentLoader.new()
+	var root_content_fail: AppRoot = AppRoot.new(repo, failing_loader, clock, rng)
+	root_content_fail.bootstrap_session()
+	assert_eq(
+		root_content_fail.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.LOAD_FAILED,
+		"status must be LOAD_FAILED"
+	)
+	var res_content_fail: PlantingCheckpointResult = root_content_fail.try_plant_and_checkpoint("plant.holy_basil")
+	assert_eq(res_content_fail.get_status(), PlantingCheckpointResult.NOT_READY, "content failure must return NOT_READY")
+	root_content_fail.free()
+
+	# 3. Blocked persistence startup (INVALID_DATA) returns NOT_READY
+	var f: FileAccess = FileAccess.open(TEST_PRIMARY, FileAccess.WRITE)
+	f.store_string("{ corrupt json }")
+	f.close()
+	var root_corrupt: AppRoot = AppRoot.new(repo, null, clock, rng)
+	root_corrupt.bootstrap_session()
+	assert_eq(root_corrupt.get_startup_load_result().get_status(), LocalSaveLoadResult.INVALID_DATA, "INVALID_DATA")
+	var res_corrupt: PlantingCheckpointResult = root_corrupt.try_plant_and_checkpoint("plant.holy_basil")
+	assert_eq(res_corrupt.get_status(), PlantingCheckpointResult.NOT_READY, "persistence failure must return NOT_READY")
+	root_corrupt.free()
+
+
+func _test_try_plant_and_checkpoint_delegation_and_stability() -> void:
+	describe("try_plant_and_checkpoint delegates planting and preserves catalog and session identities")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = _create_test_repo()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var root: AppRoot = AppRoot.new(repo, null, clock, rng)
+	root.bootstrap_session()
+
+	assert_true(root.has_active_session(), "active session exists")
+	var catalog_ref: ContentCatalog = root.get_content_catalog()
+	var session_ref: GameSession = root.game_session
+
+	var res: PlantingCheckpointResult = root.try_plant_and_checkpoint("plant.holy_basil")
+	assert_eq(res.get_status(), PlantingCheckpointResult.REGISTERED_SAVED, "status must be REGISTERED_SAVED")
+	assert_true(res.is_saved(), "is_saved must be true")
+
+	# Identities remain stable
+	assert_eq(root.get_content_catalog(), catalog_ref, "ContentCatalog identity must remain stable")
+	assert_eq(root.game_session, session_ref, "GameSession identity must remain stable")
+
+	# Production paths never touched
+	assert_false(FileAccess.file_exists(LocalSaveRepository.DEFAULT_TEMP_PATH), "Production TEMP must not exist")
+
 	root.free()

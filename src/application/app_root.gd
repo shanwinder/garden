@@ -114,10 +114,20 @@ var _saved_content_validation_result: PlantSaveContentValidationResult = null
 
 func _init(
 	save_repository_override: LocalSaveRepository = null,
-	plant_content_loader_override: PlantContentLoader = null
+	plant_content_loader_override: PlantContentLoader = null,
+	game_clock_override: GameClock = null,
+	random_source_override: RandomSource = null
 ) -> void:
-	game_clock = SystemGameClock.new()
-	random_source = GodotRandomSource.new()
+	if game_clock_override != null:
+		game_clock = game_clock_override
+	else:
+		game_clock = SystemGameClock.new()
+
+	if random_source_override != null:
+		random_source = random_source_override
+	else:
+		random_source = GodotRandomSource.new()
+
 	if save_repository_override != null:
 		save_repository = save_repository_override
 	else:
@@ -268,3 +278,35 @@ func get_content_load_result() -> PlantContentLoadResult:
 ## or null if content loading failed, or if persistence was NO_SAVE, INVALID_DATA, or IO_ERROR.
 func get_saved_content_validation_result() -> PlantSaveContentValidationResult:
 	return _saved_content_validation_result
+
+
+## Gameplay entry method to plant a plant and immediately checkpoint persistence.
+##
+## Preconditions:
+## - bootstrap_session() already attempted
+## - content status READY
+## - content_catalog exists
+## - game_session exists
+## - save_repository exists
+## - game_clock exists
+## - random_source exists
+##
+## If not ready: returns PlantingCheckpointResult.not_ready() without mutating state or touching disk.
+func try_plant_and_checkpoint(definition_id: String) -> PlantingCheckpointResult:
+	if not _is_bootstrapped:
+		return PlantingCheckpointResult.not_ready()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return PlantingCheckpointResult.not_ready()
+
+	if content_catalog == null or game_session == null or save_repository == null or game_clock == null or random_source == null:
+		return PlantingCheckpointResult.not_ready()
+
+	return PlantingPersistenceCoordinator.try_plant_and_save(
+		game_session,
+		content_catalog,
+		game_clock,
+		random_source,
+		save_repository,
+		definition_id
+	)

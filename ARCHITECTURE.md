@@ -990,12 +990,25 @@ Do not rely exclusively on a graceful application-exit callback; Android may ter
 
 Save frequency must balance data safety with unnecessary storage writes.
 
-#### Implementation Status (Milestone 5)
+#### Implementation Status (Milestones 5 and 7)
 
-Milestone 5 currently implements exactly one approved meaningful boundary:
+Milestone 5 implemented the foundational lifecycle pause checkpoint:
 - `APPLICATION_PAUSED`: Persists authoritative `GameSession` state via `LifecycleCoordinator` upon mobile pause notifications.
 
-All other save triggers (after purchase, planting, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
+Milestone 7 (Task 7.3) introduces the first approved gameplay mutation persistence boundary:
+- **Successful logical planting checkpoint**: Following successful logical plant registration (`PlantRegistrationService.try_register_plant`), an immediate persistence checkpoint is attempted via `PlantingPersistenceCoordinator.try_plant_and_save()` delegating to `LocalSaveRepository.save(GameState)`.
+- **Order of operations**: Persistence is attempted strictly AFTER authoritative in-memory `GameState` insertion.
+- **Separation of logical and durability statuses**: Logical planting success and persistence checkpoint success are reported as distinct typed outcomes via `PlantingCheckpointResult`:
+  - `REGISTERED_SAVED`: In-memory registration succeeded and persistence checkpoint succeeded (durable write confirmed).
+  - `REGISTERED_SAVE_FAILED`: In-memory registration succeeded but persistence checkpoint failed (`repository.save()` returned false). The authoritative in-memory plant remains registered (no unsafe rollback, deletion, or GameState replacement); durability is not claimed.
+  - `PLANTING_REJECTED`: Logical planting failed; no persistence save is attempted.
+  - `NOT_READY`: Preconditions or dependencies unmet; no planting or save attempted.
+- **Independent boundaries**: Planting persistence checkpoints and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
+- **No schema change or migration**: `GameStateCodec` V1 wire format and validation remain unchanged; no new timestamps or save fields are added.
+- **Content compatibility**: Existing V1 content validation rules remain unchanged.
+- **Deferred gameplay features**: Pricing, currency deduction, placement coordinates, visual UI, and offline progression remain out of scope for Task 7.3 and deferred to future tasks.
+
+All other save triggers (after purchase, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
 
 ---
 
