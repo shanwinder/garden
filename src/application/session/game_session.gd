@@ -49,3 +49,20 @@ func grant_currency(amount: int) -> bool:
 ## Delegates directly to authoritative state.
 func try_spend_currency(amount: int) -> bool:
 	return _state.get_economy().try_spend_currency(amount)
+
+
+## Application operation to register a planted plant into this session.
+## Delegates directly to PlantRegistrationService; does not duplicate validation logic.
+func try_register_plant(
+	catalog: ContentCatalog,
+	instance_id: String,
+	definition_id: String,
+	planted_at: int
+) -> PlantRegistrationResult:
+	return PlantRegistrationService.try_register_plant(
+		_state,
+		catalog,
+		instance_id,
+		definition_id,
+		planted_at
+	)

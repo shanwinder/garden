@@ -39,6 +39,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestContentCatalog.new(),
 		TestPlantContentLoader.new(),
 		TestPlantSaveContentValidator.new(),
+		TestPlantRegistrationService.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────

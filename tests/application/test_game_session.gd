@@ -13,6 +13,10 @@
 ## 9. try_spend_currency() through GameSession mutates authoritative GameState.
 ## 10. Insufficient spend through GameSession returns false and leaves balance unchanged.
 ## 11. Injected GameState economy mutations affect original instance without copying.
+## 12. Successful registration through GameSession mutates authoritative GameState.
+## 13. GameSession state identity is preserved before and after registration without replacement.
+## 14. Unknown definition and duplicate instance ID rejected with no currency or state mutation.
+## 15. Independent GameSessions remain isolated.
 class_name TestGameSession
 extends TestSuiteBase
 
@@ -33,6 +37,11 @@ func run_tests() -> void:
 	_test_spend_currency_mutates_state()
 	_test_insufficient_spend()
 	_test_injected_game_state_identity_preserves_mutation()
+	_test_register_plant_success()
+	_test_register_plant_state_identity_preservation()
+	_test_register_plant_rejections_and_atomicity()
+	_test_register_plant_isolation_between_sessions()
+
 
 
 func _test_construction() -> void:
@@ -156,3 +165,124 @@ func _test_injected_game_state_identity_preserves_mutation() -> void:
 		"injected GameState economy must reflect mutation directly"
 	)
 	assert_eq(session.get_currency(), 7, "session.get_currency() must be 7")
+
+
+func _create_test_catalog() -> ContentCatalog:
+	var def: PlantDefinition = PlantDefinition.new()
+	def.id = "plant.holy_basil"
+	def.sprout_after_seconds = 60
+	def.growing_after_seconds = 300
+	def.mature_after_seconds = 900
+	return ContentCatalog.try_create([def])
+
+
+func _test_register_plant_success() -> void:
+	describe("Successful plant registration through GameSession mutates authoritative GameState")
+	var session: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+
+	var result: PlantRegistrationResult = session.try_register_plant(
+		catalog, "session-inst-1", "plant.holy_basil", 1000
+	)
+
+	assert_true(result.is_registered(), "Registration must succeed")
+	assert_eq(result.get_status(), PlantRegistrationResult.REGISTERED, "Status must be REGISTERED")
+	assert_true(result.get_plant() != null, "get_plant() must not be null")
+	assert_eq(result.get_plant().get_runtime_instance_id(), "session-inst-1", "Instance ID must match")
+
+	var state: GameState = session.get_state()
+	assert_eq(state.get_plants().get_count(), 1, "Plant count must be 1")
+	assert_true(state.get_plants().has_runtime_instance_id("session-inst-1"), "Collection must contain plant")
+	assert_eq(state.get_plants().get_plant("session-inst-1"), result.get_plant(), "Stored plant must match returned reference")
+
+
+func _test_register_plant_state_identity_preservation() -> void:
+	describe("Registration through GameSession preserves exact GameState identity without replacement")
+	var existing: GameState = GameState.new()
+	var session: GameSession = GameSession.new(existing)
+	var catalog: ContentCatalog = _create_test_catalog()
+
+	var state_before: GameState = session.get_state()
+	assert_eq(state_before, existing, "State before must match injected instance")
+
+	var result: PlantRegistrationResult = session.try_register_plant(
+		catalog, "session-inst-id", "plant.holy_basil", 1000
+	)
+	assert_true(result.is_registered(), "Registration must succeed")
+
+	var state_after: GameState = session.get_state()
+	assert_eq(state_after, existing, "State after must remain exact same injected instance")
+	assert_eq(existing.get_plants().get_count(), 1, "Injected GameState reflects plant mutation directly")
+	assert_eq(existing.get_plants().get_plant("session-inst-id"), result.get_plant(), "Stored plant in injected state matches")
+
+
+func _test_register_plant_rejections_and_atomicity() -> void:
+	describe("Failed registrations through GameSession are rejected and cause no mutation or currency change")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(100)
+	var catalog: ContentCatalog = _create_test_catalog()
+
+	# Unknown definition rejected
+	var res_unknown: PlantRegistrationResult = session.try_register_plant(
+		catalog, "inst-1", "plant.unknown", 1000
+	)
+	assert_eq(res_unknown.get_status(), PlantRegistrationResult.UNKNOWN_DEFINITION_ID, "Unknown definition must return UNKNOWN_DEFINITION_ID")
+	assert_false(res_unknown.is_registered(), "is_registered() must be false")
+	assert_true(res_unknown.get_plant() == null, "get_plant() must be null")
+	assert_eq(session.get_state().get_plants().get_count(), 0, "Plant count remains 0")
+	assert_eq(session.get_currency(), 100, "Currency remains 100")
+
+	# Register first valid plant
+	var res_valid: PlantRegistrationResult = session.try_register_plant(
+		catalog, "inst-1", "plant.holy_basil", 1000
+	)
+	assert_true(res_valid.is_registered(), "First registration must succeed")
+	assert_eq(session.get_state().get_plants().get_count(), 1, "Plant count becomes 1")
+	assert_eq(session.get_currency(), 100, "Currency remains 100")
+
+	# Duplicate runtime instance ID rejected
+	var res_dup: PlantRegistrationResult = session.try_register_plant(
+		catalog, "inst-1", "plant.holy_basil", 2000
+	)
+	assert_eq(res_dup.get_status(), PlantRegistrationResult.DUPLICATE_INSTANCE_ID, "Duplicate ID must return DUPLICATE_INSTANCE_ID")
+	assert_false(res_dup.is_registered(), "is_registered() must be false")
+	assert_true(res_dup.get_plant() == null, "get_plant() must be null")
+	assert_eq(session.get_state().get_plants().get_count(), 1, "Plant count remains 1")
+	assert_eq(session.get_currency(), 100, "Currency remains 100")
+
+	# Repeated failed commands cause no mutation
+	for i: int in range(5):
+		var res_fail: PlantRegistrationResult = session.try_register_plant(
+			catalog, "inst-1", "plant.holy_basil", 3000
+		)
+		assert_false(res_fail.is_registered(), "Repeated duplicate must fail")
+	assert_eq(session.get_state().get_plants().get_count(), 1, "Plant count unchanged after repeated failures")
+	assert_eq(session.get_currency(), 100, "Currency unchanged after repeated failures")
+
+
+func _test_register_plant_isolation_between_sessions() -> void:
+	describe("Independent GameSessions remain completely isolated during plant registration")
+	var session_a: GameSession = GameSession.new()
+	var session_b: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+
+	var res_a: PlantRegistrationResult = session_a.try_register_plant(
+		catalog, "shared-id", "plant.holy_basil", 1000
+	)
+	assert_true(res_a.is_registered(), "Session A registration must succeed")
+
+	# Session B should be able to use "shared-id" because its state is independent
+	var res_b: PlantRegistrationResult = session_b.try_register_plant(
+		catalog, "shared-id", "plant.holy_basil", 2000
+	)
+	assert_true(res_b.is_registered(), "Session B registration with same ID in distinct session must succeed")
+
+	assert_eq(session_a.get_state().get_plants().get_count(), 1, "Session A count is 1")
+	assert_eq(session_b.get_state().get_plants().get_count(), 1, "Session B count is 1")
+	assert_ne(
+		session_a.get_state().get_plants().get_plant("shared-id"),
+		session_b.get_state().get_plants().get_plant("shared-id"),
+		"Plant states in independent sessions must be separate instances"
+	)
+	assert_eq(session_a.get_state().get_plants().get_plant("shared-id").get_planted_at(), 1000, "Session A timestamp matches")
+	assert_eq(session_b.get_state().get_plants().get_plant("shared-id").get_planted_at(), 2000, "Session B timestamp matches")
