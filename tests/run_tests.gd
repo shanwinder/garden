@@ -40,6 +40,8 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestPlantContentLoader.new(),
 		TestPlantSaveContentValidator.new(),
 		TestPlantRegistrationService.new(),
+		TestPlantRuntimeIdGenerator.new(),
+		TestPlantingCommandService.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────

@@ -41,6 +41,12 @@ func run_tests() -> void:
 	_test_register_plant_state_identity_preservation()
 	_test_register_plant_rejections_and_atomicity()
 	_test_register_plant_isolation_between_sessions()
+	_test_try_plant_now_success()
+	_test_try_plant_now_state_identity_preservation()
+	_test_try_plant_now_rejections_and_atomicity()
+	_test_try_plant_now_id_generation_failure_propagation()
+	_test_try_plant_now_session_isolation()
+	_test_try_plant_now_persistence_round_trip()
 
 
 
@@ -286,3 +292,201 @@ func _test_register_plant_isolation_between_sessions() -> void:
 	)
 	assert_eq(session_a.get_state().get_plants().get_plant("shared-id").get_planted_at(), 1000, "Session A timestamp matches")
 	assert_eq(session_b.get_state().get_plants().get_plant("shared-id").get_planted_at(), 2000, "Session B timestamp matches")
+
+
+func _test_try_plant_now_success() -> void:
+	describe("try_plant_now delegates to PlantingCommandService and mutates session state")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(50)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+
+	var result: PlantRegistrationResult = session.try_plant_now(
+		catalog, clock, rng, "plant.holy_basil"
+	)
+
+	assert_true(result.is_registered(), "Registration must succeed")
+	assert_eq(result.get_status(), PlantRegistrationResult.REGISTERED, "Status must be REGISTERED")
+	assert_true(result.get_plant() != null, "get_plant() must not be null")
+	assert_eq(
+		result.get_plant().get_runtime_instance_id(),
+		"plant-inst-00000001000000020000000300000004",
+		"Generated ID must match format"
+	)
+	assert_eq(result.get_plant().get_planted_at(), 1700000000, "Planted_at must match clock")
+
+	var state: GameState = session.get_state()
+	assert_eq(state.get_plants().get_count(), 1, "Collection count is 1")
+	var stored: PlantState = state.get_plants().get_plant("plant-inst-00000001000000020000000300000004")
+	assert_eq(stored, result.get_plant(), "Stored plant must be exact returned object reference")
+	assert_eq(session.get_currency(), 50, "Currency remains unmutated")
+
+
+func _test_try_plant_now_state_identity_preservation() -> void:
+	describe("try_plant_now preserves exact injected GameState object identity")
+	var existing: GameState = GameState.new()
+	var session: GameSession = GameSession.new(existing)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+
+	var state_before: GameState = session.get_state()
+	assert_eq(state_before, existing, "State before must match injected instance")
+
+	var result: PlantRegistrationResult = session.try_plant_now(
+		catalog, clock, rng, "plant.holy_basil"
+	)
+	assert_true(result.is_registered(), "Registration must succeed")
+
+	var state_after: GameState = session.get_state()
+	assert_eq(state_after, existing, "State after must remain exact same injected instance")
+	assert_eq(existing.get_plants().get_count(), 1, "Injected GameState reflects planting directly")
+
+
+func _test_try_plant_now_rejections_and_atomicity() -> void:
+	describe("try_plant_now rejections leave state and economy completely unmutated")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(100)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var empty_rng: FakeRandomSource = FakeRandomSource.new([], [])
+
+	# Unknown definition rejected
+	var res_unknown: PlantRegistrationResult = session.try_plant_now(
+		catalog, clock, empty_rng, "plant.unknown"
+	)
+	assert_eq(
+		res_unknown.get_status(),
+		PlantRegistrationResult.UNKNOWN_DEFINITION_ID,
+		"Must return UNKNOWN_DEFINITION_ID"
+	)
+	assert_false(res_unknown.is_registered(), "is_registered() must be false")
+	assert_true(res_unknown.get_plant() == null, "get_plant() must be null")
+	assert_eq(session.get_state().get_plants().get_count(), 0, "No plants added")
+	assert_eq(session.get_currency(), 100, "Currency remains 100")
+
+	# Structurally invalid syntax rejected
+	var res_syntax: PlantRegistrationResult = session.try_plant_now(
+		catalog, clock, empty_rng, "invalid_syntax"
+	)
+	assert_eq(
+		res_syntax.get_status(),
+		PlantRegistrationResult.INVALID_INPUT,
+		"Must return INVALID_INPUT"
+	)
+	assert_false(res_syntax.is_registered(), "is_registered() must be false")
+	assert_eq(session.get_state().get_plants().get_count(), 0, "No plants added")
+	assert_eq(session.get_currency(), 100, "Currency remains 100")
+
+
+func _test_try_plant_now_id_generation_failure_propagation() -> void:
+	describe("try_plant_now propagates ID_GENERATION_FAILED without state or currency mutation")
+	var session: GameSession = GameSession.new()
+	session.grant_currency(75)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+
+	# Pre-populate 8 plants
+	for i: int in range(1, 9):
+		var existing_id: String = "%s%08x%08x%08x%08x" % [PlantRuntimeIdGenerator.ID_PREFIX, i, i, i, i]
+		session.get_state().get_plants().try_add_plant(PlantState.new(existing_id, "plant.holy_basil", 500))
+
+	# Script 32 colliding draws
+	var draws: Array[int] = []
+	for i: int in range(1, 9):
+		draws.append_array([i, i, i, i])
+
+	var rng: FakeRandomSource = FakeRandomSource.new([], draws)
+	var result: PlantRegistrationResult = session.try_plant_now(
+		catalog, clock, rng, "plant.holy_basil"
+	)
+
+	assert_eq(
+		result.get_status(),
+		PlantRegistrationResult.ID_GENERATION_FAILED,
+		"Status must be ID_GENERATION_FAILED"
+	)
+	assert_false(result.is_registered(), "is_registered() must be false")
+	assert_true(result.get_plant() == null, "get_plant() must be null")
+	assert_eq(session.get_state().get_plants().get_count(), 8, "Collection count remains 8")
+	assert_eq(session.get_currency(), 75, "Currency remains 75")
+
+
+func _test_try_plant_now_session_isolation() -> void:
+	describe("Distinct GameSessions remain isolated during try_plant_now calls")
+	var session_a: GameSession = GameSession.new()
+	var session_b: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+
+	var rng_a: FakeRandomSource = FakeRandomSource.new([], [1, 1, 1, 1])
+	var rng_b: FakeRandomSource = FakeRandomSource.new([], [2, 2, 2, 2])
+
+	var res_a: PlantRegistrationResult = session_a.try_plant_now(catalog, clock, rng_a, "plant.holy_basil")
+	var res_b: PlantRegistrationResult = session_b.try_plant_now(catalog, clock, rng_b, "plant.holy_basil")
+
+	assert_true(res_a.is_registered(), "Session A planting must succeed")
+	assert_true(res_b.is_registered(), "Session B planting must succeed")
+	assert_eq(session_a.get_state().get_plants().get_count(), 1, "Session A count is 1")
+	assert_eq(session_b.get_state().get_plants().get_count(), 1, "Session B count is 1")
+	assert_ne(
+		session_a.get_state().get_plants().get_all_plants()[0],
+		session_b.get_state().get_plants().get_all_plants()[0],
+		"Stored plants must be distinct instances"
+	)
+
+
+func _test_try_plant_now_persistence_round_trip() -> void:
+	describe("In-memory persistence round trip through GameSession and restored state planting")
+	var session_a: GameSession = GameSession.new()
+	session_a.grant_currency(123)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1700000000, 0)
+	var rng_a: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+
+	var res_a: PlantRegistrationResult = session_a.try_plant_now(catalog, clock, rng_a, "plant.holy_basil")
+	assert_true(res_a.is_registered(), "Session A planting must succeed")
+
+	# Save/encode -> JSON stringify -> parse -> decode
+	var encoded: Dictionary = GameStateCodec.encode(session_a.get_state())
+	var json_str: String = JSON.stringify(encoded)
+	var parsed: Variant = JSON.parse_string(json_str)
+	var decoded_state: GameState = GameStateCodec.decode(parsed)
+
+	assert_true(decoded_state != null, "Decoded state must not be null")
+	assert_eq(decoded_state.get_economy().get_currency(), 123, "Exact currency preserved")
+	assert_eq(decoded_state.get_plants().get_count(), 1, "Exact plant count preserved")
+
+	var restored_plant: PlantState = decoded_state.get_plants().get_plant(
+		"plant-inst-00000001000000020000000300000004"
+	)
+	assert_true(restored_plant != null, "Restored plant must exist")
+	assert_eq(
+		restored_plant.get_runtime_instance_id(),
+		"plant-inst-00000001000000020000000300000004",
+		"Instance ID exact"
+	)
+	assert_eq(restored_plant.get_definition_id(), "plant.holy_basil", "Definition ID exact")
+	assert_eq(restored_plant.get_planted_at(), 1700000000, "Planted_at exact")
+
+	# Construct Session B from decoded GameState
+	var session_b: GameSession = GameSession.new(decoded_state)
+	assert_eq(session_b.get_currency(), 123, "Session B currency matches")
+
+	# Script collision against restored plant ID, followed by unique candidate 2
+	var rng_b: FakeRandomSource = FakeRandomSource.new([], [
+		1, 2, 3, 4, # Collides with restored plant!
+		5, 6, 7, 8  # Unique candidate 2!
+	])
+	var clock_b: FakeGameClock = FakeGameClock.new(1700000500, 0)
+
+	var res_b: PlantRegistrationResult = session_b.try_plant_now(catalog, clock_b, rng_b, "plant.holy_basil")
+	assert_true(res_b.is_registered(), "Session B planting must succeed after collision retry")
+	assert_eq(
+		res_b.get_plant().get_runtime_instance_id(),
+		"plant-inst-00000005000000060000000700000008",
+		"Candidate 2 instance ID"
+	)
+	assert_eq(session_b.get_state().get_plants().get_count(), 2, "Session B now contains 2 plants")
+	assert_eq(session_b.get_currency(), 123, "Session B currency remains 123")

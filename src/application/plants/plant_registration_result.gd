@@ -18,6 +18,7 @@ enum Status {
 	UNKNOWN_DEFINITION_ID,
 	DUPLICATE_INSTANCE_ID,
 	INSERTION_REJECTED,
+	ID_GENERATION_FAILED,
 }
 
 const REGISTERED: Status = Status.REGISTERED
@@ -25,6 +26,7 @@ const INVALID_INPUT: Status = Status.INVALID_INPUT
 const UNKNOWN_DEFINITION_ID: Status = Status.UNKNOWN_DEFINITION_ID
 const DUPLICATE_INSTANCE_ID: Status = Status.DUPLICATE_INSTANCE_ID
 const INSERTION_REJECTED: Status = Status.INSERTION_REJECTED
+const ID_GENERATION_FAILED: Status = Status.ID_GENERATION_FAILED
 
 var _status: Status
 var _plant: PlantState = null
@@ -61,6 +63,11 @@ static func duplicate_instance_id() -> PlantRegistrationResult:
 ## Factory for unexpected failure during domain collection insertion.
 static func insertion_rejected() -> PlantRegistrationResult:
 	return PlantRegistrationResult.new(Status.INSERTION_REJECTED, null)
+
+
+## Factory for failure when runtime plant instance ID generation fails or is exhausted.
+static func id_generation_failed() -> PlantRegistrationResult:
+	return PlantRegistrationResult.new(Status.ID_GENERATION_FAILED, null)
 
 
 ## Returns the typed registration status.

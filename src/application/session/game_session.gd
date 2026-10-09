@@ -66,3 +66,21 @@ func try_register_plant(
 		definition_id,
 		planted_at
 	)
+
+
+## Application operation to coordinate runtime identity, timestamp capture,
+## and validated planting into this session.
+## Delegates directly to PlantingCommandService; does not own clock, RNG, or catalog.
+func try_plant_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	random_source: RandomSource,
+	definition_id: String
+) -> PlantRegistrationResult:
+	return PlantingCommandService.try_plant_now(
+		_state,
+		catalog,
+		game_clock,
+		random_source,
+		definition_id
+	)
