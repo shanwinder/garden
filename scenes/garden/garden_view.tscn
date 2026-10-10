@@ -1,0 +1,172 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/presentation/garden/garden_view.gd" id="1_garden_view"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_content"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_details"]
+bg_color = Color(0.16, 0.2, 0.17, 0.95)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[node name="GardenView" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_garden_view")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.12, 0.15, 0.13, 1)
+
+[node name="MainMargin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 64
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 64
+
+[node name="LayoutBox" type="VBoxContainer" parent="MainMargin"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="HeaderArea" type="HBoxContainer" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MainMargin/LayoutBox/HeaderArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 40
+text = "สวนของคุณ"
+vertical_alignment = 1
+
+[node name="RefreshButton" type="Button" parent="MainMargin/LayoutBox/HeaderArea"]
+custom_minimum_size = Vector2(180, 72)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "รีเฟรช"
+
+[node name="ContentArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxEmpty_content")
+
+[node name="PlantsScroll" type="ScrollContainer" parent="MainMargin/LayoutBox/ContentArea"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="PlantsMargin" type="MarginContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="PlantsContainer" type="GridContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 20
+theme_override_constants/v_separation = 20
+columns = 2
+
+[node name="EmptyStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea"]
+visible = false
+layout_mode = 2
+
+[node name="EmptyLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/EmptyStateContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "สวนของคุณยังไม่มีต้นไม้"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BlockedStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea"]
+visible = false
+layout_mode = 2
+
+[node name="BlockedLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/BlockedStateContainer"]
+custom_minimum_size = Vector2(800, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 30
+text = "ไม่สามารถโหลดสวนได้ในขณะนี้"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="DetailsArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_details")
+
+[node name="MarginContainer" type="MarginContainer" parent="MainMargin/LayoutBox/DetailsArea"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="DetailsVBox" type="VBoxContainer" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="DetailsHeaderLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.9, 0.85, 1)
+theme_override_font_sizes/font_size = 26
+text = "รายละเอียดต้นไม้"
+
+[node name="NoSelectionLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_colors/font_color = Color(0.65, 0.7, 0.65, 1)
+theme_override_font_sizes/font_size = 22
+text = "แตะที่ต้นไม้เพื่อดูรายละเอียด"
+vertical_alignment = 1
+
+[node name="DetailsContent" type="VBoxContainer" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="DetailNameLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "พืช: —"
+
+[node name="DetailStageLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "ระยะ: —"
+
+[node name="DetailIdLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
+theme_override_font_sizes/font_size = 20
+text = "รหัสประจำต้น: —"
+
+[node name="DetailPlantedAtLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
+theme_override_font_sizes/font_size = 20
+text = "ปลูกเมื่อ: —"
