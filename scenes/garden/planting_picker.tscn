@@ -1,0 +1,193 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/presentation/garden/planting_picker.gd" id="1_planting_picker"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_picker_panel"]
+bg_color = Color(0.14, 0.18, 0.15, 0.98)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_confirm_panel"]
+bg_color = Color(0.18, 0.22, 0.19, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.4, 0.32, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[node name="PlantingPicker" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_planting_picker")
+
+[node name="BackgroundDimmer" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PickerPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(860, 920)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_picker_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/PickerPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 36
+theme_override_constants/margin_top = 36
+theme_override_constants/margin_right = 36
+theme_override_constants/margin_bottom = 36
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/PickerPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="HeaderHBox" type="HBoxContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 34
+text = "เลือกพันธุ์ไม้ที่จะปลูก"
+vertical_alignment = 1
+
+[node name="CloseButton" type="Button" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox"]
+custom_minimum_size = Vector2(120, 64)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ปิด"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ListMargin" type="MarginContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="PlantListContainer" type="VBoxContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16
+
+[node name="NoteLabel" type="Label" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 0.9)
+theme_override_font_sizes/font_size = 20
+text = "(ระบบทดลองนี้ยังไม่รองรับการกำหนดตำแหน่งในสวน)"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmationOverlay" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ConfirmDimmer" type="ColorRect" parent="ConfirmationOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.75)
+
+[node name="ConfirmCenter" type="CenterContainer" parent="ConfirmationOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ConfirmPanel" type="PanelContainer" parent="ConfirmationOverlay/ConfirmCenter"]
+custom_minimum_size = Vector2(760, 420)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_confirm_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 36
+theme_override_constants/margin_top = 36
+theme_override_constants/margin_right = 36
+theme_override_constants/margin_bottom = 36
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="ConfirmTitleLabel" type="Label" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "ยืนยันการปลูก"
+horizontal_alignment = 1
+
+[node name="ConfirmPromptLabel" type="Label" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 26
+text = "เพิ่มต้นกะเพราลงในสวนหรือไม่?"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmNoticeLabel" type="Label" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.76, 0.72, 0.9)
+theme_override_font_sizes/font_size = 20
+text = "ต้นไม้จะถูกเพิ่มลงในสวนโดยยังไม่กำหนดตำแหน่ง"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ButtonHBox" type="HBoxContainer" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="CancelButton" type="Button" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ButtonHBox"]
+custom_minimum_size = Vector2(220, 72)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ยกเลิก"
+
+[node name="ConfirmButton" type="Button" parent="ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ButtonHBox"]
+custom_minimum_size = Vector2(220, 72)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ยืนยัน"

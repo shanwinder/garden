@@ -16,6 +16,8 @@
 class_name GardenView
 extends Control
 
+signal planting_requested(definition_id: String)
+
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
 
 var _session: GameSession = null
@@ -25,8 +27,14 @@ var _game_clock: GameClock = null
 var _selected_runtime_instance_id: String = ""
 var _is_blocked: bool = false
 var _blocked_message: String = ""
+var _last_checkpoint_result: PlantingCheckpointResult = null
 
 var _refresh_button: Button = null
+var _plant_button: Button = null
+var _feedback_area: Control = null
+var _feedback_label: Label = null
+var _planting_picker: PlantingPicker = null
+
 var _plants_container: Container = null
 var _plants_scroll: ScrollContainer = null
 var _empty_container: Control = null
@@ -44,8 +52,6 @@ var _detail_planted_at_label: Label = null
 
 func _ready() -> void:
 	_resolve_nodes()
-	if _refresh_button != null and not _refresh_button.pressed.is_connected(_on_refresh_button_pressed):
-		_refresh_button.pressed.connect(_on_refresh_button_pressed)
 	if _is_blocked:
 		_show_blocked_visual()
 	elif _session != null:
@@ -56,6 +62,14 @@ func _ready() -> void:
 func _resolve_nodes() -> void:
 	if _refresh_button == null:
 		_refresh_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/RefreshButton") as Button
+	if _plant_button == null:
+		_plant_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/PlantButton") as Button
+	if _feedback_area == null:
+		_feedback_area = get_node_or_null("MainMargin/LayoutBox/FeedbackArea") as Control
+	if _feedback_label == null:
+		_feedback_label = get_node_or_null("MainMargin/LayoutBox/FeedbackArea/FeedbackMargin/FeedbackLabel") as Label
+	if _planting_picker == null:
+		_planting_picker = get_node_or_null("PlantingPicker") as PlantingPicker
 	if _plants_container == null:
 		_plants_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/PlantsContainer") as Container
 	if _plants_scroll == null:
@@ -80,6 +94,16 @@ func _resolve_nodes() -> void:
 		_detail_id_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailIdLabel") as Label
 	if _detail_planted_at_label == null:
 		_detail_planted_at_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlantedAtLabel") as Label
+	_connect_signals()
+
+
+func _connect_signals() -> void:
+	if _refresh_button != null and not _refresh_button.pressed.is_connected(_on_refresh_button_pressed):
+		_refresh_button.pressed.connect(_on_refresh_button_pressed)
+	if _plant_button != null and not _plant_button.pressed.is_connected(open_planting_picker):
+		_plant_button.pressed.connect(open_planting_picker)
+	if _planting_picker != null and not _planting_picker.planting_requested.is_connected(_on_picker_planting_requested):
+		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -92,6 +116,14 @@ func bind_garden(
 	_session = session
 	_catalog = catalog
 	_game_clock = game_clock
+
+	_resolve_nodes()
+	if _planting_picker != null and _catalog != null:
+		_planting_picker.bind_catalog(_catalog)
+		_planting_picker.set_picker_enabled(true)
+
+	if _plant_button != null:
+		_plant_button.disabled = false
 
 	if _session == null or _catalog == null or _game_clock == null:
 		show_blocked_startup("ไม่สามารถเริ่มต้นสวนได้เนื่องจากข้อมูลไม่สมบูรณ์")
@@ -106,6 +138,12 @@ func bind_garden(
 func show_blocked_startup(message: String = "") -> void:
 	_is_blocked = true
 	_blocked_message = message if not message.is_empty() else "ไม่สามารถโหลดสวนได้ในขณะนี้"
+	_resolve_nodes()
+	if _plant_button != null:
+		_plant_button.disabled = true
+	if _planting_picker != null:
+		_planting_picker.set_picker_enabled(false)
+		_planting_picker.close_picker()
 	_show_blocked_visual()
 
 
@@ -276,6 +314,8 @@ func _show_blocked_visual() -> void:
 	_clear_plant_views()
 	_selected_runtime_instance_id = ""
 
+	if _feedback_area != null:
+		_feedback_area.visible = false
 	if _empty_container != null:
 		_empty_container.visible = false
 	if _plants_scroll != null:
@@ -358,3 +398,98 @@ func get_detail_name_text() -> String:
 func get_detail_stage_text() -> String:
 	_resolve_nodes()
 	return _detail_stage_label.text if _detail_stage_label != null else ""
+
+
+func _on_picker_planting_requested(definition_id: String) -> void:
+	planting_requested.emit(definition_id)
+
+
+## Opens the planting picker modal.
+func open_planting_picker() -> void:
+	if _is_blocked or _session == null:
+		return
+	_resolve_nodes()
+	if _planting_picker != null:
+		_planting_picker.open_picker()
+
+
+## Closes the planting picker modal.
+func close_planting_picker() -> void:
+	_resolve_nodes()
+	if _planting_picker != null:
+		_planting_picker.close_picker()
+
+
+## Displays user feedback from a PlantingCheckpointResult.
+func show_planting_result(result: PlantingCheckpointResult) -> void:
+	_last_checkpoint_result = result
+	_resolve_nodes()
+	if _feedback_area == null or _feedback_label == null or result == null:
+		return
+
+	_feedback_area.visible = true
+	match result.get_status():
+		PlantingCheckpointResult.Status.NOT_READY:
+			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการปลูกต้นไม้"
+		PlantingCheckpointResult.Status.PLANTING_REJECTED:
+			var reason_str: String = ""
+			var reg_result: PlantRegistrationResult = result.get_registration_result()
+			if reg_result != null:
+				match reg_result.get_status():
+					PlantRegistrationResult.INVALID_INPUT:
+						reason_str = "INVALID_INPUT"
+					PlantRegistrationResult.UNKNOWN_DEFINITION_ID:
+						reason_str = "UNKNOWN_DEFINITION_ID"
+					PlantRegistrationResult.DUPLICATE_INSTANCE_ID:
+						reason_str = "DUPLICATE_INSTANCE_ID"
+					PlantRegistrationResult.INSERTION_REJECTED:
+						reason_str = "INSERTION_REJECTED"
+					PlantRegistrationResult.ID_GENERATION_FAILED:
+						reason_str = "ID_GENERATION_FAILED"
+					_:
+						reason_str = "UNKNOWN"
+			if not reason_str.is_empty():
+				_feedback_label.text = "ไม่สามารถเพิ่มต้นไม้ได้ (%s)" % reason_str
+			else:
+				_feedback_label.text = "ไม่สามารถเพิ่มต้นไม้ได้"
+		PlantingCheckpointResult.Status.REGISTERED_SAVED:
+			_feedback_label.text = "เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"
+		PlantingCheckpointResult.Status.REGISTERED_SAVE_FAILED:
+			_feedback_label.text = "เพิ่มต้นไม้แล้ว แต่ยังบันทึกไม่สำเร็จ"
+		_:
+			_feedback_label.text = "สถานะการปลูกไม่ระบุ"
+
+
+## Pure query for testing: returns child PlantingPicker instance.
+func get_planting_picker() -> PlantingPicker:
+	_resolve_nodes()
+	return _planting_picker
+
+
+## Pure query for testing: returns planting trigger Button instance.
+func get_plant_button() -> Button:
+	_resolve_nodes()
+	return _plant_button
+
+
+## Pure query for testing: returns true if planting interaction is currently enabled.
+func is_planting_enabled() -> bool:
+	_resolve_nodes()
+	return not _is_blocked and _session != null and _plant_button != null and not _plant_button.disabled and _planting_picker != null and _planting_picker.is_picker_enabled()
+
+
+## Pure query for testing: returns current feedback text.
+func get_feedback_text() -> String:
+	_resolve_nodes()
+	return _feedback_label.text if _feedback_label != null else ""
+
+
+## Pure query for testing: returns true if feedback area is visible.
+func is_feedback_visible() -> bool:
+	_resolve_nodes()
+	return _feedback_area != null and _feedback_area.visible
+
+
+## Pure query for testing: returns last received PlantingCheckpointResult.
+func get_last_checkpoint_result() -> PlantingCheckpointResult:
+	return _last_checkpoint_result

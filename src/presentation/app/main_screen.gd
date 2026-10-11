@@ -8,32 +8,67 @@
 ## - Does NOT create a replacement GameSession if startup failed.
 ## - Does NOT construct a second ContentCatalog, GameClock, or RandomSource.
 ## - Gracefully handles missing AppRoot or blocked sessions with safe diagnostic states.
+## - Listens to GardenView.planting_requested signal.
+## - Dispatches AppRoot.try_plant_and_checkpoint(definition_id) exactly once upon confirmed request.
+## - Passes PlantingCheckpointResult outcome to GardenView for feedback display.
+## - Refreshes GardenView from authoritative GameSession if registration succeeded.
+## - Supports isolated AppRoot dependency injection via bind_app_root() for testing.
 class_name MainScreen
 extends Control
 
 var _garden_view: GardenView = null
+var _bound_app_root: AppRoot = null
+var _is_app_root_explicitly_bound: bool = false
 
 
 func _ready() -> void:
-	_garden_view = get_node_or_null("GardenView") as GardenView
+	_resolve_nodes()
+	_connect_garden_signals()
 	_bind_dependencies()
+
+
+func _resolve_nodes() -> void:
+	if _garden_view == null:
+		_garden_view = get_node_or_null("GardenView") as GardenView
+
+
+func _connect_garden_signals() -> void:
+	_resolve_nodes()
+	if _garden_view != null and not _garden_view.planting_requested.is_connected(_on_garden_planting_requested):
+		_garden_view.planting_requested.connect(_on_garden_planting_requested)
+
+
+## Explicit dependency injection seam allowing tests or coordinators to bind an isolated AppRoot.
+func bind_app_root(app: AppRoot) -> void:
+	_is_app_root_explicitly_bound = true
+	_bound_app_root = app
+	_resolve_nodes()
+	_connect_garden_signals()
+	_bind_dependencies()
+
+
+func _get_effective_app_root() -> AppRoot:
+	if _is_app_root_explicitly_bound:
+		return _bound_app_root
+
+	if not is_inside_tree() or get_tree() == null or get_tree().root == null:
+		return null
+
+	var app_node: Node = get_tree().root.get_node_or_null("App")
+	if app_node != null and app_node is AppRoot:
+		return app_node as AppRoot
+
+	return null
 
 
 func _bind_dependencies() -> void:
 	if _garden_view == null:
 		return
 
-	# Locate the existing AppRoot Autoload.
-	if not is_inside_tree() or get_tree() == null or get_tree().root == null:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
 		_garden_view.show_blocked_startup("ไม่พบบริการหลักของระบบ (AppRoot)")
 		return
-
-	var app_node: Node = get_tree().root.get_node_or_null("App")
-	if app_node == null or not (app_node is AppRoot):
-		_garden_view.show_blocked_startup("ไม่พบบริการหลักของระบบ (AppRoot)")
-		return
-
-	var app: AppRoot = app_node as AppRoot
 
 	# Check startup readiness.
 	if not app.has_active_session():
@@ -51,6 +86,28 @@ func _bind_dependencies() -> void:
 		app.get_content_catalog(),
 		app.game_clock
 	)
+
+
+func _on_garden_planting_requested(definition_id: String) -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_planting_result(PlantingCheckpointResult.not_ready())
+		return
+
+	# Verify bootstrap completed, content READY, and active session exists.
+	if not app.is_session_bootstrapped() or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY or not app.has_active_session():
+		if _garden_view != null:
+			_garden_view.show_planting_result(PlantingCheckpointResult.not_ready())
+		return
+
+	# Invoke authoritative planting checkpoint command exactly once.
+	var result: PlantingCheckpointResult = app.try_plant_and_checkpoint(definition_id)
+
+	if _garden_view != null:
+		_garden_view.show_planting_result(result)
+		if result != null and result.is_registered():
+			_garden_view.refresh_from_session()
 
 
 func _determine_blocked_reason(app: AppRoot) -> String:
@@ -77,6 +134,10 @@ func _determine_blocked_reason(app: AppRoot) -> String:
 
 ## Pure query for testing: returns child GardenView.
 func get_garden_view() -> GardenView:
-	if _garden_view == null:
-		_garden_view = get_node_or_null("GardenView") as GardenView
+	_resolve_nodes()
 	return _garden_view
+
+
+## Pure query for testing: returns currently bound/effective AppRoot.
+func get_effective_app_root() -> AppRoot:
+	return _get_effective_app_root()

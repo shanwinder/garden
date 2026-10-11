@@ -81,6 +81,23 @@ func run_tests() -> void:
 	_test_z_headless_scene_instantiation()
 	_test_main_scene_structure()
 	_test_main_screen_safe_startup_without_session()
+	_test_planting_picker_available_on_valid_empty_garden()
+	_test_planting_controls_blocked_without_active_session()
+	_test_picker_signal_forwarded_by_garden_view()
+	_test_feedback_registered_saved()
+	_test_feedback_registered_save_failed()
+	_test_feedback_planting_rejected()
+	_test_feedback_not_ready()
+	_test_refresh_after_registration_updates_count_no_duplicates()
+	_test_selected_plant_preserved_after_planting_refresh()
+	_test_refresh_remains_read_only_no_save_on_cancel()
+	_test_integration_confirmed_planting_saves_once_and_renders()
+	_test_integration_cancelling_causes_zero_saves()
+	_test_integration_duplicate_confirmation_causes_no_duplicate_registration()
+	_test_integration_failed_save_preserves_plant_with_warning()
+	_test_integration_corrupt_save_blocks_controls()
+	_test_integration_unbootstrapped_app_causes_no_writes()
+	_test_integration_session_and_catalog_identity_unchanged()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -626,13 +643,470 @@ func _test_main_scene_structure() -> void:
 	main_node.free()
 
 
+const TEST_PRIMARY_PATH: String = "user://__test_garden_pres_primary.json"
+const TEST_TEMP_PATH: String = "user://__test_garden_pres.tmp"
+const TEST_BACKUP_PATH: String = "user://__test_garden_pres.bak"
+const TEST_CORRUPT_PATH: String = "user://__test_garden_pres.corrupt"
+
+
+class FailingSaveRepo extends LocalSaveRepository:
+	var save_call_count: int = 0
+
+	func _init(p: String = TEST_PRIMARY_PATH, t: String = TEST_TEMP_PATH, b: String = TEST_BACKUP_PATH, c: String = TEST_CORRUPT_PATH) -> void:
+		super._init(p, t, b, c)
+
+	func save(_state: GameState) -> bool:
+		save_call_count += 1
+		return false
+
+
+class CountingSaveRepo extends LocalSaveRepository:
+	var save_call_count: int = 0
+
+	func _init(p: String = TEST_PRIMARY_PATH, t: String = TEST_TEMP_PATH, b: String = TEST_BACKUP_PATH, c: String = TEST_CORRUPT_PATH) -> void:
+		super._init(p, t, b, c)
+
+	func save(state: GameState) -> bool:
+		save_call_count += 1
+		return super.save(state)
+
+
+class GardenSignalTracker extends RefCounted:
+	var emitted_count: int = 0
+	var received_ids: Array[String] = []
+
+	func on_planting_requested(def_id: String) -> void:
+		emitted_count += 1
+		received_ids.append(def_id)
+
+
+func _cleanup_presentation_test_files() -> void:
+	for p: String in [TEST_PRIMARY_PATH, TEST_TEMP_PATH, TEST_BACKUP_PATH, TEST_CORRUPT_PATH]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+
 func _test_main_screen_safe_startup_without_session() -> void:
-	describe("MainScreen safe startup without active App session")
+	describe("MainScreen safe startup without active App session (meaningful verification)")
 	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
-	# In test runner environment, /root/App may not have active session or may not exist
 	main_node._ready()
 	var gview: GardenView = main_node.get_garden_view()
 	assert_true(gview != null, "GardenView child accessible")
-	# View must not crash, must be in safe blocked state or bound state
-	assert_true(gview.is_startup_blocked() or not gview.is_empty_garden_displayed() or gview.is_empty_garden_displayed(), "Safe state guaranteed")
+
+	# Explicitly verify missing/null AppRoot results in startup blocked and planting disabled
+	main_node.bind_app_root(null)
+	assert_true(gview.is_startup_blocked(), "GardenView must be in blocked state when AppRoot is null")
+	assert_false(gview.is_planting_enabled(), "Planting interaction must be disabled when AppRoot is null")
+	assert_eq(gview.get_blocked_message(), "ไม่พบบริการหลักของระบบ (AppRoot)", "Blocked message must indicate missing AppRoot")
+
+	# Explicitly verify unbootstrapped/inactive session results in startup blocked and planting disabled
+	var unbootstrapped_app: AppRoot = AppRoot.new()
+	main_node.bind_app_root(unbootstrapped_app)
+	assert_true(gview.is_startup_blocked(), "GardenView must be in blocked state when session is unbootstrapped")
+	assert_false(gview.is_planting_enabled(), "Planting interaction must be disabled when session is unbootstrapped")
+	unbootstrapped_app.free()
+
 	main_node.free()
+
+
+func _test_planting_picker_available_on_valid_empty_garden() -> void:
+	describe("Planting picker visible and available on valid empty garden")
+	var view: GardenView = _instantiate_garden_view()
+	var session: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+
+	assert_true(view.is_empty_garden_displayed(), "Empty garden displayed initially")
+	assert_true(view.is_planting_enabled(), "Planting controls must be enabled")
+	var picker: PlantingPicker = view.get_planting_picker()
+	assert_true(picker != null, "PlantingPicker exists")
+	assert_false(picker.is_picker_open(), "Picker closed by default")
+
+	view.open_planting_picker()
+	assert_true(picker.is_picker_open(), "Picker opened via view.open_planting_picker()")
+
+	view.close_planting_picker()
+	assert_false(picker.is_picker_open(), "Picker closed via view.close_planting_picker()")
+	view.free()
+
+
+func _test_planting_controls_blocked_without_active_session() -> void:
+	describe("Planting controls blocked without active session")
+	var view: GardenView = _instantiate_garden_view()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(null, catalog, clock)
+
+	assert_true(view.is_startup_blocked(), "Startup is blocked")
+	assert_false(view.is_planting_enabled(), "Planting controls must be disabled")
+
+	view.open_planting_picker()
+	var picker: PlantingPicker = view.get_planting_picker()
+	assert_false(picker.is_picker_open(), "Picker must not open when startup is blocked")
+	view.free()
+
+
+func _test_picker_signal_forwarded_by_garden_view() -> void:
+	describe("Picker signal forwarded exactly once by GardenView")
+	var view: GardenView = _instantiate_garden_view()
+	var session: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+
+	var tracker: GardenSignalTracker = GardenSignalTracker.new()
+	view.planting_requested.connect(tracker.on_planting_requested)
+
+	var picker: PlantingPicker = view.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.chili")
+	picker.confirm_planting()
+
+	assert_eq(tracker.emitted_count, 1, "GardenView forwarded planting request exactly once")
+	assert_eq(tracker.received_ids[0], "plant.chili", "Forwarded definition ID must match")
+	view.free()
+
+
+func _test_feedback_registered_saved() -> void:
+	describe("Result REGISTERED_SAVED shows success feedback")
+	var view: GardenView = _instantiate_garden_view()
+	var plant: PlantState = PlantState.new("inst-01", "plant.holy_basil", 1000)
+	var reg_result: PlantRegistrationResult = PlantRegistrationResult.registered(plant)
+	var result: PlantingCheckpointResult = PlantingCheckpointResult.registered_saved(reg_result)
+
+	view.show_planting_result(result)
+
+	assert_true(view.is_feedback_visible(), "Feedback area must be visible")
+	assert_true(view.get_feedback_text().contains("เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"), "Feedback shows success message")
+	view.free()
+
+
+func _test_feedback_registered_save_failed() -> void:
+	describe("Result REGISTERED_SAVE_FAILED shows explicit unsaved warning")
+	var view: GardenView = _instantiate_garden_view()
+	var plant: PlantState = PlantState.new("inst-01", "plant.holy_basil", 1000)
+	var reg_result: PlantRegistrationResult = PlantRegistrationResult.registered(plant)
+	var result: PlantingCheckpointResult = PlantingCheckpointResult.registered_save_failed(reg_result)
+
+	view.show_planting_result(result)
+
+	assert_true(view.is_feedback_visible(), "Feedback area must be visible")
+	assert_true(view.get_feedback_text().contains("เพิ่มต้นไม้แล้ว แต่ยังบันทึกไม่สำเร็จ"), "Feedback shows unsaved warning")
+	assert_false(view.get_feedback_text().contains("เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"), "Must never show false durable success")
+	view.free()
+
+
+func _test_feedback_planting_rejected() -> void:
+	describe("Rejected result shows non-success feedback with failure diagnostic")
+	var view: GardenView = _instantiate_garden_view()
+	var reg_result: PlantRegistrationResult = PlantRegistrationResult.unknown_definition_id()
+	var result: PlantingCheckpointResult = PlantingCheckpointResult.planting_rejected(reg_result)
+
+	view.show_planting_result(result)
+
+	assert_true(view.is_feedback_visible(), "Feedback area must be visible")
+	assert_true(view.get_feedback_text().contains("ไม่สามารถเพิ่มต้นไม้ได้"), "Feedback shows rejection")
+	assert_true(view.get_feedback_text().contains("UNKNOWN_DEFINITION_ID"), "Retains diagnostic status")
+	view.free()
+
+
+func _test_feedback_not_ready() -> void:
+	describe("NOT_READY shows unavailable feedback without misleading success")
+	var view: GardenView = _instantiate_garden_view()
+	var result: PlantingCheckpointResult = PlantingCheckpointResult.not_ready()
+
+	view.show_planting_result(result)
+
+	assert_true(view.is_feedback_visible(), "Feedback area must be visible")
+	assert_true(view.get_feedback_text().contains("ระบบยังไม่พร้อมสำหรับการปลูกต้นไม้"), "Feedback indicates system not ready")
+	assert_false(view.get_feedback_text().contains("สำเร็จ"), "Must not claim success")
+	view.free()
+
+
+func _test_refresh_after_registration_updates_count_no_duplicates() -> void:
+	describe("Refresh after registration updates plant count without duplicates")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+	assert_eq(view.get_displayed_plant_count(), 0, "Initial count 0")
+	assert_true(view.is_empty_garden_displayed(), "Empty state visible")
+
+	# Add plant directly to authoritative session
+	state.get_plants().try_add_plant(PlantState.new("plant-01", "plant.holy_basil", 1000))
+	view.refresh_from_session()
+
+	assert_eq(view.get_displayed_plant_count(), 1, "Count is 1 after refresh")
+	assert_false(view.is_empty_garden_displayed(), "Empty state hidden")
+
+	# Second refresh must not duplicate
+	view.refresh_from_session()
+	assert_eq(view.get_displayed_plant_count(), 1, "Count remains 1 after second refresh")
+	view.free()
+
+
+func _test_selected_plant_preserved_after_planting_refresh() -> void:
+	describe("Selected existing plant remains correct after planting and refresh")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("plant-01", "plant.holy_basil", 1000))
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+	view.get_plant_view_by_id("plant-01").simulate_selection_input()
+	assert_eq(view.get_selected_runtime_instance_id(), "plant-01", "plant-01 selected")
+
+	# Add second plant and refresh
+	state.get_plants().try_add_plant(PlantState.new("plant-02", "plant.chili", 1000))
+	view.refresh_from_session()
+
+	assert_eq(view.get_selected_runtime_instance_id(), "plant-01", "Selection preserved on plant-01")
+	var pv: PlantView = view.get_plant_view_by_id("plant-01")
+	assert_true(pv != null and pv.is_selected(), "PlantView plant-01 remains visually highlighted")
+	view.free()
+
+
+func _test_refresh_remains_read_only_no_save_on_cancel() -> void:
+	describe("Refresh remains read-only and no automatic save occurs on cancel")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+	var picker: PlantingPicker = view.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.chili")
+	picker.cancel_confirmation()
+	view.refresh_from_session()
+
+	assert_eq(state.get_plants().get_count(), 0, "No plant added")
+	assert_eq(session.get_currency(), 0, "No currency change")
+	view.free()
+
+
+func _test_integration_confirmed_planting_saves_once_and_renders() -> void:
+	describe("Integration: Confirmed planting saves once, adds PlantState, and renders in GardenView")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var loader: PlantContentLoader = PlantContentLoader.new()
+	var app: AppRoot = AppRoot.new(repo, loader, clock, rng)
+	var _load_res: LocalSaveLoadResult = app.bootstrap_session()
+	assert_true(app.has_active_session(), "App bootstrapped with active session")
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	assert_true(gview.is_empty_garden_displayed(), "Empty garden initially")
+
+	# Confirm planting through picker
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.holy_basil")
+	picker.confirm_planting()
+
+	assert_eq(repo.save_call_count, 1, "Save called exactly once")
+	assert_eq(app.game_session.get_state().get_plants().get_count(), 1, "Exactly 1 plant in GameState")
+	assert_false(gview.is_empty_garden_displayed(), "Empty state disappeared")
+	assert_eq(gview.get_displayed_plant_count(), 1, "One plant rendered in GardenView")
+
+	var pview: PlantView = gview.get_plant_views()[0]
+	assert_eq(pview.get_definition_id(), "plant.holy_basil", "Plant definition holy basil")
+	assert_true(pview.get_runtime_instance_id().length() > 0, "Non-empty instance ID")
+	assert_true(gview.get_feedback_text().contains("เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"), "Success feedback displayed")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_cancelling_causes_zero_saves() -> void:
+	describe("Integration: Cancelling planting causes zero saves and leaves state unchanged")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.chili")
+	picker.cancel_confirmation()
+
+	assert_eq(repo.save_call_count, 0, "Zero saves on cancel")
+	assert_eq(app.game_session.get_state().get_plants().get_count(), 0, "Zero plants in GameState")
+	assert_true(gview.is_empty_garden_displayed(), "Empty garden unchanged")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_duplicate_confirmation_causes_no_duplicate_registration() -> void:
+	describe("Integration: Duplicate confirmation cannot cause duplicate registration")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.jasmine")
+	picker.confirm_planting()
+	assert_eq(repo.save_call_count, 1, "First confirmation saves once")
+	assert_eq(app.game_session.get_state().get_plants().get_count(), 1, "One plant registered")
+
+	# Immediate repeated confirm attempt without re-selecting
+	picker.confirm_planting()
+	assert_eq(repo.save_call_count, 1, "Still exactly 1 save call")
+	assert_eq(app.game_session.get_state().get_plants().get_count(), 1, "Still exactly 1 plant registered")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_failed_save_preserves_plant_with_warning() -> void:
+	describe("Integration: Failed save preserves plant in memory with explicit unsaved warning")
+	_cleanup_presentation_test_files()
+
+	var repo: FailingSaveRepo = FailingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.marigold")
+	picker.confirm_planting()
+
+	assert_eq(repo.save_call_count, 1, "Save attempted once")
+	assert_eq(app.game_session.get_state().get_plants().get_count(), 1, "Plant preserved in memory")
+	assert_eq(gview.get_displayed_plant_count(), 1, "Plant rendered in GardenView")
+	assert_true(gview.get_feedback_text().contains("เพิ่มต้นไม้แล้ว แต่ยังบันทึกไม่สำเร็จ"), "Shows explicit unsaved warning")
+	assert_false(gview.get_feedback_text().contains("เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"), "No false saved-success claim")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_corrupt_save_blocks_controls() -> void:
+	describe("Integration: Corrupt save at startup blocks planting controls")
+	_cleanup_presentation_test_files()
+
+	# Create corrupt save file
+	var fa: FileAccess = FileAccess.open(TEST_PRIMARY_PATH, FileAccess.WRITE)
+	assert_true(fa != null, "Corrupt test file created")
+	fa.store_string("NOT_VALID_JSON{{{")
+	fa.close()
+
+	var repo: LocalSaveRepository = LocalSaveRepository.new(TEST_PRIMARY_PATH, TEST_TEMP_PATH, TEST_BACKUP_PATH, TEST_CORRUPT_PATH)
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+	assert_false(app.has_active_session(), "Session not active due to corrupt save")
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	assert_true(gview.is_startup_blocked(), "GardenView blocked")
+	assert_false(gview.is_planting_enabled(), "Planting controls disabled")
+	assert_eq(gview.get_blocked_message(), "ข้อมูลบันทึกเสียหาย ไม่สามารถเปิดสวนได้")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_unbootstrapped_app_causes_no_writes() -> void:
+	describe("Integration: Unbootstrapped app causes no writes")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	assert_true(gview.is_startup_blocked(), "Startup blocked")
+	assert_false(gview.is_planting_enabled(), "Planting disabled")
+	assert_eq(repo.save_call_count, 0, "Zero saves invoked")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_integration_session_and_catalog_identity_unchanged() -> void:
+	describe("Integration: Existing session and catalog identity unchanged after planting")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var expected_session: GameSession = app.game_session
+	var expected_catalog: ContentCatalog = app.get_content_catalog()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.banana")
+	picker.confirm_planting()
+
+	assert_true(app.game_session == expected_session, "GameSession reference unchanged")
+	assert_true(app.get_content_catalog() == expected_catalog, "ContentCatalog reference unchanged")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
