@@ -45,6 +45,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestPlantingPersistenceIntegration.new(),
 		TestPlantingPicker.new(),
 		TestGardenView.new(),
+		TestGardenPresentationIntegration.new(),
 	]
 
 # ── Runner ────────────────────────────────────────────────────────────────────

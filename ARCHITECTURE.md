@@ -939,11 +939,14 @@ At the application startup boundary (`AppRoot.bootstrap_session()`), decoded sav
   - Future plant-creation gameplay commands must enforce catalog membership before creating new persistent `PlantState` instances.
   - Unknown saved IDs require future explicit migration or recovery workflows.
 
-#### Presentation and Recovery UX Status
+#### Presentation and Recovery UX Status (Milestones 6 and 8)
 
-`INVALID_DATA`, `IO_ERROR`, and `UNKNOWN_PLANT_IDS` are exposed through AppRoot startup queries (`get_startup_load_result()` and `get_saved_content_validation_result()`) for future presentation and recovery handling.
+`INVALID_DATA`, `IO_ERROR`, and `UNKNOWN_PLANT_IDS` (along with content bootstrap failures `LOAD_FAILED` and `INVALID_DEFINITIONS`) are exposed through `AppRoot` startup queries (`get_content_bootstrap_status()`, `get_startup_load_result()`, and `get_saved_content_validation_result()`).
 
-Player-facing recovery UI (such as "Reset Save", "Restore Backup", "Delete Save", or "Continue Anyway" buttons) is intentionally out of scope for Milestone 6 and will be designed alongside the presentation layer in a dedicated task.
+In Milestone 8:
+- `MainScreen` (`res://src/presentation/app/main_screen.gd`) inspects `AppRoot` startup readiness and binds `GardenView` only when content is `READY` and an active `GameSession` exists.
+- When startup is blocked, `MainScreen` maps the diagnostic state to a player-readable Thai message via `GardenView.show_blocked_startup(...)`, disables all planting controls (`PlantButton` and `PlantingPicker`), and performs no session creation or disk writes.
+- Destructive or mutating recovery UI actions (such as "Reset Save", "Restore Backup", "Delete Save", or "Continue Anyway" buttons) remain intentionally out of scope through Milestone 8 to prevent accidental data loss.
 
 ---
 
@@ -990,13 +993,14 @@ Do not rely exclusively on a graceful application-exit callback; Android may ter
 
 Save frequency must balance data safety with unnecessary storage writes.
 
-#### Implementation Status (Milestones 5 and 7)
+#### Implementation Status (Milestones 5, 7, and 8)
 
 Milestone 5 implemented the foundational lifecycle pause checkpoint:
 - `APPLICATION_PAUSED`: Persists authoritative `GameSession` state via `LifecycleCoordinator` upon mobile pause notifications.
 
-Milestone 7 (Task 7.3) introduces the first approved gameplay mutation persistence boundary:
+Milestone 7 (Task 7.3) introduced the first approved gameplay mutation persistence boundary, and Milestone 8 connected it to confirmed touch presentation:
 - **Successful logical planting checkpoint**: Following successful logical plant registration (`PlantRegistrationService.try_register_plant`), an immediate persistence checkpoint is attempted via `PlantingPersistenceCoordinator.try_plant_and_save()` delegating to `LocalSaveRepository.save(GameState)`.
+- **Confirmed touch UI dispatch (Milestone 8)**: `PlantingPicker` requires explicit two-step confirmation before emitting `planting_requested(definition_id)` once; `GardenView` forwards the request to `MainScreen`, which invokes `AppRoot.try_plant_and_checkpoint(definition_id)` exactly once, renders typed feedback (`PlantingCheckpointResult`), and refreshes `GardenView` when `result.is_registered()` is true. Cancelling or closing the picker never triggers a save.
 - **Order of operations**: Persistence is attempted strictly AFTER authoritative in-memory `GameState` insertion.
 - **Separation of logical and durability statuses**: Logical planting success and persistence checkpoint success are reported as distinct typed outcomes via `PlantingCheckpointResult`:
   - `REGISTERED_SAVED`: In-memory registration succeeded and persistence checkpoint succeeded (durable write confirmed).
@@ -1006,7 +1010,7 @@ Milestone 7 (Task 7.3) introduces the first approved gameplay mutation persisten
 - **Independent boundaries**: Planting persistence checkpoints and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
 - **No schema change or migration**: `GameStateCodec` V1 wire format and validation remain unchanged; no new timestamps or save fields are added.
 - **Content compatibility**: Existing V1 content validation rules remain unchanged.
-- **Deferred gameplay features**: Pricing, currency deduction, placement coordinates, visual UI, and offline progression remain out of scope for Task 7.3 and deferred to future tasks.
+- **Deferred gameplay features**: Pricing, currency deduction, placement coordinates, and automatic offline-progression resume hooks remain out of scope through Milestone 8 and deferred to future tasks.
 
 All other save triggers (after purchase, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
 
@@ -1137,6 +1141,29 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
+#### Implementation Status (Milestone 8)
+
+Milestone 8 establishes the initial portrait garden presentation hierarchy:
+
+```text
+Main (res://scenes/app/main.tscn — MainScreen)
+└── GardenView (res://scenes/garden/garden_view.tscn — GardenView)
+    ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
+    ├── FeedbackArea (FeedbackLabel)
+    ├── ContentArea
+    │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
+    │   ├── EmptyStateContainer
+    │   └── BlockedStateContainer
+    ├── DetailsArea (Selection inspection panel)
+    └── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
+        ├── PickerPanel (Catalog plant option buttons)
+        └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
+```
+
+- `MainScreen` (`src/presentation/app/main_screen.gd`) acts as a thin composition adapter binding `AppRoot` (`game_session`, `content_catalog`, `game_clock`) into `GardenView`, and supports `bind_app_root(app)` for isolated test injection without global Autoload coupling.
+- `GardenView` (`src/presentation/garden/garden_view.gd`), `PlantView` (`src/presentation/garden/plant_view.gd`), and `PlantingPicker` (`src/presentation/garden/planting_picker.gd`) receive dependencies explicitly (`bind_garden`, `bind_plant_data`, `bind_catalog`) and never own, duplicate, or directly mutate `GameState`.
+- Responsive portrait sizing accommodates narrow portrait viewports (such as `720x1600`) as well as the `1080x1920` reference canvas without control clipping.
+
 ---
 
 ## 28. Presentation Synchronization
@@ -1162,6 +1189,13 @@ Do not use a single untyped global event bus where any system can emit arbitrary
 Signals should be owned by the object/service whose state they describe.
 
 For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot refresh is acceptable.
+
+#### Implementation Status (Milestone 8)
+
+- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, and computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`.
+- **No per-frame polling**: Neither `GardenView`, `PlantView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
+- **Ephemeral selection**: `GardenView` tracks selected `runtime_instance_id` purely in presentation memory, preserving selection across refreshes if the plant still exists and clearing it safely otherwise.
+- **Narrow command signals**: `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
 
 ---
 
