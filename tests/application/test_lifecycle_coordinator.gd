@@ -55,6 +55,9 @@ func run_tests() -> void:
 	_test_later_pause_after_resume_retries()
 	_test_uses_injected_repository()
 	_test_does_not_mutate_or_replace_session()
+	_test_resume_outcome_resumed_with_active_session()
+	_test_resume_outcome_skipped_no_active_session()
+	_test_resume_outcome_ignored_not_paused()
 
 
 func _test_type_contract() -> void:
@@ -88,6 +91,21 @@ func _test_type_contract() -> void:
 		LifecycleCoordinator.IGNORED_DUPLICATE_PAUSE,
 		"IGNORED_DUPLICATE_PAUSE constant must match enum"
 	)
+	assert_eq(
+		LifecycleCoordinator.ResumeOutcome.RESUMED,
+		LifecycleCoordinator.RESUMED,
+		"RESUMED constant must match ResumeOutcome enum"
+	)
+	assert_eq(
+		LifecycleCoordinator.ResumeOutcome.SKIPPED_NO_ACTIVE_SESSION,
+		LifecycleCoordinator.RESUME_SKIPPED_NO_ACTIVE_SESSION,
+		"RESUME_SKIPPED_NO_ACTIVE_SESSION constant must match ResumeOutcome enum"
+	)
+	assert_eq(
+		LifecycleCoordinator.ResumeOutcome.IGNORED_NOT_PAUSED,
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"IGNORED_NOT_PAUSED constant must match ResumeOutcome enum"
+	)
 
 
 func _test_initial_state_active_not_paused() -> void:
@@ -97,6 +115,7 @@ func _test_initial_state_active_not_paused() -> void:
 
 	assert_false(coord.is_application_paused(), "is_application_paused must initially be false")
 	assert_eq(coord.get_last_pause_outcome(), null, "last_pause_outcome must initially be null")
+	assert_eq(coord.get_last_resume_outcome(), null, "last_resume_outcome must initially be null")
 
 
 func _test_active_session_pause_saves_exact_state() -> void:
@@ -293,6 +312,84 @@ func _test_does_not_mutate_or_replace_session() -> void:
 		plants_before,
 		"plant count must not be mutated by pause"
 	)
+
+
+func _test_resume_outcome_resumed_with_active_session() -> void:
+	describe("on_application_resumed(session) returns RESUMED when paused with an active session")
+	var repo: MockSaveRepository = MockSaveRepository.new()
+	var coord: LifecycleCoordinator = LifecycleCoordinator.new(repo)
+	var session: GameSession = _create_sample_session(100, 1)
+
+	coord.on_application_paused(session)
+	assert_true(coord.is_application_paused(), "must be paused")
+
+	var resume_outcome: LifecycleCoordinator.ResumeOutcome = coord.on_application_resumed(session)
+	assert_eq(resume_outcome, LifecycleCoordinator.RESUMED, "resume outcome must be RESUMED")
+	assert_eq(coord.get_last_resume_outcome(), LifecycleCoordinator.RESUMED, "recorded resume outcome must be RESUMED")
+	assert_false(coord.is_application_paused(), "must be active after resume")
+	assert_eq(repo.save_calls, 1, "resume must not trigger any additional save")
+
+
+func _test_resume_outcome_skipped_no_active_session() -> void:
+	describe("on_application_resumed(null) returns SKIPPED_NO_ACTIVE_SESSION when paused without an active session")
+	var repo: MockSaveRepository = MockSaveRepository.new()
+	var coord: LifecycleCoordinator = LifecycleCoordinator.new(repo)
+
+	coord.on_application_paused(null)
+	assert_true(coord.is_application_paused(), "must be paused")
+
+	var resume_outcome: LifecycleCoordinator.ResumeOutcome = coord.on_application_resumed(null)
+	assert_eq(
+		resume_outcome,
+		LifecycleCoordinator.RESUME_SKIPPED_NO_ACTIVE_SESSION,
+		"resume outcome must be SKIPPED_NO_ACTIVE_SESSION"
+	)
+	assert_eq(
+		coord.get_last_resume_outcome(),
+		LifecycleCoordinator.RESUME_SKIPPED_NO_ACTIVE_SESSION,
+		"recorded resume outcome must be SKIPPED_NO_ACTIVE_SESSION"
+	)
+	assert_false(coord.is_application_paused(), "must be active after resume")
+	assert_eq(repo.save_calls, 0, "no save must occur")
+
+
+func _test_resume_outcome_ignored_not_paused() -> void:
+	describe("on_application_resumed returns IGNORED_NOT_PAUSED when not paused or on duplicate resume")
+	var repo: MockSaveRepository = MockSaveRepository.new()
+	var coord: LifecycleCoordinator = LifecycleCoordinator.new(repo)
+	var session: GameSession = _create_sample_session(100, 1)
+
+	# 1. Spurious resume before any pause.
+	var initial_resume: LifecycleCoordinator.ResumeOutcome = coord.on_application_resumed(session)
+	assert_eq(
+		initial_resume,
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"resume when not paused must return IGNORED_NOT_PAUSED"
+	)
+	assert_eq(
+		coord.get_last_resume_outcome(),
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"recorded resume outcome must be IGNORED_NOT_PAUSED"
+	)
+	assert_false(coord.is_application_paused(), "remains not paused")
+
+	# 2. Pause then first resume (RESUMED), then duplicate resume (IGNORED_NOT_PAUSED).
+	coord.on_application_paused(session)
+	var first_resume: LifecycleCoordinator.ResumeOutcome = coord.on_application_resumed(session)
+	assert_eq(first_resume, LifecycleCoordinator.RESUMED, "first resume after pause must return RESUMED")
+
+	var second_resume: LifecycleCoordinator.ResumeOutcome = coord.on_application_resumed(session)
+	assert_eq(
+		second_resume,
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"duplicate resume must return IGNORED_NOT_PAUSED"
+	)
+	assert_eq(
+		coord.get_last_resume_outcome(),
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"recorded resume outcome updates to IGNORED_NOT_PAUSED"
+	)
+	assert_eq(repo.save_calls, 1, "no extra saves on duplicate resume")
 
 
 func _create_sample_session(currency: int, plant_count: int = 0) -> GameSession:

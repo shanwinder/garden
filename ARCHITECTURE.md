@@ -993,7 +993,7 @@ Do not rely exclusively on a graceful application-exit callback; Android may ter
 
 Save frequency must balance data safety with unnecessary storage writes.
 
-#### Implementation Status (Milestones 5, 7, and 8)
+#### Implementation Status (Milestones 5, 7, 8, and 9)
 
 Milestone 5 implemented the foundational lifecycle pause checkpoint:
 - `APPLICATION_PAUSED`: Persists authoritative `GameSession` state via `LifecycleCoordinator` upon mobile pause notifications.
@@ -1010,7 +1010,7 @@ Milestone 7 (Task 7.3) introduced the first approved gameplay mutation persisten
 - **Independent boundaries**: Planting persistence checkpoints and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
 - **No schema change or migration**: `GameStateCodec` V1 wire format and validation remain unchanged; no new timestamps or save fields are added.
 - **Content compatibility**: Existing V1 content validation rules remain unchanged.
-- **Deferred gameplay features**: Pricing, currency deduction, placement coordinates, and automatic offline-progression resume hooks remain out of scope through Milestone 8 and deferred to future tasks.
+- **Deferred gameplay features**: Pricing, currency deduction, and placement coordinates remain out of scope through Milestone 9 and deferred to future tasks.
 
 All other save triggers (after purchase, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
 
@@ -1055,21 +1055,22 @@ Do not apply offline progression independently in multiple places such as:
 
 That pattern causes double counting. One coordinator/application operation owns the transition.
 
-#### Implementation Status (Milestone 5)
+#### Implementation Status (Milestones 5 and 9)
 
-This section remains the **LOCKED** target architecture. Milestone 5 implements the foundation lifecycle checkpoint:
+This section remains the **LOCKED** target architecture. Milestones 5 and 9 implement the pause persistence checkpoint and centralized resume presentation refresh:
 
 - **Currently implemented**:
   - Startup load and bootstrap (`AppRoot.bootstrap_session()`);
   - Pause persistence checkpoint (`LifecycleCoordinator.on_application_paused(game_session)`);
   - Duplicate-pause suppression (`IGNORED_DUPLICATE_PAUSE`);
-  - Resume transition gate reset (`LifecycleCoordinator.on_application_resumed()`);
-  - Corruption-safe null-session behavior (`SKIPPED_NO_ACTIVE_SESSION`).
+  - Typed resume transition gating (`LifecycleCoordinator.on_application_resumed(game_session)` returning `ResumeOutcome.RESUMED`, `SKIPPED_NO_ACTIVE_SESSION`, or `IGNORED_NOT_PAUSED`, with `get_last_resume_outcome()`);
+  - Corruption-safe null-session behavior (`SKIPPED_NO_ACTIVE_SESSION`);
+  - Narrow application resume signal (`AppRoot.session_resumed`) emitted only on a genuine `PAUSED` -> `RESUMED` transition when both an active `GameSession` and `ContentCatalog` are ready;
+  - Centralized presentation resume refresh (`MainScreen._on_app_session_resumed()` -> `GardenView.refresh_from_session()`), which samples `GameClock.utc_now_seconds()` once, recomputes plant growth stages via `PlantGrowth.stage_for_state_at(...)` (with negative elapsed times clamped to 0), preserves ephemeral plant selection, and performs zero disk reads or writes on resume.
 
 - **Still NOT implemented**:
   - Persisted lifecycle/session timestamp (`saved_at_utc`);
-  - Elapsed/offline progression calculation and application on resume;
-  - Weather/time-context advancement;
+  - Stateful domain mutations on resume (such as accumulated repeat-harvest cycles or weather/time-context advancement);
   - Presentation and audio pause policies.
 
 ---
@@ -1141,7 +1142,7 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestone 8)
+#### Implementation Status (Milestones 8 and 9)
 
 Milestone 8 establishes the initial portrait garden presentation hierarchy:
 
@@ -1160,7 +1161,7 @@ Main (res://scenes/app/main.tscn — MainScreen)
         └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
 ```
 
-- `MainScreen` (`src/presentation/app/main_screen.gd`) acts as a thin composition adapter binding `AppRoot` (`game_session`, `content_catalog`, `game_clock`) into `GardenView`, and supports `bind_app_root(app)` for isolated test injection without global Autoload coupling.
+- `MainScreen` (`src/presentation/app/main_screen.gd`) acts as a thin composition adapter binding `AppRoot` (`game_session`, `content_catalog`, `game_clock`, and `session_resumed`) into `GardenView`, and supports `bind_app_root(app)` for isolated test injection without global Autoload coupling.
 - `GardenView` (`src/presentation/garden/garden_view.gd`), `PlantView` (`src/presentation/garden/plant_view.gd`), and `PlantingPicker` (`src/presentation/garden/planting_picker.gd`) receive dependencies explicitly (`bind_garden`, `bind_plant_data`, `bind_catalog`) and never own, duplicate, or directly mutate `GameState`.
 - Responsive portrait sizing accommodates narrow portrait viewports (such as `720x1600`) as well as the `1080x1920` reference canvas without control clipping.
 
@@ -1190,12 +1191,14 @@ Signals should be owned by the object/service whose state they describe.
 
 For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot refresh is acceptable.
 
-#### Implementation Status (Milestone 8)
+#### Implementation Status (Milestones 8 and 9)
 
 - **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, and computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`.
 - **No per-frame polling**: Neither `GardenView`, `PlantView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
 - **Ephemeral selection**: `GardenView` tracks selected `runtime_instance_id` purely in presentation memory, preserving selection across refreshes if the plant still exists and clearing it safely otherwise.
-- **Narrow command signals**: `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
+- **Narrow command & lifecycle signals**:
+  - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
+  - `AppRoot` emits `session_resumed()` only when `LifecycleCoordinator.on_application_resumed(game_session)` reports `ResumeOutcome.RESUMED` and both `GameSession` and `ContentCatalog` are ready; `MainScreen` listens to `session_resumed` and calls `GardenView.refresh_from_session()` once per genuine pause-to-resume transition.
 
 ---
 

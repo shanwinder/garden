@@ -39,6 +39,10 @@
 class_name AppRoot
 extends Node
 
+## Emitted once when the application transitions from a paused lifecycle state
+## back to active with a valid bootstrapped GameSession and ContentCatalog.
+signal session_resumed()
+
 ## Typed status contract for ContentCatalog startup bootstrap.
 enum ContentBootstrapStatus {
 	NOT_ATTEMPTED,
@@ -164,7 +168,15 @@ func _notification(what: int) -> void:
 		NOTIFICATION_APPLICATION_PAUSED:
 			lifecycle_coordinator.on_application_paused(game_session)
 		NOTIFICATION_APPLICATION_RESUMED:
-			lifecycle_coordinator.on_application_resumed()
+			var resume_outcome: LifecycleCoordinator.ResumeOutcome = lifecycle_coordinator.on_application_resumed(
+				game_session
+			)
+			if (
+				resume_outcome == LifecycleCoordinator.ResumeOutcome.RESUMED
+				and has_active_session()
+				and has_content_catalog()
+			):
+				session_resumed.emit()
 
 
 ## One-time bootstrap of the production ContentCatalog and active GameSession.

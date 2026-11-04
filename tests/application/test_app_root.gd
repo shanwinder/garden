@@ -81,6 +81,9 @@ func run_tests() -> void:
 	_test_clock_and_random_source_injection()
 	_test_try_plant_and_checkpoint_preconditions()
 	_test_try_plant_and_checkpoint_delegation_and_stability()
+	_test_session_resumed_signal_on_valid_pause_resume()
+	_test_session_resumed_signal_suppressed_when_not_paused_or_duplicate()
+	_test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked()
 
 
 func _test_instantiation() -> void:
@@ -1614,3 +1617,125 @@ func _test_try_plant_and_checkpoint_delegation_and_stability() -> void:
 	assert_false(FileAccess.file_exists(LocalSaveRepository.DEFAULT_TEMP_PATH), "Production TEMP must not exist")
 
 	root.free()
+
+
+func _test_session_resumed_signal_on_valid_pause_resume() -> void:
+	describe("AppRoot emits session_resumed once per genuine PAUSED -> RESUMED transition with active session")
+	_cleanup_test_files()
+	var repo: SpySaveRepository = _create_spy_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+	assert_true(root.has_active_session(), "active session required")
+	assert_true(root.has_content_catalog(), "content catalog required")
+
+	var resume_signal_count: Array[int] = [0]
+	root.session_resumed.connect(func() -> void: resume_signal_count[0] += 1)
+
+	# First PAUSED -> RESUMED cycle.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(resume_signal_count[0], 0, "PAUSED must not emit session_resumed")
+	assert_eq(repo.save_call_count, 1, "PAUSED saves once")
+
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(resume_signal_count[0], 1, "RESUMED after PAUSED must emit session_resumed once")
+	assert_eq(
+		root.lifecycle_coordinator.get_last_resume_outcome(),
+		LifecycleCoordinator.RESUMED,
+		"last_resume_outcome must be RESUMED"
+	)
+	assert_eq(repo.save_call_count, 1, "RESUMED must not trigger any save")
+
+	# Second PAUSED -> RESUMED cycle.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 2, "second PAUSED saves a second time")
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(resume_signal_count[0], 2, "second RESUMED after PAUSED must emit session_resumed a second time")
+	assert_eq(repo.save_call_count, 2, "second RESUMED must not trigger any save")
+
+	root.free()
+
+
+func _test_session_resumed_signal_suppressed_when_not_paused_or_duplicate() -> void:
+	describe("AppRoot suppresses session_resumed when not paused, on duplicate RESUMED, or on focus events")
+	_cleanup_test_files()
+	var repo: SpySaveRepository = _create_spy_repo()
+	var root: AppRoot = AppRoot.new(repo)
+	root.bootstrap_session()
+
+	var resume_signal_count: Array[int] = [0]
+	root.session_resumed.connect(func() -> void: resume_signal_count[0] += 1)
+
+	# 1. Spurious RESUMED before any PAUSED.
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(resume_signal_count[0], 0, "RESUMED when not paused must not emit session_resumed")
+	assert_eq(
+		root.lifecycle_coordinator.get_last_resume_outcome(),
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"outcome must be IGNORED_NOT_PAUSED"
+	)
+
+	# 2. Focus events must not emit session_resumed.
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	root._notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	assert_eq(resume_signal_count[0], 0, "FOCUS_OUT / FOCUS_IN must not emit session_resumed")
+
+	# 3. Genuine PAUSED -> RESUMED emits once, duplicate RESUMED is suppressed.
+	root._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(resume_signal_count[0], 1, "first RESUMED emits once")
+
+	root._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(resume_signal_count[0], 1, "duplicate RESUMED must not emit again")
+	assert_eq(
+		root.lifecycle_coordinator.get_last_resume_outcome(),
+		LifecycleCoordinator.IGNORED_NOT_PAUSED,
+		"duplicate RESUMED records IGNORED_NOT_PAUSED"
+	)
+
+	root.free()
+
+
+func _test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked() -> void:
+	describe("AppRoot suppresses session_resumed when unbootstrapped or when startup is blocked")
+	_cleanup_test_files()
+
+	# 1. Unbootstrapped AppRoot.
+	var repo_unboot: SpySaveRepository = _create_spy_repo()
+	var root_unboot: AppRoot = AppRoot.new(repo_unboot)
+	var unboot_signals: Array[int] = [0]
+	root_unboot.session_resumed.connect(func() -> void: unboot_signals[0] += 1)
+	root_unboot._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	root_unboot._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(unboot_signals[0], 0, "unbootstrapped AppRoot must not emit session_resumed")
+	assert_eq(
+		root_unboot.lifecycle_coordinator.get_last_resume_outcome(),
+		LifecycleCoordinator.RESUME_SKIPPED_NO_ACTIVE_SESSION,
+		"unbootstrapped resume outcome must be SKIPPED_NO_ACTIVE_SESSION"
+	)
+	assert_eq(repo_unboot.save_call_count, 0, "unbootstrapped pause/resume must not save")
+	root_unboot.free()
+
+	# 2. Blocked content startup (LOAD_FAILED).
+	var repo_content: SpySaveRepository = _create_spy_repo()
+	var root_content: AppRoot = AppRoot.new(repo_content, FailingPlantContentLoader.new())
+	root_content.bootstrap_session()
+	var content_signals: Array[int] = [0]
+	root_content.session_resumed.connect(func() -> void: content_signals[0] += 1)
+	root_content._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	root_content._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(content_signals[0], 0, "blocked content startup must not emit session_resumed")
+	root_content.free()
+
+	# 3. Blocked persistence startup (INVALID_DATA).
+	_write_raw_file(TEST_PRIMARY, "{corrupt_json_for_resume_test")
+	var repo_corrupt: SpySaveRepository = _create_spy_repo()
+	var root_corrupt: AppRoot = AppRoot.new(repo_corrupt)
+	root_corrupt.bootstrap_session()
+	var corrupt_signals: Array[int] = [0]
+	root_corrupt.session_resumed.connect(func() -> void: corrupt_signals[0] += 1)
+	root_corrupt._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	root_corrupt._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(corrupt_signals[0], 0, "blocked INVALID_DATA startup must not emit session_resumed")
+	assert_eq(_read_raw_file(TEST_PRIMARY), "{corrupt_json_for_resume_test", "corrupt file untouched")
+	root_corrupt.free()
+	_cleanup_test_files()

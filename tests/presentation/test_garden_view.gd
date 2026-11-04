@@ -98,6 +98,9 @@ func run_tests() -> void:
 	_test_integration_corrupt_save_blocks_controls()
 	_test_integration_unbootstrapped_app_causes_no_writes()
 	_test_integration_session_and_catalog_identity_unchanged()
+	_test_main_screen_refreshes_on_app_session_resumed()
+	_test_main_screen_ignores_spurious_or_duplicate_resume()
+	_test_main_screen_rebind_and_disconnect_app_root_resume_signal()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -1109,4 +1112,156 @@ func _test_integration_session_and_catalog_identity_unchanged() -> void:
 
 	main_node.free()
 	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_main_screen_refreshes_on_app_session_resumed() -> void:
+	describe("MainScreen refreshes GardenView once on AppRoot PAUSED -> RESUMED with single clock sample")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: CallCountingClock = CallCountingClock.new(1000)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var gview: GardenView = main_node.get_garden_view()
+	var picker: PlantingPicker = gview.get_planting_picker()
+
+	# Plant holy_basil (sprout=60, growing=180, mature=600) and chili (sprout=120, growing=480, mature=1200) at t=1000.
+	picker.open_picker()
+	picker.select_plant_definition("plant.holy_basil")
+	picker.confirm_planting()
+
+	picker.open_picker()
+	picker.select_plant_definition("plant.chili")
+	picker.confirm_planting()
+
+	assert_eq(gview.get_displayed_plant_count(), 2, "Two plants displayed")
+	var basil_id: String = ""
+	var chili_id: String = ""
+	for pv: PlantView in gview.get_plant_views():
+		if pv.get_definition_id() == "plant.holy_basil":
+			basil_id = pv.get_runtime_instance_id()
+		elif pv.get_definition_id() == "plant.chili":
+			chili_id = pv.get_runtime_instance_id()
+
+	gview.get_plant_view_by_id(basil_id).simulate_selection_input()
+	assert_eq(gview.get_selected_runtime_instance_id(), basil_id, "Basil selected")
+	assert_true(gview.get_detail_stage_text().contains("PLANTED"), "Basil initially PLANTED in details")
+
+	# Pause application at t = 1000.
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	var saves_after_pause: int = repo.save_call_count
+	var clock_calls_before_resume: int = clock.utc_call_count
+
+	# Advance clock while backgrounded by +200s (t = 1200) and resume.
+	clock.advance_utc_seconds(200)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	assert_eq(
+		clock.utc_call_count,
+		clock_calls_before_resume + 1,
+		"Resume refresh must sample GameClock.utc_now_seconds() exactly once across all plants"
+	)
+	assert_eq(repo.save_call_count, saves_after_pause, "Resume must not perform any save")
+	assert_eq(
+		gview.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.GROWING,
+		"Basil automatically advances to GROWING on resume"
+	)
+	assert_eq(
+		gview.get_plant_view_by_id(chili_id).get_stage(),
+		PlantGrowth.Stage.SPROUT,
+		"Chili automatically advances to SPROUT on resume"
+	)
+	assert_eq(gview.get_selected_runtime_instance_id(), basil_id, "Selection on basil preserved across resume")
+	assert_true(gview.get_detail_stage_text().contains("GROWING"), "Details panel stage updates to GROWING on resume")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_main_screen_ignores_spurious_or_duplicate_resume() -> void:
+	describe("MainScreen does not refresh on spurious RESUMED when not paused or on duplicate RESUMED")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: CallCountingClock = CallCountingClock.new(1000)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+
+	var calls_initial: int = clock.utc_call_count
+
+	# Spurious resume before any pause.
+	clock.advance_utc_seconds(100)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock.utc_call_count, calls_initial, "Spurious RESUMED when not paused must not sample clock")
+
+	# Pause -> first resume refreshes once -> duplicate resume is ignored.
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock.utc_call_count, calls_initial + 1, "First RESUMED after PAUSED refreshes once")
+
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock.utc_call_count, calls_initial + 1, "Duplicate RESUMED without pause must not refresh again")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_main_screen_rebind_and_disconnect_app_root_resume_signal() -> void:
+	describe("MainScreen rebinds session_resumed cleanly across bind_app_root and disconnects on _exit_tree")
+	_cleanup_presentation_test_files()
+
+	var repo_1: CountingSaveRepo = CountingSaveRepo.new()
+	var clock_1: CallCountingClock = CallCountingClock.new(1000)
+	var app_1: AppRoot = AppRoot.new(repo_1, PlantContentLoader.new(), clock_1, FakeRandomSource.new([], [1, 2]))
+	app_1.bootstrap_session()
+
+	var repo_2: CountingSaveRepo = CountingSaveRepo.new()
+	var clock_2: CallCountingClock = CallCountingClock.new(5000)
+	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, FakeRandomSource.new([], [3, 4]))
+	app_2.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app_1)
+
+	# Rebind to app_2.
+	main_node.bind_app_root(app_2)
+	var clock_1_calls: int = clock_1.utc_call_count
+	var clock_2_calls: int = clock_2.utc_call_count
+
+	# Pause/resume on old app_1 must not trigger refresh on main_node.
+	app_1._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	app_1._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock_1.utc_call_count, clock_1_calls, "Disconnecting old AppRoot prevents refresh from app_1")
+	assert_eq(clock_2.utc_call_count, clock_2_calls, "app_1 resume does not affect app_2 clock")
+
+	# Pause/resume on new app_2 refreshes main_node once.
+	app_2._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	app_2._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock_2.utc_call_count, clock_2_calls + 1, "Bound app_2 resume refreshes MainScreen")
+
+	# _exit_tree disconnects app_2 signal cleanly.
+	main_node._exit_tree()
+	app_2._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	app_2._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock_2.utc_call_count, clock_2_calls + 1, "After _exit_tree, app_2 resume no longer calls MainScreen")
+
+	main_node.free()
+	app_1.free()
+	app_2.free()
 	_cleanup_presentation_test_files()

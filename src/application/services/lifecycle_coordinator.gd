@@ -29,14 +29,26 @@ enum PauseSaveOutcome {
 	IGNORED_DUPLICATE_PAUSE,
 }
 
+## Typed outcome for application resume transition attempts.
+enum ResumeOutcome {
+	RESUMED,
+	SKIPPED_NO_ACTIVE_SESSION,
+	IGNORED_NOT_PAUSED,
+}
+
 const SAVED: PauseSaveOutcome = PauseSaveOutcome.SAVED
 const SKIPPED_NO_ACTIVE_SESSION: PauseSaveOutcome = PauseSaveOutcome.SKIPPED_NO_ACTIVE_SESSION
 const FAILED: PauseSaveOutcome = PauseSaveOutcome.FAILED
 const IGNORED_DUPLICATE_PAUSE: PauseSaveOutcome = PauseSaveOutcome.IGNORED_DUPLICATE_PAUSE
 
+const RESUMED: ResumeOutcome = ResumeOutcome.RESUMED
+const RESUME_SKIPPED_NO_ACTIVE_SESSION: ResumeOutcome = ResumeOutcome.SKIPPED_NO_ACTIVE_SESSION
+const IGNORED_NOT_PAUSED: ResumeOutcome = ResumeOutcome.IGNORED_NOT_PAUSED
+
 var _save_repository: LocalSaveRepository
 var _is_paused: bool = false
 var _last_pause_outcome: Variant = null
+var _last_resume_outcome: Variant = null
 
 
 func _init(save_repository: LocalSaveRepository) -> void:
@@ -44,6 +56,7 @@ func _init(save_repository: LocalSaveRepository) -> void:
 	_save_repository = save_repository
 	_is_paused = false
 	_last_pause_outcome = null
+	_last_resume_outcome = null
 
 
 ## Handles application pause transition.
@@ -79,13 +92,32 @@ func on_application_paused(session: GameSession) -> PauseSaveOutcome:
 
 ## Handles application resume transition.
 ##
-## Marks the lifecycle state as active again, allowing the next future pause
-## transition to attempt persistence.
+## If the application is not currently paused, suppresses duplicate or spurious resume
+## notifications and returns IGNORED_NOT_PAUSED.
 ##
-## Performs NO disk reads or writes, NO offline progression, and NO wall-clock sampling.
+## If the application is transitioning from paused to active:
+## - Marks the lifecycle state as active again, allowing the next future pause
+##   transition to attempt persistence.
+## - If [param session] is null (e.g. unbootstrapped or blocked by corrupt startup),
+##   returns ResumeOutcome.SKIPPED_NO_ACTIVE_SESSION.
+## - If [param session] is present, returns ResumeOutcome.RESUMED so the composition
+##   root may notify presentation to refresh derived state once.
+##
+## Performs NO disk reads or writes, NO state mutation, and NO direct wall-clock sampling.
 ## Calling resume repeatedly is safe and idempotent.
-func on_application_resumed() -> void:
+func on_application_resumed(session: GameSession = null) -> ResumeOutcome:
+	if not _is_paused:
+		_last_resume_outcome = ResumeOutcome.IGNORED_NOT_PAUSED
+		return ResumeOutcome.IGNORED_NOT_PAUSED
+
 	_is_paused = false
+
+	if session == null:
+		_last_resume_outcome = ResumeOutcome.SKIPPED_NO_ACTIVE_SESSION
+		return ResumeOutcome.SKIPPED_NO_ACTIVE_SESSION
+
+	_last_resume_outcome = ResumeOutcome.RESUMED
+	return ResumeOutcome.RESUMED
 
 
 ## Returns true if the application is currently in a paused lifecycle state.
@@ -101,3 +133,8 @@ func get_save_repository() -> LocalSaveRepository:
 ## Returns the outcome of the most recent pause event, or null if no pause has occurred.
 func get_last_pause_outcome() -> Variant:
 	return _last_pause_outcome
+
+
+## Returns the outcome of the most recent resume event, or null if no resume has occurred.
+func get_last_resume_outcome() -> Variant:
+	return _last_resume_outcome

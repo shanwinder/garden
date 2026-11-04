@@ -18,6 +18,7 @@ extends Control
 
 var _garden_view: GardenView = null
 var _bound_app_root: AppRoot = null
+var _connected_app_root: AppRoot = null
 var _is_app_root_explicitly_bound: bool = false
 
 
@@ -25,6 +26,10 @@ func _ready() -> void:
 	_resolve_nodes()
 	_connect_garden_signals()
 	_bind_dependencies()
+
+
+func _exit_tree() -> void:
+	_disconnect_app_root_signals()
 
 
 func _resolve_nodes() -> void:
@@ -61,11 +66,32 @@ func _get_effective_app_root() -> AppRoot:
 	return null
 
 
+func _sync_app_root_signals(app: AppRoot) -> void:
+	if _connected_app_root != null and is_instance_valid(_connected_app_root) and _connected_app_root != app:
+		if _connected_app_root.session_resumed.is_connected(_on_app_session_resumed):
+			_connected_app_root.session_resumed.disconnect(_on_app_session_resumed)
+		_connected_app_root = null
+
+	if app != null and is_instance_valid(app):
+		if not app.session_resumed.is_connected(_on_app_session_resumed):
+			app.session_resumed.connect(_on_app_session_resumed)
+		_connected_app_root = app
+
+
+func _disconnect_app_root_signals() -> void:
+	if _connected_app_root != null and is_instance_valid(_connected_app_root):
+		if _connected_app_root.session_resumed.is_connected(_on_app_session_resumed):
+			_connected_app_root.session_resumed.disconnect(_on_app_session_resumed)
+	_connected_app_root = null
+
+
 func _bind_dependencies() -> void:
+	var app: AppRoot = _get_effective_app_root()
+	_sync_app_root_signals(app)
+
 	if _garden_view == null:
 		return
 
-	var app: AppRoot = _get_effective_app_root()
 	if app == null:
 		_garden_view.show_blocked_startup("ไม่พบบริการหลักของระบบ (AppRoot)")
 		return
@@ -86,6 +112,26 @@ func _bind_dependencies() -> void:
 		app.get_content_catalog(),
 		app.game_clock
 	)
+
+
+func _on_app_session_resumed() -> void:
+	if _garden_view == null:
+		return
+
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		return
+
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+		or not app.has_content_catalog()
+		or app.game_clock == null
+	):
+		return
+
+	_garden_view.refresh_from_session()
 
 
 func _on_garden_planting_requested(definition_id: String) -> void:

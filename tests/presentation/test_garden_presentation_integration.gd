@@ -90,6 +90,7 @@ func teardown() -> void:
 
 func run_tests() -> void:
 	_test_full_player_loop_across_restart_and_offline_growth()
+	_test_in_process_pause_resume_offline_growth_and_clock_rollback_safety()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
@@ -266,6 +267,88 @@ func _test_full_player_loop_across_restart_and_offline_growth() -> void:
 
 	main_b.free()
 	app_b.free()
+	_cleanup_test_files()
+
+
+func _test_in_process_pause_resume_offline_growth_and_clock_rollback_safety() -> void:
+	describe("E2E: In-process PAUSED -> RESUMED automatically refreshes growth stages and clamps clock rollback")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock: FakeGameClock = FakeGameClock.new(10000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [11, 22, 33, 44])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# Plant holy_basil (sprout=60, growing=180, mature=600) at t = 10000.
+	view.get_plant_button().pressed.emit()
+	var picker: PlantingPicker = view.get_planting_picker()
+	picker.select_plant_definition("plant.holy_basil")
+	picker.confirm_planting()
+
+	assert_eq(repo.save_call_count, 1, "Confirm saves once")
+	var basil_pv: PlantView = view.get_plant_views()[0]
+	var basil_id: String = basil_pv.get_runtime_instance_id()
+	assert_eq(basil_pv.get_stage(), PlantGrowth.Stage.PLANTED, "Initial stage PLANTED")
+
+	# Select the plant so details panel is active.
+	basil_pv.simulate_selection_input()
+	assert_eq(view.get_selected_runtime_instance_id(), basil_id, "Basil selected")
+	assert_true(view.get_detail_stage_text().contains("PLANTED"), "Details panel shows PLANTED")
+
+	# 1. Background pause at t = 10000, advance clock to t = 10060 (+60s -> SPROUT), then resume.
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 2, "PAUSED checkpoints state to disk")
+	clock.advance_utc_seconds(60)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	assert_eq(repo.save_call_count, 2, "RESUMED performs zero disk writes")
+	assert_eq(
+		view.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.SPROUT,
+		"Stage automatically refreshes to SPROUT on RESUMED without pressing RefreshButton"
+	)
+	assert_true(view.get_detail_stage_text().contains("SPROUT"), "Details panel updates to SPROUT on RESUMED")
+
+	# 2. Background pause, device clock rolls backward before planted_at (t = 9500 < 10000), then resume.
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 3, "Second PAUSED checkpoints state")
+	clock.set_utc_seconds(9500)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	assert_eq(repo.save_call_count, 3, "RESUMED after rollback performs zero disk writes")
+	assert_eq(
+		view.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.PLANTED,
+		"Clock rollback safely clamps elapsed time to >= 0 (stage PLANTED)"
+	)
+	assert_eq(
+		view.get_plant_view_by_id(basil_id).get_planted_at(),
+		10000,
+		"Authoritative planted_at timestamp is never mutated by clock rollback"
+	)
+	assert_true(view.get_detail_stage_text().contains("PLANTED"), "Details panel reflects clamped PLANTED stage")
+
+	# 3. Background pause, clock advances to t = 10600 (+600s -> MATURE), then resume.
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 4, "Third PAUSED checkpoints state")
+	clock.set_utc_seconds(10600)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	assert_eq(repo.save_call_count, 4, "Third RESUMED performs zero disk writes")
+	assert_eq(
+		view.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.MATURE,
+		"Stage automatically refreshes to MATURE at t = 10600"
+	)
+	assert_eq(view.get_selected_runtime_instance_id(), basil_id, "Selection on basil preserved across 3 resumes")
+	assert_true(view.get_detail_stage_text().contains("MATURE"), "Details panel updates to MATURE")
+
+	main_screen.free()
+	app.free()
 	_cleanup_test_files()
 
 
