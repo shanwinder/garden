@@ -84,3 +84,33 @@ func try_plant_now(
 		random_source,
 		definition_id
 	)
+
+
+## Application operation to harvest a mature plant at an explicit UTC timestamp.
+## Delegates directly to PlantHarvestService; does not duplicate validation logic.
+func try_harvest_plant_at(
+	catalog: ContentCatalog,
+	runtime_instance_id: String,
+	now_utc_seconds: int
+) -> PlantHarvestResult:
+	return PlantHarvestService.try_harvest_plant_at(
+		_state,
+		catalog,
+		runtime_instance_id,
+		now_utc_seconds
+	)
+
+
+## Application operation to capture current UTC timestamp and harvest a mature plant.
+## Delegates directly to PlantHarvestService; does not own clock or catalog.
+func try_harvest_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	runtime_instance_id: String
+) -> PlantHarvestResult:
+	return PlantHarvestService.try_harvest_now(
+		_state,
+		catalog,
+		game_clock,
+		runtime_instance_id
+	)

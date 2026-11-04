@@ -13,7 +13,7 @@
 ## - Enforces runtime instance-ID uniqueness across all stored PlantState objects.
 ## - Identity is Garden runtime instance_id (state.get_runtime_instance_id()), never Godot engine ObjectID.
 ## - Preserves exact PlantState references without cloning or modifying them.
-## - Does not generate IDs, create plants, remove plants, or replace plants.
+## - Does not generate IDs, create plants, or remove plants; supports validated replacement of existing runtime instances with matching definition_id via try_replace_existing_plant.
 ## - Stores runtime state facts only; does not calculate, derive, or cache growth stages or timestamps.
 ## - Independent of GameClock, RandomSource, App, FileAccess, ResourceLoader, and SceneTree.
 class_name PlantCollectionState
@@ -62,6 +62,36 @@ func try_add_plant(state: PlantState) -> bool:
 
 	var instance_id: String = state.get_runtime_instance_id()
 	if _plants_by_runtime_instance_id.has(instance_id):
+		return false
+
+	_plants_by_runtime_instance_id[instance_id] = state
+	return true
+
+
+## Attempts to replace an existing PlantState in the collection with [param state].
+##
+## Validation:
+## - [param state] must not be null.
+## - [param state] must satisfy is_valid().
+## - [param state] runtime instance ID must already exist in the collection.
+## - [param state] definition_id must match the existing PlantState's definition_id.
+##
+## Returns true and stores the exact [param state] reference on success.
+## Returns false without modifying the collection on rejection.
+## Does not emit push_error() as rejection is a normal validation outcome.
+func try_replace_existing_plant(state: PlantState) -> bool:
+	if state == null:
+		return false
+
+	if not state.is_valid():
+		return false
+
+	var instance_id: String = state.get_runtime_instance_id()
+	if not _plants_by_runtime_instance_id.has(instance_id):
+		return false
+
+	var existing: PlantState = _plants_by_runtime_instance_id[instance_id]
+	if existing == null or existing.get_definition_id() != state.get_definition_id():
 		return false
 
 	_plants_by_runtime_instance_id[instance_id] = state

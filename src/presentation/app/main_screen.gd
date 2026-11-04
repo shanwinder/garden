@@ -41,6 +41,8 @@ func _connect_garden_signals() -> void:
 	_resolve_nodes()
 	if _garden_view != null and not _garden_view.planting_requested.is_connected(_on_garden_planting_requested):
 		_garden_view.planting_requested.connect(_on_garden_planting_requested)
+	if _garden_view != null and not _garden_view.harvest_requested.is_connected(_on_garden_harvest_requested):
+		_garden_view.harvest_requested.connect(_on_garden_harvest_requested)
 
 
 ## Explicit dependency injection seam allowing tests or coordinators to bind an isolated AppRoot.
@@ -153,6 +155,32 @@ func _on_garden_planting_requested(definition_id: String) -> void:
 	if _garden_view != null:
 		_garden_view.show_planting_result(result)
 		if result != null and result.is_registered():
+			_garden_view.refresh_from_session()
+
+
+func _on_garden_harvest_requested(runtime_instance_id: String) -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_harvest_result(HarvestCheckpointResult.not_ready())
+		return
+
+	# Verify bootstrap completed, content READY, and active session exists.
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+	):
+		if _garden_view != null:
+			_garden_view.show_harvest_result(HarvestCheckpointResult.not_ready())
+		return
+
+	# Invoke authoritative harvest checkpoint command exactly once.
+	var result: HarvestCheckpointResult = app.try_harvest_and_checkpoint(runtime_instance_id)
+
+	if _garden_view != null:
+		_garden_view.show_harvest_result(result)
+		if result != null and result.is_harvested():
 			_garden_view.refresh_from_session()
 
 

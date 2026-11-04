@@ -43,6 +43,8 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestPlantRuntimeIdGenerator.new(),
 		TestPlantingCommandService.new(),
 		TestPlantingPersistenceIntegration.new(),
+		TestPlantHarvestService.new(),
+		TestHarvestPersistenceIntegration.new(),
 		TestPlantingPicker.new(),
 		TestGardenView.new(),
 		TestGardenPresentationIntegration.new(),

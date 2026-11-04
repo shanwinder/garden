@@ -84,6 +84,7 @@ func run_tests() -> void:
 	_test_session_resumed_signal_on_valid_pause_resume()
 	_test_session_resumed_signal_suppressed_when_not_paused_or_duplicate()
 	_test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked()
+	_test_try_harvest_and_checkpoint_preconditions_and_delegation()
 
 
 func _test_instantiation() -> void:
@@ -1738,4 +1739,37 @@ func _test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked() ->
 	assert_eq(corrupt_signals[0], 0, "blocked INVALID_DATA startup must not emit session_resumed")
 	assert_eq(_read_raw_file(TEST_PRIMARY), "{corrupt_json_for_resume_test", "corrupt file untouched")
 	root_corrupt.free()
+	_cleanup_test_files()
+
+
+func _test_try_harvest_and_checkpoint_preconditions_and_delegation() -> void:
+	describe("AppRoot.try_harvest_and_checkpoint enforces readiness and checkpoints mature harvest")
+	_cleanup_test_files()
+
+	# 1. Unbootstrapped returns NOT_READY
+	var repo: LocalSaveRepository = _create_test_repo()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var root_unboot: AppRoot = AppRoot.new(repo, null, clock, rng)
+	var res_unboot: HarvestCheckpointResult = root_unboot.try_harvest_and_checkpoint("inst-1")
+	assert_eq(res_unboot.get_status(), HarvestCheckpointResult.NOT_READY, "unbootstrapped -> NOT_READY")
+	root_unboot.free()
+
+	# 2. Bootstrapped active session plants and harvests mature plant
+	var root: AppRoot = AppRoot.new(repo, null, clock, rng)
+	root.bootstrap_session()
+	var plant_res: PlantingCheckpointResult = root.try_plant_and_checkpoint("plant.holy_basil")
+	var basil_id: String = plant_res.get_plant().get_runtime_instance_id()
+
+	clock.advance_utc_seconds(600)
+	var harv_res: HarvestCheckpointResult = root.try_harvest_and_checkpoint(basil_id)
+	assert_eq(harv_res.get_status(), HarvestCheckpointResult.HARVESTED_SAVED, "status HARVESTED_SAVED")
+	assert_eq(harv_res.get_reward_granted(), 5, "reward 5 granted")
+	assert_eq(root.game_session.get_currency(), 5, "session currency updated to 5")
+	assert_eq(
+		root.game_session.get_state().get_plants().get_plant(basil_id).get_planted_at(),
+		1600,
+		"planted_at reset to 1600"
+	)
+	root.free()
 	_cleanup_test_files()

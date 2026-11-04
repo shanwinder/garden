@@ -24,6 +24,7 @@ func run_tests() -> void:
 	_test_valid_definitions()
 	_test_invalid_ids()
 	_test_invalid_growth_thresholds()
+	_test_harvest_reward_validation()
 	_test_field_independence_and_no_mutation()
 	_test_api_purity_and_idempotence()
 
@@ -49,6 +50,7 @@ func _test_default_instance_is_invalid() -> void:
 	assert_eq(definition.sprout_after_seconds, 0, "Default sprout_after_seconds must be 0")
 	assert_eq(definition.growing_after_seconds, 0, "Default growing_after_seconds must be 0")
 	assert_eq(definition.mature_after_seconds, 0, "Default mature_after_seconds must be 0")
+	assert_eq(definition.harvest_reward, 0, "Default harvest_reward must be 0")
 	assert_false(definition.is_valid(), "Default fresh instance must be invalid")
 
 
@@ -166,6 +168,31 @@ func _test_invalid_growth_thresholds() -> void:
 	valid_min.growing_after_seconds = 2
 	valid_min.mature_after_seconds = 3
 	assert_true(valid_min.is_valid(), "Minimal thresholds (1, 2, 3) must return true")
+
+
+func _test_harvest_reward_validation() -> void:
+	describe("harvest_reward validation accepts non-negative rewards and rejects negative rewards")
+	var valid_rewards: Array[int] = [0, 1, 5, 10, 20, 25, 60, 1000]
+	for reward: int in valid_rewards:
+		var def: PlantDefinition = PlantDefinition.new()
+		def.id = "plant.holy_basil"
+		def.sprout_after_seconds = 60
+		def.growing_after_seconds = 180
+		def.mature_after_seconds = 600
+		def.harvest_reward = reward
+		assert_true(def.is_valid(), "Non-negative harvest_reward %d must be valid" % reward)
+		assert_eq(def.harvest_reward, reward, "harvest_reward %d must be preserved" % reward)
+
+	var invalid_rewards: Array[int] = [-1, -5, -100, -999999]
+	for bad_reward: int in invalid_rewards:
+		var def: PlantDefinition = PlantDefinition.new()
+		def.id = "plant.holy_basil"
+		def.sprout_after_seconds = 60
+		def.growing_after_seconds = 180
+		def.mature_after_seconds = 600
+		def.harvest_reward = bad_reward
+		assert_false(def.is_valid(), "Negative harvest_reward %d must be invalid" % bad_reward)
+		assert_eq(def.harvest_reward, bad_reward, "Invalid harvest_reward %d must not be normalized" % bad_reward)
 
 
 func _test_field_independence_and_no_mutation() -> void:

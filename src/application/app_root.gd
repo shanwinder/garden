@@ -322,3 +322,33 @@ func try_plant_and_checkpoint(definition_id: String) -> PlantingCheckpointResult
 		save_repository,
 		definition_id
 	)
+
+
+## Gameplay entry method to harvest a mature plant and immediately checkpoint persistence.
+##
+## Preconditions:
+## - bootstrap_session() already attempted
+## - content status READY
+## - content_catalog exists
+## - game_session exists
+## - save_repository exists
+## - game_clock exists
+##
+## If not ready: returns HarvestCheckpointResult.not_ready() without mutating state or touching disk.
+func try_harvest_and_checkpoint(runtime_instance_id: String) -> HarvestCheckpointResult:
+	if not _is_bootstrapped:
+		return HarvestCheckpointResult.not_ready()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return HarvestCheckpointResult.not_ready()
+
+	if content_catalog == null or game_session == null or save_repository == null or game_clock == null:
+		return HarvestCheckpointResult.not_ready()
+
+	return HarvestPersistenceCoordinator.try_harvest_and_save(
+		game_session,
+		content_catalog,
+		game_clock,
+		save_repository,
+		runtime_instance_id
+	)

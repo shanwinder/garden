@@ -30,6 +30,7 @@ func run_tests() -> void:
 	_test_invalid_state_rejection()
 	_test_independent_collections()
 	_test_get_all_plants()
+	_test_try_replace_existing_plant()
 
 
 func _test_type_contract_and_fresh_state() -> void:
@@ -296,3 +297,46 @@ func _test_get_all_plants() -> void:
 	assert_eq(third_call.size(), 3, "Local array after remove has 3 items")
 	assert_eq(collection.get_count(), 3, "Collection count unchanged after local remove")
 	assert_true(collection.has_runtime_instance_id("plant-001"), "Collection still contains plant-001")
+
+
+func _test_try_replace_existing_plant() -> void:
+	describe("try_replace_existing_plant replaces only existing instances with matching definition_id")
+	var collection: PlantCollectionState = PlantCollectionState.new()
+	var original: PlantState = PlantState.new("plant-001", "plant.holy_basil", 1000)
+	var other: PlantState = PlantState.new("plant-002", "plant.chili", 1200)
+	assert_true(collection.try_add_plant(original), "Adding original plant-001 succeeds")
+	assert_true(collection.try_add_plant(other), "Adding other plant-002 succeeds")
+
+	# 1. Reject null
+	assert_false(collection.try_replace_existing_plant(null), "Null replacement must return false")
+	assert_eq(collection.get_plant("plant-001"), original, "Original plant-001 preserved after null rejection")
+
+	# 2. Reject invalid PlantState
+	var invalid_state: PlantState = PlantState.new("plant-001", "plant.holy_basil", -5)
+	assert_false(collection.try_replace_existing_plant(invalid_state), "Invalid PlantState replacement must return false")
+	assert_eq(collection.get_plant("plant-001"), original, "Original plant-001 preserved after invalid state rejection")
+
+	# 3. Reject non-existent runtime_instance_id
+	var missing_id_state: PlantState = PlantState.new("plant-999", "plant.holy_basil", 2000)
+	assert_false(collection.try_replace_existing_plant(missing_id_state), "Non-existent ID must return false")
+	assert_eq(collection.get_count(), 2, "Collection count remains 2")
+	assert_false(collection.has_runtime_instance_id("plant-999"), "plant-999 must not be inserted")
+
+	# 4. Reject mismatched definition_id for existing runtime_instance_id
+	var wrong_species: PlantState = PlantState.new("plant-001", "plant.chili", 2000)
+	assert_false(
+		collection.try_replace_existing_plant(wrong_species),
+		"Mismatched definition_id replacement must return false"
+	)
+	assert_eq(collection.get_plant("plant-001"), original, "Original plant-001 preserved after species mismatch")
+
+	# 5. Accept valid replacement with same runtime_instance_id and definition_id
+	var updated: PlantState = PlantState.new("plant-001", "plant.holy_basil", 1600)
+	assert_true(
+		collection.try_replace_existing_plant(updated),
+		"Valid replacement with matching ID and definition_id must return true"
+	)
+	assert_eq(collection.get_count(), 2, "Collection count remains 2 after replacement")
+	assert_eq(collection.get_plant("plant-001"), updated, "get_plant('plant-001') returns exact updated PlantState")
+	assert_eq(collection.get_plant("plant-001").get_planted_at(), 1600, "Updated planted_at is 1600")
+	assert_eq(collection.get_plant("plant-002"), other, "Unrelated plant-002 remains untouched")

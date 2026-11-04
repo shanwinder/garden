@@ -764,6 +764,12 @@ Rules:
 - Coin balance must never become negative because two UI actions raced or validation was bypassed.
 - Floating-point currency is not allowed.
 
+#### Implementation Status (Milestone 10)
+
+- **Authored plant harvest rewards**: `PlantDefinition` (`src/domain/plants/plant_definition.gd`) defines `@export var harvest_reward: int = 0` (validated non-negative via `is_valid()`), and all five authored production `.tres` definitions specify positive integer rewards (`plant.holy_basil`: 5, `plant.chili`: 10, `plant.marigold`: 20, `plant.jasmine`: 25, `plant.banana`: 60).
+- **Validated harvest & cycle reset**: `PlantHarvestService` (`src/application/plants/plant_harvest_service.gd`) validates plant existence, catalog membership, maturity (`PlantGrowth.Stage.MATURE`), positive reward (`harvest_reward > 0`), and `EconomyState.MAX_CURRENCY` overflow before replacing the plant in `PlantCollectionState.try_replace_existing_plant(...)` with a new `PlantState(runtime_instance_id, definition_id, now_utc_seconds)` and granting `harvest_reward` to `EconomyState`.
+- **Save Schema V1 preserved**: Harvesting resets the plant's cycle start timestamp (`planted_at = now_utc_seconds`) while preserving its `runtime_instance_id` and `definition_id`, requiring no V2 schema migration.
+
 ---
 
 ## 21. Journal and Discovery Architecture
@@ -993,7 +999,7 @@ Do not rely exclusively on a graceful application-exit callback; Android may ter
 
 Save frequency must balance data safety with unnecessary storage writes.
 
-#### Implementation Status (Milestones 5, 7, 8, and 9)
+#### Implementation Status (Milestones 5, 7, 8, 9, and 10)
 
 Milestone 5 implemented the foundational lifecycle pause checkpoint:
 - `APPLICATION_PAUSED`: Persists authoritative `GameSession` state via `LifecycleCoordinator` upon mobile pause notifications.
@@ -1007,12 +1013,13 @@ Milestone 7 (Task 7.3) introduced the first approved gameplay mutation persisten
   - `REGISTERED_SAVE_FAILED`: In-memory registration succeeded but persistence checkpoint failed (`repository.save()` returned false). The authoritative in-memory plant remains registered (no unsafe rollback, deletion, or GameState replacement); durability is not claimed.
   - `PLANTING_REJECTED`: Logical planting failed; no persistence save is attempted.
   - `NOT_READY`: Preconditions or dependencies unmet; no planting or save attempted.
-- **Independent boundaries**: Planting persistence checkpoints and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
+- **Successful logical harvest checkpoint (Milestone 10)**: Following a validated harvest (`PlantHarvestService.try_harvest_now`), `HarvestPersistenceCoordinator.try_harvest_and_save()` immediately checkpoints `GameState` via `LocalSaveRepository.save(GameState)` and returns a typed `HarvestCheckpointResult` (`HARVESTED_SAVED`, `HARVESTED_SAVE_FAILED`, `HARVEST_REJECTED`, or `NOT_READY`). Rejected harvests never call `repository.save()`.
+- **Independent boundaries**: Planting persistence checkpoints, harvest persistence checkpoints, and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
 - **No schema change or migration**: `GameStateCodec` V1 wire format and validation remain unchanged; no new timestamps or save fields are added.
 - **Content compatibility**: Existing V1 content validation rules remain unchanged.
-- **Deferred gameplay features**: Pricing, currency deduction, and placement coordinates remain out of scope through Milestone 9 and deferred to future tasks.
+- **Deferred gameplay features**: Seed/decoration purchasing, currency deduction, and placement coordinates remain out of scope through Milestone 10 and deferred to future tasks.
 
-All other save triggers (after purchase, harvest, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
+All other save triggers (after purchase, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
 
 ---
 
@@ -1142,20 +1149,21 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestones 8 and 9)
+#### Implementation Status (Milestones 8, 9, and 10)
 
-Milestone 8 establishes the initial portrait garden presentation hierarchy:
+Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls):
 
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
 └── GardenView (res://scenes/garden/garden_view.tscn — GardenView)
     ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
+    ├── CurrencyLabel (Authoritative Coin HUD display)
     ├── FeedbackArea (FeedbackLabel)
     ├── ContentArea
     │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
     │   ├── EmptyStateContainer
     │   └── BlockedStateContainer
-    ├── DetailsArea (Selection inspection panel)
+    ├── DetailsArea (Selection inspection panel + DetailRewardLabel + HarvestButton)
     └── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
         ├── PickerPanel (Catalog plant option buttons)
         └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
@@ -1191,13 +1199,14 @@ Signals should be owned by the object/service whose state they describe.
 
 For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot refresh is acceptable.
 
-#### Implementation Status (Milestones 8 and 9)
+#### Implementation Status (Milestones 8, 9, and 10)
 
-- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, and computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`.
+- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_currency()` for `CurrencyLabel`, reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, and computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`.
 - **No per-frame polling**: Neither `GardenView`, `PlantView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
 - **Ephemeral selection**: `GardenView` tracks selected `runtime_instance_id` purely in presentation memory, preserving selection across refreshes if the plant still exists and clearing it safely otherwise.
 - **Narrow command & lifecycle signals**:
   - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
+  - `GardenView` enables `HarvestButton` only when the selected plant's derived stage is `PlantGrowth.Stage.MATURE` and `definition.harvest_reward > 0`, emitting `harvest_requested(runtime_instance_id)` to `MainScreen` to execute `AppRoot.try_harvest_and_checkpoint(runtime_instance_id)`, render `HarvestCheckpointResult` feedback, and trigger `refresh_from_session()` when `result.is_harvested()` is true.
   - `AppRoot` emits `session_resumed()` only when `LifecycleCoordinator.on_application_resumed(game_session)` reports `ResumeOutcome.RESUMED` and both `GameSession` and `ContentCatalog` are ready; `MainScreen` listens to `session_resumed` and calls `GardenView.refresh_from_session()` once per genuine pause-to-resume transition.
 
 ---

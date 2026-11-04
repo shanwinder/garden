@@ -24,6 +24,7 @@ const PLANT_NAMESPACE_PREFIX: String = "plant."
 @export var sprout_after_seconds: int = 0
 @export var growing_after_seconds: int = 0
 @export var mature_after_seconds: int = 0
+@export var harvest_reward: int = 0
 
 
 ## Returns true if this definition is structurally valid.
@@ -35,6 +36,9 @@ func is_valid() -> bool:
 	if not _is_valid_growth_thresholds(
 		sprout_after_seconds, growing_after_seconds, mature_after_seconds
 	):
+		return false
+
+	if not _is_valid_harvest_reward(harvest_reward):
 		return false
 
 	return true
@@ -58,3 +62,7 @@ static func _is_valid_growth_thresholds(sprout: int, growing: int, mature: int) 
 		return false
 
 	return true
+
+
+static func _is_valid_harvest_reward(reward: int) -> bool:
+	return reward >= 0

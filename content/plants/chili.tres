@@ -8,3 +8,4 @@ id = "plant.chili"
 sprout_after_seconds = 120
 growing_after_seconds = 480
 mature_after_seconds = 1200
+harvest_reward = 10

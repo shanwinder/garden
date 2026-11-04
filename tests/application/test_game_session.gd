@@ -47,6 +47,7 @@ func run_tests() -> void:
 	_test_try_plant_now_id_generation_failure_propagation()
 	_test_try_plant_now_session_isolation()
 	_test_try_plant_now_persistence_round_trip()
+	_test_try_harvest_delegation_and_atomicity()
 
 
 
@@ -179,6 +180,7 @@ func _create_test_catalog() -> ContentCatalog:
 	def.sprout_after_seconds = 60
 	def.growing_after_seconds = 300
 	def.mature_after_seconds = 900
+	def.harvest_reward = 5
 	return ContentCatalog.try_create([def])
 
 
@@ -490,3 +492,30 @@ func _test_try_plant_now_persistence_round_trip() -> void:
 	)
 	assert_eq(session_b.get_state().get_plants().get_count(), 2, "Session B now contains 2 plants")
 	assert_eq(session_b.get_currency(), 123, "Session B currency remains 123")
+
+
+func _test_try_harvest_delegation_and_atomicity() -> void:
+	describe("GameSession try_harvest_plant_at and try_harvest_now delegate to PlantHarvestService")
+	var session: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var state_ref: GameState = session.get_state()
+
+	session.try_register_plant(catalog, "session-basil-1", "plant.holy_basil", 1000)
+
+	# Reject before maturity (mature_after_seconds = 900 in _create_test_catalog)
+	var r_early: PlantHarvestResult = session.try_harvest_plant_at(catalog, "session-basil-1", 1500)
+	assert_eq(r_early.get_status(), PlantHarvestResult.PLANT_NOT_MATURE, "Not mature at 1500")
+	assert_eq(session.get_currency(), 0, "Currency remains 0")
+
+	# Harvest via try_harvest_now at t = 1900
+	var clock: FakeGameClock = FakeGameClock.new(1900, 0)
+	var r_ok: PlantHarvestResult = session.try_harvest_now(catalog, clock, "session-basil-1")
+	assert_true(r_ok.is_harvested(), "Harvest succeeds at 1900")
+	assert_eq(r_ok.get_reward_granted(), 5, "Reward 5 granted")
+	assert_eq(session.get_currency(), 5, "Session currency is 5")
+	assert_eq(session.get_state(), state_ref, "GameState identity preserved")
+	assert_eq(
+		session.get_state().get_plants().get_plant("session-basil-1").get_planted_at(),
+		1900,
+		"Planted_at reset to 1900"
+	)

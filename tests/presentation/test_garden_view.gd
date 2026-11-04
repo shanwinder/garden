@@ -101,6 +101,10 @@ func run_tests() -> void:
 	_test_main_screen_refreshes_on_app_session_resumed()
 	_test_main_screen_ignores_spurious_or_duplicate_resume()
 	_test_main_screen_rebind_and_disconnect_app_root_resume_signal()
+	_test_currency_hud_reflects_authoritative_balance()
+	_test_harvest_button_state_and_signal_emission()
+	_test_harvest_feedback_rendering()
+	_test_integration_harvest_button_grants_coins_resets_plant_and_saves()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -109,30 +113,35 @@ func _create_test_catalog() -> ContentCatalog:
 	basil.sprout_after_seconds = 60
 	basil.growing_after_seconds = 180
 	basil.mature_after_seconds = 300
+	basil.harvest_reward = 5
 
 	var chili: PlantDefinition = PlantDefinition.new()
 	chili.id = "plant.chili"
 	chili.sprout_after_seconds = 120
 	chili.growing_after_seconds = 360
 	chili.mature_after_seconds = 600
+	chili.harvest_reward = 10
 
 	var jasmine: PlantDefinition = PlantDefinition.new()
 	jasmine.id = "plant.jasmine"
 	jasmine.sprout_after_seconds = 300
 	jasmine.growing_after_seconds = 900
 	jasmine.mature_after_seconds = 1800
+	jasmine.harvest_reward = 25
 
 	var marigold: PlantDefinition = PlantDefinition.new()
 	marigold.id = "plant.marigold"
 	marigold.sprout_after_seconds = 90
 	marigold.growing_after_seconds = 240
 	marigold.mature_after_seconds = 450
+	marigold.harvest_reward = 20
 
 	var banana: PlantDefinition = PlantDefinition.new()
 	banana.id = "plant.banana"
 	banana.sprout_after_seconds = 600
 	banana.growing_after_seconds = 1800
 	banana.mature_after_seconds = 3600
+	banana.harvest_reward = 60
 
 	return ContentCatalog.try_create([basil, chili, jasmine, marigold, banana])
 
@@ -1264,4 +1273,153 @@ func _test_main_screen_rebind_and_disconnect_app_root_resume_signal() -> void:
 	main_node.free()
 	app_1.free()
 	app_2.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_currency_hud_reflects_authoritative_balance() -> void:
+	describe("GardenView currency HUD reflects authoritative GameSession currency without local cache")
+	var view: GardenView = _instantiate_garden_view()
+	var session: GameSession = GameSession.new()
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	view.bind_garden(session, catalog, clock)
+	assert_eq(view.get_currency_text(), "เหรียญ: 0", "Initial currency HUD text is เหรียญ: 0")
+	assert_true(view.get_currency_label() != null and view.get_currency_label().visible, "Currency HUD visible")
+
+	session.grant_currency(35)
+	view.refresh_from_session()
+	assert_eq(view.get_currency_text(), "เหรียญ: 35", "Currency HUD updates to เหรียญ: 35 on refresh")
+
+	view.show_blocked_startup("บล็อกทดสอบ")
+	assert_false(view.get_currency_label().visible, "Currency HUD hidden when startup is blocked")
+	view.free()
+
+
+func _test_harvest_button_state_and_signal_emission() -> void:
+	describe("HarvestButton is enabled only for selected MATURE plants and emits harvest_requested once")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("basil-1", "plant.holy_basil", 1000))
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+
+	var harvest_signals: Array[String] = []
+	view.harvest_requested.connect(func(id: String) -> void: harvest_signals.append(id))
+
+	view.bind_garden(session, catalog, clock)
+	assert_false(view.is_harvest_button_enabled(), "HarvestButton disabled when no plant is selected")
+
+	# Select basil-1 at PLANTED stage (t = 1000)
+	view.get_plant_view_by_id("basil-1").simulate_selection_input()
+	assert_eq(view.get_detail_reward_text(), "รางวัลเก็บเกี่ยว: 5 เหรียญ", "Reward label shows 5 coins")
+	assert_false(view.is_harvest_button_enabled(), "HarvestButton disabled at PLANTED stage")
+	assert_eq(view.get_harvest_button().text, "ยังไม่พร้อมเก็บเกี่ยว", "Disabled button label")
+
+	# Advance to GROWING (t = 1200) -> still disabled
+	clock.set_utc_seconds(1200)
+	view.refresh_from_session()
+	assert_false(view.is_harvest_button_enabled(), "HarvestButton disabled at GROWING stage")
+
+	# Advance to MATURE (t = 1300 for test catalog basil mature_after_seconds=300) -> enabled
+	clock.set_utc_seconds(1300)
+	view.refresh_from_session()
+	assert_true(view.is_harvest_button_enabled(), "HarvestButton enabled at MATURE stage")
+	assert_eq(view.get_harvest_button().text, "เก็บเกี่ยว (+5 เหรียญ)", "Enabled button shows reward")
+
+	# Press HarvestButton -> emits harvest_requested("basil-1") once
+	view.get_harvest_button().pressed.emit()
+	assert_eq(harvest_signals, ["basil-1"], "harvest_requested emitted once with basil-1")
+	view.free()
+
+
+func _test_harvest_feedback_rendering() -> void:
+	describe("show_harvest_result renders Thai feedback for all HarvestCheckpointResult statuses")
+	var view: GardenView = _instantiate_garden_view()
+	var plant: PlantState = PlantState.new("basil-1", "plant.holy_basil", 1600)
+	var harv_ok: PlantHarvestResult = PlantHarvestResult.harvested(plant, 5)
+
+	view.show_harvest_result(HarvestCheckpointResult.harvested_saved(harv_ok))
+	assert_true(view.is_feedback_visible(), "Feedback visible on HARVESTED_SAVED")
+	assert_true(
+		view.get_feedback_text().contains("เก็บเกี่ยวสำเร็จ (+5 เหรียญ) และบันทึกเรียบร้อยแล้ว"),
+		"HARVESTED_SAVED feedback text"
+	)
+
+	view.show_harvest_result(HarvestCheckpointResult.harvested_save_failed(harv_ok))
+	assert_true(
+		view.get_feedback_text().contains("เก็บเกี่ยวสำเร็จ (+5 เหรียญ) แต่ยังบันทึกไม่สำเร็จ"),
+		"HARVESTED_SAVE_FAILED feedback text"
+	)
+
+	view.show_harvest_result(HarvestCheckpointResult.harvest_rejected(PlantHarvestResult.plant_not_mature()))
+	assert_true(
+		view.get_feedback_text().contains("ไม่สามารถเก็บเกี่ยวได้ (PLANT_NOT_MATURE)"),
+		"HARVEST_REJECTED feedback text"
+	)
+
+	view.show_harvest_result(HarvestCheckpointResult.not_ready())
+	assert_true(
+		view.get_feedback_text().contains("ระบบยังไม่พร้อมสำหรับการเก็บเกี่ยว"),
+		"NOT_READY feedback text"
+	)
+	view.free()
+
+
+func _test_integration_harvest_button_grants_coins_resets_plant_and_saves() -> void:
+	describe("Integration: HarvestButton in MainScreen grants coins, resets plant to PLANTED, and saves once")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# Plant holy_basil (mature=600, reward=5) at t = 2000
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.holy_basil")
+	picker.confirm_planting()
+
+	var basil_id: String = gview.get_plant_views()[0].get_runtime_instance_id()
+	gview.get_plant_view_by_id(basil_id).simulate_selection_input()
+	assert_eq(gview.get_currency_text(), "เหรียญ: 0", "0 coins initially")
+	assert_false(gview.is_harvest_button_enabled(), "HarvestButton disabled at PLANTED")
+	assert_eq(repo.save_call_count, 1, "1 save after planting")
+
+	# Advance clock by +600s (t = 2600 -> MATURE) and refresh
+	clock.advance_utc_seconds(600)
+	gview.refresh_from_session()
+	assert_true(gview.is_harvest_button_enabled(), "HarvestButton enabled at MATURE")
+
+	# Press HarvestButton
+	gview.get_harvest_button().pressed.emit()
+	assert_eq(repo.save_call_count, 2, "Save called once on harvest")
+	assert_eq(app.game_session.get_currency(), 5, "Authoritative currency is 5")
+	assert_eq(gview.get_currency_text(), "เหรียญ: 5", "HUD updated to เหรียญ: 5")
+	assert_eq(
+		gview.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.PLANTED,
+		"PlantView stage reset to PLANTED"
+	)
+	assert_eq(
+		gview.get_plant_view_by_id(basil_id).get_planted_at(),
+		2600,
+		"PlantView planted_at reset to 2600"
+	)
+	assert_false(gview.is_harvest_button_enabled(), "HarvestButton disabled again after cycle reset")
+	assert_true(
+		gview.get_feedback_text().contains("เก็บเกี่ยวสำเร็จ (+5 เหรียญ) และบันทึกเรียบร้อยแล้ว"),
+		"Harvest success feedback shown"
+	)
+
+	main_node.free()
+	app.free()
 	_cleanup_presentation_test_files()

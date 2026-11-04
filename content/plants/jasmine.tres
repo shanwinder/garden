@@ -8,3 +8,4 @@ id = "plant.jasmine"
 sprout_after_seconds = 300
 growing_after_seconds = 1200
 mature_after_seconds = 3600
+harvest_reward = 25

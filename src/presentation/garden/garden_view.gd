@@ -17,6 +17,7 @@ class_name GardenView
 extends Control
 
 signal planting_requested(definition_id: String)
+signal harvest_requested(runtime_instance_id: String)
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
 
@@ -28,9 +29,11 @@ var _selected_runtime_instance_id: String = ""
 var _is_blocked: bool = false
 var _blocked_message: String = ""
 var _last_checkpoint_result: PlantingCheckpointResult = null
+var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
 
 var _refresh_button: Button = null
 var _plant_button: Button = null
+var _currency_label: Label = null
 var _feedback_area: Control = null
 var _feedback_label: Label = null
 var _planting_picker: PlantingPicker = null
@@ -46,8 +49,10 @@ var _no_selection_label: Label = null
 var _details_content: Control = null
 var _detail_name_label: Label = null
 var _detail_stage_label: Label = null
+var _detail_reward_label: Label = null
 var _detail_id_label: Label = null
 var _detail_planted_at_label: Label = null
+var _harvest_button: Button = null
 
 
 func _ready() -> void:
@@ -64,6 +69,8 @@ func _resolve_nodes() -> void:
 		_refresh_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/RefreshButton") as Button
 	if _plant_button == null:
 		_plant_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/PlantButton") as Button
+	if _currency_label == null:
+		_currency_label = get_node_or_null("MainMargin/LayoutBox/CurrencyLabel") as Label
 	if _feedback_area == null:
 		_feedback_area = get_node_or_null("MainMargin/LayoutBox/FeedbackArea") as Control
 	if _feedback_label == null:
@@ -90,10 +97,14 @@ func _resolve_nodes() -> void:
 		_detail_name_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailNameLabel") as Label
 	if _detail_stage_label == null:
 		_detail_stage_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailStageLabel") as Label
+	if _detail_reward_label == null:
+		_detail_reward_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailRewardLabel") as Label
 	if _detail_id_label == null:
 		_detail_id_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailIdLabel") as Label
 	if _detail_planted_at_label == null:
 		_detail_planted_at_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlantedAtLabel") as Label
+	if _harvest_button == null:
+		_harvest_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/HarvestButton") as Button
 	_connect_signals()
 
 
@@ -104,6 +115,8 @@ func _connect_signals() -> void:
 		_plant_button.pressed.connect(open_planting_picker)
 	if _planting_picker != null and not _planting_picker.planting_requested.is_connected(_on_picker_planting_requested):
 		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
+	if _harvest_button != null and not _harvest_button.pressed.is_connected(_on_harvest_button_pressed):
+		_harvest_button.pressed.connect(_on_harvest_button_pressed)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -155,6 +168,12 @@ func refresh_from_session() -> void:
 
 	# Sample the injected GameClock once for all plants (Requirement 10).
 	var now_utc: int = _game_clock.utc_now_seconds()
+
+	# Read authoritative currency balance directly from GameSession (no presentation cache).
+	_resolve_nodes()
+	if _currency_label != null:
+		_currency_label.visible = true
+		_currency_label.text = "เหรียญ: %d" % _session.get_currency()
 
 	# Authoritative plant collection in deterministic order (Requirement 9, 20).
 	var plants: Array[PlantState] = _session.get_state().get_plants().get_all_plants()
@@ -276,6 +295,9 @@ func _update_details_panel(
 	if plant_state == null:
 		_no_selection_label.visible = true
 		_details_content.visible = false
+		if _harvest_button != null:
+			_harvest_button.disabled = true
+			_harvest_button.text = "ยังไม่พร้อมเก็บเกี่ยว"
 		return
 
 	_no_selection_label.visible = false
@@ -302,11 +324,30 @@ func _update_details_panel(
 				stage_text = "ไม่ทราบสถานะ (INVALID)"
 		_detail_stage_label.text = "ระยะ: %s" % stage_text
 
+	if _detail_reward_label != null:
+		if definition != null and definition.harvest_reward > 0:
+			_detail_reward_label.text = "รางวัลเก็บเกี่ยว: %d เหรียญ" % definition.harvest_reward
+		else:
+			_detail_reward_label.text = "รางวัลเก็บเกี่ยว: —"
+
 	if _detail_id_label != null:
 		_detail_id_label.text = "รหัสประจำต้น: %s" % plant_state.get_runtime_instance_id()
 
 	if _detail_planted_at_label != null:
 		_detail_planted_at_label.text = "ปลูกเมื่อ: %d (Unix UTC)" % plant_state.get_planted_at()
+
+	if _harvest_button != null:
+		var can_harvest: bool = (
+			not _is_blocked
+			and stage == PlantGrowth.Stage.MATURE
+			and definition != null
+			and definition.harvest_reward > 0
+		)
+		_harvest_button.disabled = not can_harvest
+		if can_harvest:
+			_harvest_button.text = "เก็บเกี่ยว (+%d เหรียญ)" % definition.harvest_reward
+		else:
+			_harvest_button.text = "ยังไม่พร้อมเก็บเกี่ยว"
 
 
 func _show_blocked_visual() -> void:
@@ -314,6 +355,8 @@ func _show_blocked_visual() -> void:
 	_clear_plant_views()
 	_selected_runtime_instance_id = ""
 
+	if _currency_label != null:
+		_currency_label.visible = false
 	if _feedback_area != null:
 		_feedback_area.visible = false
 	if _empty_container != null:
@@ -493,3 +536,96 @@ func is_feedback_visible() -> bool:
 ## Pure query for testing: returns last received PlantingCheckpointResult.
 func get_last_checkpoint_result() -> PlantingCheckpointResult:
 	return _last_checkpoint_result
+
+
+func _on_harvest_button_pressed() -> void:
+	if _is_blocked or _session == null or _selected_runtime_instance_id.is_empty():
+		return
+	if _harvest_button != null and _harvest_button.disabled:
+		return
+	harvest_requested.emit(_selected_runtime_instance_id)
+
+
+## Displays user feedback from a HarvestCheckpointResult.
+func show_harvest_result(result: HarvestCheckpointResult) -> void:
+	_last_harvest_checkpoint_result = result
+	_resolve_nodes()
+	if _feedback_area == null or _feedback_label == null or result == null:
+		return
+
+	_feedback_area.visible = true
+	match result.get_status():
+		HarvestCheckpointResult.Status.NOT_READY:
+			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการเก็บเกี่ยว"
+		HarvestCheckpointResult.Status.HARVEST_REJECTED:
+			var reason_str: String = ""
+			var harvest_res: PlantHarvestResult = result.get_harvest_result()
+			if harvest_res != null:
+				match harvest_res.get_status():
+					PlantHarvestResult.INVALID_INPUT:
+						reason_str = "INVALID_INPUT"
+					PlantHarvestResult.PLANT_NOT_FOUND:
+						reason_str = "PLANT_NOT_FOUND"
+					PlantHarvestResult.UNKNOWN_DEFINITION_ID:
+						reason_str = "UNKNOWN_DEFINITION_ID"
+					PlantHarvestResult.PLANT_NOT_MATURE:
+						reason_str = "PLANT_NOT_MATURE"
+					PlantHarvestResult.INVALID_REWARD:
+						reason_str = "INVALID_REWARD"
+					PlantHarvestResult.CURRENCY_GRANT_REJECTED:
+						reason_str = "CURRENCY_GRANT_REJECTED"
+					PlantHarvestResult.STATE_UPDATE_REJECTED:
+						reason_str = "STATE_UPDATE_REJECTED"
+					_:
+						reason_str = "UNKNOWN"
+			if not reason_str.is_empty():
+				_feedback_label.text = "ไม่สามารถเก็บเกี่ยวได้ (%s)" % reason_str
+			else:
+				_feedback_label.text = "ไม่สามารถเก็บเกี่ยวได้"
+		HarvestCheckpointResult.Status.HARVESTED_SAVED:
+			_feedback_label.text = (
+				"เก็บเกี่ยวสำเร็จ (+%d เหรียญ) และบันทึกเรียบร้อยแล้ว"
+				% result.get_reward_granted()
+			)
+		HarvestCheckpointResult.Status.HARVESTED_SAVE_FAILED:
+			_feedback_label.text = (
+				"เก็บเกี่ยวสำเร็จ (+%d เหรียญ) แต่ยังบันทึกไม่สำเร็จ"
+				% result.get_reward_granted()
+			)
+		_:
+			_feedback_label.text = "สถานะการเก็บเกี่ยวไม่ระบุ"
+
+
+## Pure query for testing: returns currency HUD Label instance.
+func get_currency_label() -> Label:
+	_resolve_nodes()
+	return _currency_label
+
+
+## Pure query for testing: returns displayed currency HUD text.
+func get_currency_text() -> String:
+	_resolve_nodes()
+	return _currency_label.text if _currency_label != null else ""
+
+
+## Pure query for testing: returns text displayed in detail reward label.
+func get_detail_reward_text() -> String:
+	_resolve_nodes()
+	return _detail_reward_label.text if _detail_reward_label != null else ""
+
+
+## Pure query for testing: returns Harvest button instance.
+func get_harvest_button() -> Button:
+	_resolve_nodes()
+	return _harvest_button
+
+
+## Pure query for testing: returns true if Harvest button is currently enabled.
+func is_harvest_button_enabled() -> bool:
+	_resolve_nodes()
+	return not _is_blocked and _session != null and _harvest_button != null and not _harvest_button.disabled
+
+
+## Pure query for testing: returns last received HarvestCheckpointResult.
+func get_last_harvest_checkpoint_result() -> HarvestCheckpointResult:
+	return _last_harvest_checkpoint_result

@@ -91,6 +91,7 @@ func teardown() -> void:
 func run_tests() -> void:
 	_test_full_player_loop_across_restart_and_offline_growth()
 	_test_in_process_pause_resume_offline_growth_and_clock_rollback_safety()
+	_test_harvest_and_economy_loop_across_restart_and_second_cycle()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
@@ -349,6 +350,92 @@ func _test_in_process_pause_resume_offline_growth_and_clock_rollback_safety() ->
 
 	main_screen.free()
 	app.free()
+	_cleanup_test_files()
+
+
+func _test_harvest_and_economy_loop_across_restart_and_second_cycle() -> void:
+	describe("E2E: Plant -> mature -> harvest (+5 coins, cycle reset) -> restart -> mature again -> 2nd harvest (10 coins)")
+	_cleanup_test_files()
+
+	var repo_1: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_1: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng_1: FakeRandomSource = FakeRandomSource.new([], [7, 8, 9, 10])
+	var app_1: AppRoot = AppRoot.new(repo_1, PlantContentLoader.new(), clock_1, rng_1)
+	app_1.bootstrap_session()
+
+	var main_1: MainScreen = _instantiate_bound_main_screen(app_1)
+	var view_1: GardenView = main_1.get_garden_view()
+	assert_eq(view_1.get_currency_text(), "เหรียญ: 0", "Starts with 0 coins")
+
+	# Plant holy_basil at t = 1000
+	view_1.get_plant_button().pressed.emit()
+	var picker_1: PlantingPicker = view_1.get_planting_picker()
+	picker_1.select_plant_definition("plant.holy_basil")
+	picker_1.confirm_planting()
+
+	var basil_id: String = view_1.get_plant_views()[0].get_runtime_instance_id()
+	view_1.get_plant_view_by_id(basil_id).simulate_selection_input()
+	assert_false(view_1.is_harvest_button_enabled(), "Cannot harvest at t = 1000 (PLANTED)")
+
+	# Background pause at t = 1000, resume at t = 1600 (+600s -> MATURE)
+	app_1._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	clock_1.set_utc_seconds(1600)
+	app_1._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	assert_eq(
+		view_1.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.MATURE,
+		"Basil automatically matures on resume at t = 1600"
+	)
+	assert_true(view_1.is_harvest_button_enabled(), "HarvestButton automatically enabled on resume at MATURE")
+
+	# Harvest cycle 1 at t = 1600
+	var saves_before_harvest_1: int = repo_1.save_call_count
+	view_1.get_harvest_button().pressed.emit()
+	assert_eq(repo_1.save_call_count, saves_before_harvest_1 + 1, "Harvest 1 checkpoints state to disk")
+	assert_eq(view_1.get_currency_text(), "เหรียญ: 5", "HUD displays 5 coins after harvest 1")
+	assert_eq(
+		view_1.get_plant_view_by_id(basil_id).get_stage(),
+		PlantGrowth.Stage.PLANTED,
+		"Basil resets to PLANTED at t = 1600"
+	)
+	assert_false(view_1.is_harvest_button_enabled(), "HarvestButton disabled after cycle reset")
+
+	main_1.free()
+	app_1.free()
+
+	# Restart into Session 2 at t = 2200 (+600s after cycle 1 reset -> MATURE again!)
+	var repo_2: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_2: FakeGameClock = FakeGameClock.new(2200, 0)
+	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, FakeRandomSource.new([], []))
+	var load_res_2: LocalSaveLoadResult = app_2.bootstrap_session()
+	assert_eq(load_res_2.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Loaded from PRIMARY")
+
+	var main_2: MainScreen = _instantiate_bound_main_screen(app_2)
+	var view_2: GardenView = main_2.get_garden_view()
+	assert_eq(view_2.get_currency_text(), "เหรียญ: 5", "Persisted 5 coins displayed on restart")
+
+	var basil_pv_2: PlantView = view_2.get_plant_view_by_id(basil_id)
+	assert_true(basil_pv_2 != null, "Same runtime_instance_id preserved across harvest and restart")
+	assert_eq(basil_pv_2.get_planted_at(), 1600, "Cycle 2 start timestamp 1600 preserved")
+	assert_eq(basil_pv_2.get_stage(), PlantGrowth.Stage.MATURE, "Basil matured again at t = 2200")
+
+	basil_pv_2.simulate_selection_input()
+	assert_true(view_2.is_harvest_button_enabled(), "HarvestButton enabled for cycle 2")
+
+	# Harvest cycle 2 at t = 2200
+	view_2.get_harvest_button().pressed.emit()
+	assert_eq(repo_2.save_call_count, 1, "Harvest 2 saves once")
+	assert_eq(view_2.get_currency_text(), "เหรียญ: 10", "HUD displays 10 coins after harvest 2")
+	assert_eq(app_2.game_session.get_currency(), 10, "Authoritative currency is 10")
+	assert_eq(
+		view_2.get_plant_view_by_id(basil_id).get_planted_at(),
+		2200,
+		"Cycle 3 start timestamp reset to 2200"
+	)
+
+	main_2.free()
+	app_2.free()
 	_cleanup_test_files()
 
 

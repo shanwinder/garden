@@ -78,6 +78,13 @@ focus_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "รีเฟรช"
 
+[node name="CurrencyLabel" type="Label" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.45, 1)
+theme_override_font_sizes/font_size = 28
+text = "เหรียญ: 0"
+vertical_alignment = 1
+
 [node name="FeedbackArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
 visible = false
 layout_mode = 2
@@ -149,7 +156,7 @@ vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="DetailsArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
-custom_minimum_size = Vector2(0, 260)
+custom_minimum_size = Vector2(0, 310)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_details")
 
@@ -194,6 +201,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "ระยะ: —"
 
+[node name="DetailRewardLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.45, 1)
+theme_override_font_sizes/font_size = 20
+text = "รางวัลเก็บเกี่ยว: —"
+
 [node name="DetailIdLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
@@ -205,6 +218,15 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
 theme_override_font_sizes/font_size = 20
 text = "ปลูกเมื่อ: —"
+
+[node name="HarvestButton" type="Button" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
+custom_minimum_size = Vector2(220, 56)
+layout_mode = 2
+size_flags_horizontal = 0
+focus_mode = 2
+disabled = true
+theme_override_font_sizes/font_size = 22
+text = "ยังไม่พร้อมเก็บเกี่ยว"
 
 [node name="PlantingPicker" parent="." instance=ExtResource("2_planting_picker")]
 visible = false

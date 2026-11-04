@@ -123,11 +123,11 @@ func _test_production_growth_thresholds() -> void:
 	var defs: Array[PlantDefinition] = result.get_definitions()
 
 	var expected_thresholds: Dictionary = {
-		"plant.holy_basil": {"sprout": 60, "growing": 180, "mature": 600},
-		"plant.chili": {"sprout": 120, "growing": 480, "mature": 1200},
-		"plant.jasmine": {"sprout": 300, "growing": 1200, "mature": 3600},
-		"plant.marigold": {"sprout": 180, "growing": 900, "mature": 2700},
-		"plant.banana": {"sprout": 1800, "growing": 5400, "mature": 21600},
+		"plant.holy_basil": {"sprout": 60, "growing": 180, "mature": 600, "reward": 5},
+		"plant.chili": {"sprout": 120, "growing": 480, "mature": 1200, "reward": 10},
+		"plant.jasmine": {"sprout": 300, "growing": 1200, "mature": 3600, "reward": 25},
+		"plant.marigold": {"sprout": 180, "growing": 900, "mature": 2700, "reward": 20},
+		"plant.banana": {"sprout": 1800, "growing": 5400, "mature": 21600, "reward": 60},
 	}
 
 	for def: PlantDefinition in defs:
@@ -136,10 +136,12 @@ func _test_production_growth_thresholds() -> void:
 		assert_eq(def.sprout_after_seconds, expected["sprout"], "%s sprout threshold must match" % def.id)
 		assert_eq(def.growing_after_seconds, expected["growing"], "%s growing threshold must match" % def.id)
 		assert_eq(def.mature_after_seconds, expected["mature"], "%s mature threshold must match" % def.id)
+		assert_eq(def.harvest_reward, expected["reward"], "%s harvest_reward must match" % def.id)
 
 		assert_true(def.sprout_after_seconds > 0, "%s sprout threshold must be > 0" % def.id)
 		assert_true(def.growing_after_seconds > def.sprout_after_seconds, "%s growing must be > sprout" % def.id)
 		assert_true(def.mature_after_seconds > def.growing_after_seconds, "%s mature must be > growing" % def.id)
+		assert_true(def.harvest_reward > 0, "%s harvest_reward must be > 0" % def.id)
 
 
 func _test_production_unique_ids() -> void:
