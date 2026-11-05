@@ -49,6 +49,7 @@ func run_tests() -> void:
 	_test_try_plant_now_persistence_round_trip()
 	_test_try_harvest_delegation_and_atomicity()
 	_test_snapshot_and_visitor_evaluation_delegation()
+	_test_record_discovery_delegation()
 
 
 
@@ -545,3 +546,22 @@ func _test_snapshot_and_visitor_evaluation_delegation() -> void:
 	var res_now: VisitorSelectionResult = session.evaluate_visitor_now(catalog, clock, rng_now)
 	assert_true(res_now.is_selected(), "evaluate_visitor_now selects visitor")
 	assert_eq(res_now.get_selected_visitor_id(), "visitor.firefly", "Roll 0.8 selects visitor.firefly")
+
+
+func _test_record_discovery_delegation() -> void:
+	describe("GameSession record_discovery_at and record_discovery_now delegate to JournalDiscoveryService")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors)
+	var session: GameSession = GameSession.new()
+
+	var first: JournalDiscoveryResult = session.record_discovery_at(catalog, "visitor.butterfly", 1200)
+	assert_true(first.is_recorded(), "First discovery recorded via session")
+	assert_true(first.is_first_discovery(), "Reported as first discovery")
+
+	var clock: FakeGameClock = FakeGameClock.new(1800, 0)
+	var second: JournalDiscoveryResult = session.record_discovery_now(catalog, clock, "visitor.butterfly")
+	assert_true(second.is_recorded(), "Repeat sighting recorded via session")
+	assert_true(second.is_repeat_sighting(), "Reported as repeat sighting")
+	assert_eq(second.get_record().get_first_seen_at(), 1200, "first_seen_at preserved at 1200")
+	assert_eq(second.get_record().get_times_seen(), 2, "times_seen incremented to 2")

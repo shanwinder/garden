@@ -812,6 +812,16 @@ Do not copy full localized names/descriptions into save data.
 
 First-time discovery should be idempotent: seeing the same visitor twice must not accidentally award first-discovery rewards twice.
 
+#### Implementation Status (Milestone 12)
+
+- **Immutable discovery value object**: `DiscoveryRecord` (`src/domain/journal/discovery_record.gd`) stores `_definition_id` (validated canonical `StableContentId` in `"plant."` or `"visitor."` namespaces), `_first_seen_at` (`>= 0`), and `_times_seen` (`>= 1`). Its `with_additional_sighting(seen_at_utc)` returns a new `DiscoveryRecord` that preserves `_first_seen_at` (idempotent first discovery) and increments `_times_seen` by 1 while guarding against 64-bit integer overflow.
+- **Authoritative journal state slice**: `JournalState` (`src/domain/state/journal_state.gd`) is owned by `GameState` (`state.get_journal()`), providing deterministic ascending ID queries (`get_all_records()`, `get_discovered_ids()`), persistence reconstruction (`try_put_record(record)`), and idempotent sighting recording (`try_record_sighting(definition_id, seen_at_utc)`).
+- **Validated discovery recording**:
+  - `PlantRegistrationService.try_register_plant(...)` automatically records a plant sighting (`journal.try_record_sighting(definition_id, planted_at)`) when a plant is registered into `GameState`.
+  - `JournalDiscoveryService` (`src/application/journal/journal_discovery_service.gd`) validates `definition_id` against `ContentCatalog` (`has_plant` / `has_visitor`) and records the sighting in `JournalState`, returning a typed `JournalDiscoveryResult` (`FIRST_DISCOVERY`, `REPEAT_SIGHTING`, `INVALID_INPUT`, `UNKNOWN_DEFINITION_ID`, or `STATE_UPDATE_REJECTED`).
+- **Visitor observation checkpoint**: `VisitorObservationPersistenceCoordinator` (`src/application/visitors/visitor_observation_persistence_coordinator.gd`) samples `GameClock.utc_now_seconds()` once, evaluates visitor selection at that timestamp, records the selected visitor discovery in `JournalState`, and immediately checkpoints `GameState` via `LocalSaveRepository.save(state)`, returning `VisitorObservationCheckpointResult` (`OBSERVED_SAVED`, `OBSERVED_SAVE_FAILED`, `NO_ELIGIBLE_VISITORS`, `OBSERVATION_REJECTED`, or `NOT_READY`).
+- **Journal presentation (`สมุดบ้านสวน`)**: `JournalPanel` (`src/presentation/garden/journal_panel.gd` and `scenes/garden/journal_panel.tscn`) binds read-only to `JournalState` and `ContentCatalog`, displaying overall discovery progress (`ค้นพบแล้ว X / 10 รายการ (พืช A/5, ผู้มาเยือน B/5)`), localized names, `first_seen_at`, and `times_seen` for discovered entries, and `[???]` mystery placeholders with habitat clues for undiscovered entries.
+
 ---
 
 ## 22. Persistence Architecture
@@ -847,13 +857,13 @@ During early architectural planning, a conceptual save structure was outlined as
 
 This conceptual shape served to illustrate versioning and modular data groupings before persistence was implemented.
 
-#### Current Implemented V1 Contract (Normative)
+#### Current Implemented V2 Contract and V1 Compatibility (Normative)
 
-Persistence is now implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. The canonical V1 wire format is:
+Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. As of Milestone 12, `CURRENT_SCHEMA_VERSION = 2`. The canonical V2 wire format is:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "economy": {
     "currency": "250"
   },
@@ -863,13 +873,27 @@ Persistence is now implemented in the codebase via `GameStateCodec`, `LocalSaveR
       "definition_id": "plant.holy_basil",
       "planted_at": "1700000000"
     }
+  ],
+  "discoveries": [
+    {
+      "definition_id": "plant.holy_basil",
+      "first_seen_at": "1700000000",
+      "times_seen": "1"
+    },
+    {
+      "definition_id": "visitor.butterfly",
+      "first_seen_at": "1700000300",
+      "times_seen": "2"
+    }
   ]
 }
 ```
 
+Legacy Schema V1 saves (containing exact root keys `schema_version: 1`, `economy`, and `plants`) remain supported on decode through explicit deterministic migration (`GameStateCodec.migrate_v1_to_v2(v1_snapshot)`), which upgrades `schema_version` to `2` and initializes `"discoveries": []`.
+
 #### Int64 Wire Encoding Rule
 
-Important: `currency` and `planted_at` are canonical non-negative decimal **strings** at the JSON wire boundary.
+Important: `currency`, `planted_at`, `first_seen_at`, and `times_seen` are canonical non-negative decimal **strings** at the JSON wire boundary.
 
 - Runtime/domain types remain `int` (signed 64-bit integer).
 - Reason: Godot's built-in `JSON` parser represents numeric values as 64-bit floating-point numbers (`float`). A 64-bit IEEE-754 float cannot losslessly represent arbitrary signed 64-bit integers beyond $2^{53}$ (9,007,199,254,740,992). To avoid precision loss on large values up to `9223372036854775807`, persistent int64 domain values are encoded as exact decimal strings on the wire.
@@ -880,21 +904,22 @@ Important: `currency` and `planted_at` are canonical non-negative decimal **stri
   - Valid wire examples: `"0"`, `"42"`, `"9007199254740993"`, `"9223372036854775807"`.
   - Invalid wire examples: `"01"` (leading zero), `"+1"` (explicit plus), `"-1"` (negative), `"1.0"` (float), `"1e3"` (exponent).
 
-#### Strict V1 Validation Rules
+#### Strict V2 Validation Rules
 
-The V1 codec enforces strict schema integrity:
+The V2 codec enforces strict schema integrity:
 
-- `CURRENT_SCHEMA_VERSION = 1`
-- Root exact required keys: `schema_version`, `economy`, `plants`.
+- `CURRENT_SCHEMA_VERSION = 2` (with explicit `SCHEMA_VERSION_V1 = 1` auto-migration on `decode`).
+- Root exact required keys (V2): `schema_version`, `economy`, `plants`, `discoveries`.
 - Economy exact required key: `currency`.
 - Plant exact required keys: `instance_id`, `definition_id`, `planted_at`.
-- Unexpected keys in root, economy, or plant objects: rejected.
-- Unsupported schema versions: rejected.
-- Duplicate plant runtime `instance_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
+- Discovery exact required keys: `definition_id`, `first_seen_at`, `times_seen` (`times_seen >= 1`, `definition_id` in `"plant."` or `"visitor."` namespace).
+- Unexpected keys in root, economy, plant, or discovery objects: rejected.
+- Unsupported schema versions (anything other than `1` or `2`): rejected.
+- Duplicate plant runtime `instance_id` or duplicate discovery `definition_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
 - Malformed required data: rejected.
-- `ContentCatalog` existence validation: intentionally NOT placed in `GameStateCodec` V1 (codec validates schema syntax and namespace prefixes only, keeping infrastructure persistence independent of the catalog).
+- `ContentCatalog` existence validation: intentionally NOT placed in `GameStateCodec` (codec validates schema syntax and namespace prefixes only, keeping infrastructure persistence independent of the catalog; `PlantSaveContentValidator` validates saved plant and discovery IDs against `ContentCatalog` at the startup boundary).
 - Derived plant growth stage: not persisted (computed at runtime from `planted_at`).
-- `PlantDefinition` static data: not duplicated into save.
+- `PlantDefinition` and `VisitorDefinition` static data: not duplicated into save.
 
 #### Local Storage File Layout
 
@@ -997,6 +1022,11 @@ When content IDs are renamed or removed, migration/alias rules must preserve val
 
 Resetting all progress is not an acceptable migration strategy unless the owner explicitly approves it for a pre-release prototype.
 
+#### Implementation Status (Milestone 12)
+
+- **Deterministic V1 -> V2 migration**: `GameStateCodec.migrate_v1_to_v2(v1_snapshot: Variant) -> Variant` validates that `v1_snapshot` is a `Dictionary` with `schema_version == 1` and exact V1 root keys (`schema_version`, `economy`, `plants`), returning a new V2 `Dictionary` with `"schema_version": 2`, preserved `"economy"` and `"plants"`, and `"discoveries": []` without mutating the caller's input dictionary.
+- **Automatic decode upgrade**: `GameStateCodec.decode(snapshot)` transparently runs `migrate_v1_to_v2(snapshot)` when `schema_version == 1` before validating and decoding into `GameState`. All subsequent `GameStateCodec.encode(state)` calls write Schema V2.
+
 ---
 
 ## 24. Save Timing
@@ -1033,9 +1063,8 @@ Milestone 7 (Task 7.3) introduced the first approved gameplay mutation persisten
   - `PLANTING_REJECTED`: Logical planting failed; no persistence save is attempted.
   - `NOT_READY`: Preconditions or dependencies unmet; no planting or save attempted.
 - **Successful logical harvest checkpoint (Milestone 10)**: Following a validated harvest (`PlantHarvestService.try_harvest_now`), `HarvestPersistenceCoordinator.try_harvest_and_save()` immediately checkpoints `GameState` via `LocalSaveRepository.save(GameState)` and returns a typed `HarvestCheckpointResult` (`HARVESTED_SAVED`, `HARVESTED_SAVE_FAILED`, `HARVEST_REJECTED`, or `NOT_READY`). Rejected harvests never call `repository.save()`.
-- **Independent boundaries**: Planting persistence checkpoints, harvest persistence checkpoints, and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
-- **No schema change or migration**: `GameStateCodec` V1 wire format and validation remain unchanged; no new timestamps or save fields are added.
-- **Content compatibility**: Existing V1 content validation rules remain unchanged.
+- **Successful visitor observation & discovery checkpoint (Milestone 12)**: Following a successful visitor observation (`VisitorObservationPersistenceCoordinator.try_observe_visitor_and_save()`), the visitor sighting is recorded in `JournalState` and `GameState` is immediately checkpointed in Save Schema V2 via `LocalSaveRepository.save(GameState)`, returning a typed `VisitorObservationCheckpointResult` (`OBSERVED_SAVED`, `OBSERVED_SAVE_FAILED`, `NO_ELIGIBLE_VISITORS`, `OBSERVATION_REJECTED`, or `NOT_READY`). When no visitors are eligible, zero state mutations and zero disk writes occur.
+- **Independent boundaries**: Planting persistence checkpoints, harvest persistence checkpoints, visitor observation checkpoints, and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
 - **Deferred gameplay features**: Seed/decoration purchasing, currency deduction, and placement coordinates remain out of scope through Milestone 10 and deferred to future tasks.
 
 All other save triggers (after purchase, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
@@ -1168,9 +1197,9 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestones 8, 9, 10, and 11)
+#### Implementation Status (Milestones 8, 9, 10, 11, and 12)
 
-Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, and in Milestone 11 with environmental trait summary and visitor observation controls):
+Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, in Milestone 11 with environmental trait summary and visitor observation controls, and in Milestone 12 with the Garden Journal HUD row and modal `JournalPanel`):
 
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
@@ -1179,15 +1208,18 @@ Main (res://scenes/app/main.tscn — MainScreen)
     ├── CurrencyLabel (Authoritative Coin HUD display)
     ├── EnvironmentLabel (Derived GardenSnapshot trait summary)
     ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton)
+    ├── JournalRow (JournalStatusLabel + JournalButton)
     ├── FeedbackArea (FeedbackLabel)
     ├── ContentArea
     │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
     │   ├── EmptyStateContainer
     │   └── BlockedStateContainer
     ├── DetailsArea (Selection inspection panel + DetailRewardLabel + HarvestButton)
-    └── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
-        ├── PickerPanel (Catalog plant option buttons)
-        └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
+    ├── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
+    │   ├── PickerPanel (Catalog plant option buttons)
+    │   └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
+    └── JournalPanel (res://scenes/garden/journal_panel.tscn — JournalPanel)
+        └── JournalModalPanel (SummaryLabel, ScrollContainer -> EntriesContainer, CloseButton)
 ```
 
 - `MainScreen` (`src/presentation/app/main_screen.gd`) acts as a thin composition adapter binding `AppRoot` (`game_session`, `content_catalog`, `game_clock`, and `session_resumed`) into `GardenView`, and supports `bind_app_root(app)` for isolated test injection without global Autoload coupling.
@@ -1228,7 +1260,7 @@ For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot r
 - **Narrow command & lifecycle signals**:
   - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
   - `GardenView` enables `HarvestButton` only when the selected plant's derived stage is `PlantGrowth.Stage.MATURE` and `definition.harvest_reward > 0`, emitting `harvest_requested(runtime_instance_id)` to `MainScreen` to execute `AppRoot.try_harvest_and_checkpoint(runtime_instance_id)`, render `HarvestCheckpointResult` feedback, and trigger `refresh_from_session()` when `result.is_harvested()` is true.
-  - `GardenView` enables `ObserveVisitorButton` only when at least one visitor is eligible in the current `GardenSnapshot`, emitting `visitor_observation_requested()` to `MainScreen` to execute `AppRoot.evaluate_visitor_now()` and display the ephemeral visitor observation via `GardenView.show_visitor_result(result)`.
+  - `GardenView` enables `ObserveVisitorButton` only when at least one visitor is eligible in the current `GardenSnapshot`, emitting `visitor_observation_requested()` to `MainScreen` to execute `AppRoot.try_observe_visitor_and_checkpoint()`, display visitor observation and journal discovery feedback via `GardenView.show_visitor_observation_result(result)`, and trigger `refresh_from_session()` when `result.is_observed()` is true.
   - `AppRoot` emits `session_resumed()` only when `LifecycleCoordinator.on_application_resumed(game_session)` reports `ResumeOutcome.RESUMED` and both `GameSession` and `ContentCatalog` are ready; `MainScreen` listens to `session_resumed` and calls `GardenView.refresh_from_session()` once per genuine pause-to-resume transition.
 
 ---

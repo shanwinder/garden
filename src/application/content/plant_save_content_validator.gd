@@ -33,8 +33,13 @@ static func validate(
 	if plant_collection == null:
 		return PlantSaveContentValidationResult.invalid_input()
 
+	var journal: JournalState = state.get_journal()
+	if journal == null:
+		return PlantSaveContentValidationResult.invalid_input()
+
 	var plants: Array[PlantState] = plant_collection.get_all_plants()
-	if plants.is_empty():
+	var records: Array[DiscoveryRecord] = journal.get_all_records()
+	if plants.is_empty() and records.is_empty():
 		return PlantSaveContentValidationResult.compatible()
 
 	var unknown_ids_map: Dictionary = {}
@@ -45,6 +50,19 @@ static func validate(
 		var def_id: String = plant.get_definition_id()
 		if not catalog.has_plant(def_id):
 			unknown_ids_map[def_id] = true
+
+	for record: DiscoveryRecord in records:
+		if record == null:
+			return PlantSaveContentValidationResult.invalid_input()
+		var disc_id: String = record.get_definition_id()
+		if record.is_plant_discovery():
+			if not catalog.has_plant(disc_id):
+				unknown_ids_map[disc_id] = true
+		elif record.is_visitor_discovery():
+			if not catalog.has_visitor(disc_id):
+				unknown_ids_map[disc_id] = true
+		else:
+			unknown_ids_map[disc_id] = true
 
 	if unknown_ids_map.is_empty():
 		return PlantSaveContentValidationResult.compatible()

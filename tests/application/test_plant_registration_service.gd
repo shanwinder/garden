@@ -132,6 +132,9 @@ func _test_register_holy_basil_success() -> void:
 	assert_eq(state.get_plants().get_count(), 1, "Plant count must be 1")
 	assert_true(state.get_plants().has_runtime_instance_id("plant-inst-001"), "Collection must contain instance_id")
 	assert_eq(state.get_plants().get_plant("plant-inst-001"), plant, "Stored plant must be exact reference")
+	assert_true(state.get_journal().has_discovered("plant.holy_basil"), "Registering plant records discovery in JournalState")
+	assert_eq(state.get_journal().get_record("plant.holy_basil").get_first_seen_at(), 1700000000, "Journal first_seen_at matches planted_at")
+	assert_eq(state.get_journal().get_record("plant.holy_basil").get_times_seen(), 1, "Journal times_seen is 1")
 
 
 func _test_all_five_approved_definitions_success() -> void:
@@ -210,6 +213,8 @@ func _test_multiple_plants_same_and_different_definitions() -> void:
 	assert_true(r1.is_registered(), "First basil must register")
 	assert_true(r2.is_registered(), "Second basil must register")
 	assert_eq(state.get_plants().get_count(), 2, "Count must be 2")
+	assert_eq(state.get_journal().get_record("plant.holy_basil").get_first_seen_at(), 100, "Second basil preserves first_seen_at = 100")
+	assert_eq(state.get_journal().get_record("plant.holy_basil").get_times_seen(), 2, "Second basil increments times_seen to 2")
 
 	# Third instance with different definition
 	var r3: PlantRegistrationResult = PlantRegistrationService.try_register_plant(
@@ -482,9 +487,13 @@ func _test_in_memory_persistence_round_trip() -> void:
 	)
 	assert_true(reg_res.is_registered(), "Registration via GameSession must succeed")
 
-	# Encode to V1 snapshot dictionary
+	# Encode to V2 snapshot dictionary
 	var encoded_snapshot: Dictionary = GameStateCodec.encode(session.get_state())
-	assert_eq(encoded_snapshot[GameStateCodec.KEY_SCHEMA_VERSION], 1, "Schema version must be 1")
+	assert_eq(
+		encoded_snapshot[GameStateCodec.KEY_SCHEMA_VERSION],
+		GameStateCodec.CURRENT_SCHEMA_VERSION,
+		"Schema version must match CURRENT_SCHEMA_VERSION"
+	)
 
 	# JSON serialization round trip (Stringify then parse)
 	var json_string: String = JSON.stringify(encoded_snapshot)

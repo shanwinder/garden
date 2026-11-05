@@ -55,6 +55,7 @@ var _blocked_message: String = ""
 var _last_checkpoint_result: PlantingCheckpointResult = null
 var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
 var _last_visitor_selection_result: VisitorSelectionResult = null
+var _last_visitor_observation_checkpoint_result: VisitorObservationCheckpointResult = null
 
 var _refresh_button: Button = null
 var _plant_button: Button = null
@@ -63,9 +64,13 @@ var _environment_label: Label = null
 var _visitor_row: Control = null
 var _visitor_status_label: Label = null
 var _observe_visitor_button: Button = null
+var _journal_row: Control = null
+var _journal_status_label: Label = null
+var _journal_button: Button = null
 var _feedback_area: Control = null
 var _feedback_label: Label = null
 var _planting_picker: PlantingPicker = null
+var _journal_panel: JournalPanel = null
 
 var _plants_container: Container = null
 var _plants_scroll: ScrollContainer = null
@@ -108,12 +113,20 @@ func _resolve_nodes() -> void:
 		_visitor_status_label = get_node_or_null("MainMargin/LayoutBox/VisitorRow/VisitorStatusLabel") as Label
 	if _observe_visitor_button == null:
 		_observe_visitor_button = get_node_or_null("MainMargin/LayoutBox/VisitorRow/ObserveVisitorButton") as Button
+	if _journal_row == null:
+		_journal_row = get_node_or_null("MainMargin/LayoutBox/JournalRow") as Control
+	if _journal_status_label == null:
+		_journal_status_label = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalStatusLabel") as Label
+	if _journal_button == null:
+		_journal_button = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalButton") as Button
 	if _feedback_area == null:
 		_feedback_area = get_node_or_null("MainMargin/LayoutBox/FeedbackArea") as Control
 	if _feedback_label == null:
 		_feedback_label = get_node_or_null("MainMargin/LayoutBox/FeedbackArea/FeedbackMargin/FeedbackLabel") as Label
 	if _planting_picker == null:
 		_planting_picker = get_node_or_null("PlantingPicker") as PlantingPicker
+	if _journal_panel == null:
+		_journal_panel = get_node_or_null("JournalPanel") as JournalPanel
 	if _plants_container == null:
 		_plants_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/PlantsContainer") as Container
 	if _plants_scroll == null:
@@ -156,6 +169,8 @@ func _connect_signals() -> void:
 		_harvest_button.pressed.connect(_on_harvest_button_pressed)
 	if _observe_visitor_button != null and not _observe_visitor_button.pressed.is_connected(_on_observe_visitor_button_pressed):
 		_observe_visitor_button.pressed.connect(_on_observe_visitor_button_pressed)
+	if _journal_button != null and not _journal_button.pressed.is_connected(open_journal_panel):
+		_journal_button.pressed.connect(open_journal_panel)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -173,9 +188,13 @@ func bind_garden(
 	if _planting_picker != null and _catalog != null:
 		_planting_picker.bind_catalog(_catalog)
 		_planting_picker.set_picker_enabled(true)
+	if _journal_panel != null:
+		_journal_panel.set_journal_enabled(true)
 
 	if _plant_button != null:
 		_plant_button.disabled = false
+	if _journal_button != null:
+		_journal_button.disabled = false
 
 	if _session == null or _catalog == null or _game_clock == null:
 		show_blocked_startup("ไม่สามารถเริ่มต้นสวนได้เนื่องจากข้อมูลไม่สมบูรณ์")
@@ -193,9 +212,14 @@ func show_blocked_startup(message: String = "") -> void:
 	_resolve_nodes()
 	if _plant_button != null:
 		_plant_button.disabled = true
+	if _journal_button != null:
+		_journal_button.disabled = true
 	if _planting_picker != null:
 		_planting_picker.set_picker_enabled(false)
 		_planting_picker.close_picker()
+	if _journal_panel != null:
+		_journal_panel.set_journal_enabled(false)
+		_journal_panel.close_journal()
 	_show_blocked_visual()
 
 
@@ -219,6 +243,7 @@ func refresh_from_session() -> void:
 
 	_render_plants(plants, now_utc)
 	_update_environment_and_visitors(now_utc)
+	_update_journal_ui()
 
 
 func _on_refresh_button_pressed() -> void:
@@ -406,6 +431,10 @@ func _show_blocked_visual() -> void:
 		_visitor_row.visible = false
 	if _observe_visitor_button != null:
 		_observe_visitor_button.disabled = true
+	if _journal_row != null:
+		_journal_row.visible = false
+	if _journal_button != null:
+		_journal_button.disabled = true
 	if _feedback_area != null:
 		_feedback_area.visible = false
 	if _empty_container != null:
@@ -472,6 +501,43 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 			_visitor_status_label.text = "ผู้มาเยือนที่อาจพบ: %s" % ", ".join(names)
 		else:
 			_visitor_status_label.text = "ผู้มาเยือน: ยังไม่มีผู้มาเยือน"
+
+
+func _update_journal_ui() -> void:
+	_resolve_nodes()
+	var journal: JournalState = _session.get_state().get_journal() if _session != null and _session.get_state() != null else null
+	if _journal_panel != null:
+		_journal_panel.bind_journal(journal, _catalog)
+
+	if _journal_row != null:
+		_journal_row.visible = true
+	if _journal_button != null:
+		_journal_button.disabled = _is_blocked or _session == null
+
+	if _journal_status_label != null:
+		if _catalog == null:
+			_journal_status_label.text = "สมุดบ้านสวน: ค้นพบแล้ว 0 / 0 รายการ"
+			return
+
+		var total_plants: int = _catalog.get_plant_count()
+		var total_visitors: int = _catalog.get_visitor_count()
+		var total_entries: int = total_plants + total_visitors
+		var disc_plants: int = 0
+		var disc_visitors: int = 0
+
+		if journal != null:
+			for pid: String in _catalog.get_all_plant_ids():
+				if journal.has_discovered(pid):
+					disc_plants += 1
+			for vid: String in _catalog.get_all_visitor_ids():
+				if journal.has_discovered(vid):
+					disc_visitors += 1
+
+		var disc_total: int = disc_plants + disc_visitors
+		_journal_status_label.text = (
+			"สมุดบ้านสวน: ค้นพบแล้ว %d / %d รายการ (พืช %d/%d, ผู้มาเยือน %d/%d)"
+			% [disc_total, total_entries, disc_plants, total_plants, disc_visitors, total_visitors]
+		)
 
 
 ## Pure query for testing: returns true if startup is blocked.
@@ -810,3 +876,94 @@ func get_last_garden_snapshot() -> GardenSnapshot:
 ## Pure query for testing: returns last received VisitorSelectionResult.
 func get_last_visitor_selection_result() -> VisitorSelectionResult:
 	return _last_visitor_selection_result
+
+
+## Displays user feedback, active visitor state, and journal discovery status from a VisitorObservationCheckpointResult.
+func show_visitor_observation_result(result: VisitorObservationCheckpointResult) -> void:
+	_last_visitor_observation_checkpoint_result = result
+	_resolve_nodes()
+	if result == null:
+		return
+
+	_last_visitor_selection_result = result.get_selection_result()
+	if _feedback_area != null and _feedback_label != null:
+		_feedback_area.visible = true
+		match result.get_status():
+			VisitorObservationCheckpointResult.Status.OBSERVED_SAVED:
+				var vid: String = result.get_selected_visitor_id()
+				_current_visitor_id = vid
+				var vname: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid)
+				if result.is_first_discovery():
+					_feedback_label.text = (
+						"พบผู้มาเยือนในสวน: %s (%s) — บันทึกการค้นพบใหม่ลงสมุดบ้านสวนแล้ว"
+						% [vname, vid]
+					)
+				else:
+					_feedback_label.text = (
+						"พบผู้มาเยือนในสวน: %s (%s) — บันทึกลงสมุดบ้านสวนแล้ว"
+						% [vname, vid]
+					)
+				if _visitor_status_label != null:
+					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+			VisitorObservationCheckpointResult.Status.OBSERVED_SAVE_FAILED:
+				var vid_fail: String = result.get_selected_visitor_id()
+				_current_visitor_id = vid_fail
+				var vname_fail: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid_fail, vid_fail)
+				_feedback_label.text = (
+					"พบผู้มาเยือนในสวน: %s (%s) แต่ยังบันทึกไม่สำเร็จ"
+					% [vname_fail, vid_fail]
+				)
+				if _visitor_status_label != null:
+					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname_fail, vid_fail]
+			VisitorObservationCheckpointResult.Status.NO_ELIGIBLE_VISITORS:
+				_current_visitor_id = ""
+				_feedback_label.text = "ยังไม่มีผู้มาเยือนที่ตรงกับสภาพแวดล้อมสวนในขณะนี้"
+			VisitorObservationCheckpointResult.Status.NOT_READY, VisitorObservationCheckpointResult.Status.OBSERVATION_REJECTED:
+				_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการสำรวจผู้มาเยือน"
+			_:
+				_feedback_label.text = "สถานะผู้มาเยือนไม่ระบุ"
+
+
+## Opens the journal modal panel.
+func open_journal_panel() -> void:
+	if _is_blocked or _session == null:
+		return
+	_resolve_nodes()
+	if _journal_panel != null:
+		_journal_panel.open_journal()
+
+
+## Closes the journal modal panel.
+func close_journal_panel() -> void:
+	_resolve_nodes()
+	if _journal_panel != null:
+		_journal_panel.close_journal()
+
+
+## Pure query for testing: returns child JournalPanel instance.
+func get_journal_panel() -> JournalPanel:
+	_resolve_nodes()
+	return _journal_panel
+
+
+## Pure query for testing: returns JournalButton instance.
+func get_journal_button() -> Button:
+	_resolve_nodes()
+	return _journal_button
+
+
+## Pure query for testing: returns true if JournalButton is currently enabled.
+func is_journal_button_enabled() -> bool:
+	_resolve_nodes()
+	return not _is_blocked and _session != null and _journal_button != null and not _journal_button.disabled
+
+
+## Pure query for testing: returns journal summary text in HUD.
+func get_journal_status_text() -> String:
+	_resolve_nodes()
+	return _journal_status_label.text if _journal_status_label != null else ""
+
+
+## Pure query for testing: returns last received VisitorObservationCheckpointResult.
+func get_last_visitor_observation_checkpoint_result() -> VisitorObservationCheckpointResult:
+	return _last_visitor_observation_checkpoint_result

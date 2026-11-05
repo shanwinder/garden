@@ -441,7 +441,7 @@ func _test_harvest_and_economy_loop_across_restart_and_second_cycle() -> void:
 
 
 func _test_reactive_garden_traits_and_visitor_loop() -> void:
-	describe("E2E: Empty garden -> plant banana -> traits emerge -> observe bird & cat -> Save V1 preserved across restart")
+	describe("E2E: Empty garden -> plant banana -> traits emerge -> observe bird & cat -> Save V2 & Journal discoveries preserved across restart")
 	_cleanup_test_files()
 
 	var repo_1: ToggleableSaveRepository = ToggleableSaveRepository.new()
@@ -458,6 +458,11 @@ func _test_reactive_garden_traits_and_visitor_loop() -> void:
 	var view_1: GardenView = main_1.get_garden_view()
 
 	assert_false(view_1.is_observe_visitor_button_enabled(), "Cannot observe visitors on empty garden")
+	assert_eq(
+		view_1.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 0 / 10 รายการ (พืช 0/5, ผู้มาเยือน 0/5)",
+		"Empty journal status"
+	)
 
 	# Plant banana at t = 1000
 	view_1.get_plant_button().pressed.emit()
@@ -467,33 +472,62 @@ func _test_reactive_garden_traits_and_visitor_loop() -> void:
 	assert_true(view_1.get_environment_text().contains("ผลไม้"), "Banana provides fruit trait in HUD")
 	assert_true(view_1.get_environment_text().contains("ร่มเงา"), "Banana provides shade trait in HUD")
 	assert_true(view_1.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled after planting banana")
+	assert_eq(
+		view_1.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 1 / 10 รายการ (พืช 1/5, ผู้มาเยือน 0/5)",
+		"Banana discovery recorded"
+	)
 
 	# Observe visitor 1 (roll 0.2 -> visitor.bird)
 	view_1.get_observe_visitor_button().pressed.emit()
 	assert_true(view_1.get_visitor_status_text().contains("นก"), "First observation selects bird")
+	assert_eq(
+		view_1.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 2 / 10 รายการ (พืช 1/5, ผู้มาเยือน 1/5)",
+		"Bird discovery recorded"
+	)
 
 	# Observe visitor 2 (roll 0.8 -> visitor.cat)
 	view_1.get_observe_visitor_button().pressed.emit()
 	assert_true(view_1.get_visitor_status_text().contains("แมว"), "Second observation selects cat")
+	assert_eq(
+		view_1.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 3 / 10 รายการ (พืช 1/5, ผู้มาเยือน 2/5)",
+		"Cat discovery recorded"
+	)
 
 	main_1.free()
 	app_1.free()
 
-	# Restart into Session 2 and verify Save Schema V1 compatibility and restored traits
+	# Restart into Session 2 and verify Save Schema V2 compatibility, restored traits, and restored journal
 	var repo_2: ToggleableSaveRepository = ToggleableSaveRepository.new()
 	var clock_2: FakeGameClock = FakeGameClock.new(2000, 0)
 	var rng_2: FakeRandomSource = FakeRandomSource.new([0.9], [])
 	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, rng_2)
 	var load_res_2: LocalSaveLoadResult = app_2.bootstrap_session()
-	assert_eq(load_res_2.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Save V1 loads cleanly after restart")
+	assert_eq(load_res_2.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Save V2 loads cleanly after restart")
 
 	var main_2: MainScreen = _instantiate_bound_main_screen(app_2)
 	var view_2: GardenView = main_2.get_garden_view()
 	assert_true(view_2.get_environment_text().contains("ผลไม้"), "Traits recomputed from persisted banana on restart")
 	assert_true(view_2.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled on restart")
+	assert_eq(
+		view_2.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 3 / 10 รายการ (พืช 1/5, ผู้มาเยือน 2/5)",
+		"3 discoveries restored on restart"
+	)
 
 	view_2.get_observe_visitor_button().pressed.emit()
 	assert_true(view_2.get_visitor_status_text().contains("แมว"), "Observation works after restart")
+	assert_eq(
+		view_2.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 3 / 10 รายการ (พืช 1/5, ผู้มาเยือน 2/5)",
+		"Repeat cat sighting keeps distinct count at 3"
+	)
+	assert_true(
+		view_2.get_journal_panel().get_entry_text_for_id("visitor.cat").contains("จำนวนครั้งที่พบ: 2 ครั้ง"),
+		"JournalPanel shows cat times_seen incremented to 2"
+	)
 
 	main_2.free()
 	app_2.free()
@@ -712,12 +746,15 @@ func _test_portrait_layout_bounds_regression() -> void:
 
 		var view: GardenView = main_screen.get_garden_view()
 		var picker: PlantingPicker = view.get_planting_picker()
+		var journal: JournalPanel = view.get_journal_panel()
 		var picker_panel: Control = picker.get_node_or_null("CenterContainer/PickerPanel") as Control
 		var confirm_panel: Control = picker.get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel") as Control
+		var journal_modal_panel: Control = journal.get_node_or_null("CenterContainer/JournalModalPanel") as Control
 		var blocked_label: Control = view.get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer/BlockedLabel") as Control
 
 		assert_true(picker_panel != null, "PickerPanel exists")
 		assert_true(confirm_panel != null, "ConfirmPanel exists")
+		assert_true(journal_modal_panel != null, "JournalModalPanel exists")
 		assert_true(blocked_label != null, "BlockedLabel exists")
 
 		assert_true(
@@ -727,6 +764,10 @@ func _test_portrait_layout_bounds_regression() -> void:
 		assert_true(
 			confirm_panel.custom_minimum_size.x <= vp_size.x and confirm_panel.custom_minimum_size.y <= vp_size.y,
 			"ConfirmPanel custom_minimum_size fits within viewport %s" % str(vp_size)
+		)
+		assert_true(
+			journal_modal_panel.custom_minimum_size.x <= vp_size.x and journal_modal_panel.custom_minimum_size.y <= vp_size.y,
+			"JournalModalPanel custom_minimum_size fits within viewport %s" % str(vp_size)
 		)
 		assert_true(
 			blocked_label.custom_minimum_size.x <= vp_size.x,

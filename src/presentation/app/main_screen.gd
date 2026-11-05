@@ -190,7 +190,7 @@ func _on_garden_visitor_observation_requested() -> void:
 	var app: AppRoot = _get_effective_app_root()
 	if app == null:
 		if _garden_view != null:
-			_garden_view.show_visitor_result(VisitorSelectionResult.invalid_input())
+			_garden_view.show_visitor_observation_result(VisitorObservationCheckpointResult.not_ready())
 		return
 
 	if (
@@ -199,12 +199,14 @@ func _on_garden_visitor_observation_requested() -> void:
 		or not app.has_active_session()
 	):
 		if _garden_view != null:
-			_garden_view.show_visitor_result(VisitorSelectionResult.invalid_input())
+			_garden_view.show_visitor_observation_result(VisitorObservationCheckpointResult.not_ready())
 		return
 
-	var result: VisitorSelectionResult = app.evaluate_visitor_now()
+	var result: VisitorObservationCheckpointResult = app.try_observe_visitor_and_checkpoint()
 	if _garden_view != null:
-		_garden_view.show_visitor_result(result)
+		_garden_view.show_visitor_observation_result(result)
+		if result != null and result.is_observed():
+			_garden_view.refresh_from_session()
 
 
 func _determine_blocked_reason(app: AppRoot) -> String:

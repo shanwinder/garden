@@ -86,6 +86,7 @@ func run_tests() -> void:
 	_test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked()
 	_test_try_harvest_and_checkpoint_preconditions_and_delegation()
 	_test_visitor_content_bootstrap_and_evaluate_visitor_now()
+	_test_try_observe_visitor_and_checkpoint_and_v1_migration()
 
 
 func _test_instantiation() -> void:
@@ -1846,4 +1847,53 @@ func _test_visitor_content_bootstrap_and_evaluate_visitor_now() -> void:
 	assert_eq(eval_res.get_selected_visitor_id(), "visitor.butterfly", "Butterfly selected for marigold")
 
 	root_ok.free()
+	_cleanup_test_files()
+
+
+func _test_try_observe_visitor_and_checkpoint_and_v1_migration() -> void:
+	describe("AppRoot migrates V1 save on startup and checkpoints visitor observation into V2 save")
+	_cleanup_test_files()
+
+	# 1. Write raw Schema V1 save file with 1 marigold plant
+	var v1_json: String = JSON.stringify({
+		"schema_version": 1,
+		"economy": {"currency": "25"},
+		"plants": [
+			{
+				"instance_id": "plant-inst-v1-marigold",
+				"definition_id": "plant.marigold",
+				"planted_at": "1000",
+			}
+		],
+	})
+	_write_raw_file(TEST_PRIMARY, v1_json)
+
+	var repo: LocalSaveRepository = _create_test_repo()
+	var clock: FakeGameClock = FakeGameClock.new(2500, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1], [])
+	var root: AppRoot = AppRoot.new(repo, null, clock, rng)
+	var load_res: LocalSaveLoadResult = root.bootstrap_session()
+
+	assert_eq(load_res.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "V1 save loaded and migrated to V2 in memory")
+	assert_eq(root.game_session.get_currency(), 25, "V1 currency preserved")
+	assert_eq(root.game_session.get_state().get_plants().get_count(), 1, "V1 plant preserved")
+	assert_eq(root.game_session.get_state().get_journal().get_count(), 0, "V1 migrated journal starts empty")
+
+	# 2. Observe visitor and checkpoint to V2
+	var obs_res: VisitorObservationCheckpointResult = root.try_observe_visitor_and_checkpoint()
+	assert_eq(obs_res.get_status(), VisitorObservationCheckpointResult.OBSERVED_SAVED, "Visitor observed and saved")
+	assert_true(obs_res.is_first_discovery(), "First discovery of butterfly")
+	assert_eq(obs_res.get_selected_visitor_id(), "visitor.butterfly", "Butterfly selected")
+	assert_true(
+		root.game_session.get_state().get_journal().has_discovered("visitor.butterfly"),
+		"Butterfly recorded in session journal"
+	)
+
+	var raw_saved: Variant = JSON.parse_string(_read_raw_file(TEST_PRIMARY))
+	assert_true(raw_saved is Dictionary, "Saved PRIMARY is JSON object")
+	if raw_saved is Dictionary:
+		assert_eq(int(raw_saved["schema_version"]), 2, "Saved PRIMARY upgraded to schema_version 2")
+		assert_true(raw_saved.has("discoveries"), "Saved PRIMARY has discoveries array")
+
+	root.free()
 	_cleanup_test_files()

@@ -1,0 +1,95 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/presentation/garden/journal_panel.gd" id="1_journal_panel"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_journal_panel"]
+bg_color = Color(0.14, 0.18, 0.15, 0.98)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+
+[node name="JournalPanel" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_journal_panel")
+
+[node name="BackgroundDimmer" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.65)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="JournalModalPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(640, 920)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_journal_panel")
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/JournalModalPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 36
+theme_override_constants/margin_top = 36
+theme_override_constants/margin_right = 36
+theme_override_constants/margin_bottom = 36
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/JournalModalPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="HeaderHBox" type="HBoxContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/HeaderHBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 34
+text = "สมุดบ้านสวน"
+vertical_alignment = 1
+
+[node name="CloseButton" type="Button" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/HeaderHBox"]
+custom_minimum_size = Vector2(120, 64)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ปิด"
+
+[node name="SummaryLabel" type="Label" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.88, 0.78, 1)
+theme_override_font_sizes/font_size = 22
+text = "ค้นพบแล้ว 0 / 0 รายการ"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ListMargin" type="MarginContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="EntriesContainer" type="VBoxContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 16

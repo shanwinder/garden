@@ -1442,15 +1442,21 @@ func _test_environment_and_visitor_hud_and_observation() -> void:
 	main_node.bind_app_root(app)
 	var gview: GardenView = main_node.get_garden_view()
 
-	# 1. Empty garden: no traits, no eligible visitors, observe button disabled
+	# 1. Empty garden: no traits, no eligible visitors, observe button disabled, journal 0/10
 	assert_eq(gview.get_environment_text(), "สภาพแวดล้อมสวน: ยังไม่มี", "Empty garden environment text")
 	assert_true(
 		gview.get_visitor_status_text().contains("ยังไม่มีผู้มาเยือน"),
 		"Empty garden visitor status text"
 	)
 	assert_false(gview.is_observe_visitor_button_enabled(), "ObserveVisitorButton disabled on empty garden")
+	assert_true(gview.is_journal_button_enabled(), "JournalButton enabled on active session")
+	assert_eq(
+		gview.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 0 / 10 รายการ (พืช 0/5, ผู้มาเยือน 0/5)",
+		"Empty garden journal status"
+	)
 
-	# 2. Plant jasmine ("dense_vegetation", "flower" -> butterfly and firefly eligible)
+	# 2. Plant jasmine ("dense_vegetation", "flower" -> butterfly and firefly eligible, journal 1/10)
 	var picker: PlantingPicker = gview.get_planting_picker()
 	picker.open_picker()
 	picker.select_plant_definition("plant.jasmine")
@@ -1463,18 +1469,42 @@ func _test_environment_and_visitor_hud_and_observation() -> void:
 		"Visitor status shows 2 eligible visitors"
 	)
 	assert_true(gview.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled when visitors eligible")
+	assert_eq(
+		gview.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 1 / 10 รายการ (พืช 1/5, ผู้มาเยือน 0/5)",
+		"Planting jasmine records 1 discovery"
+	)
 
-	# 3. Press ObserveVisitorButton -> roll 0.1 selects visitor.butterfly (ผีเสื้อ) without saving
+	# 3. Press ObserveVisitorButton -> roll 0.1 selects visitor.butterfly (ผีเสื้อ), records discovery, and saves once
 	var saves_before_observe: int = repo.save_call_count
 	gview.get_observe_visitor_button().pressed.emit()
-	assert_eq(repo.save_call_count, saves_before_observe, "Observing visitor is ephemeral and does not save")
+	assert_eq(repo.save_call_count, saves_before_observe + 1, "Observing eligible visitor records discovery and saves once")
 	assert_true(gview.get_visitor_status_text().contains("ผีเสื้อ"), "Visitor status shows butterfly")
 	assert_true(gview.get_feedback_text().contains("พบผู้มาเยือนในสวน: ผีเสื้อ"), "Feedback shows butterfly visit")
+	assert_eq(
+		gview.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 2 / 10 รายการ (พืช 1/5, ผู้มาเยือน 1/5)",
+		"Observing butterfly updates journal to 2/10"
+	)
 
-	# 4. Press ObserveVisitorButton again -> roll 0.8 selects visitor.firefly (หิ่งห้อย)
+	# 4. Press ObserveVisitorButton again -> roll 0.8 selects visitor.firefly (หิ่งห้อย), records discovery, and saves once
 	gview.get_observe_visitor_button().pressed.emit()
+	assert_eq(repo.save_call_count, saves_before_observe + 2, "Observing second visitor records discovery and saves")
 	assert_true(gview.get_visitor_status_text().contains("หิ่งห้อย"), "Visitor status shows firefly")
 	assert_true(gview.get_feedback_text().contains("พบผู้มาเยือนในสวน: หิ่งห้อย"), "Feedback shows firefly visit")
+	assert_eq(
+		gview.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 3 / 10 รายการ (พืช 1/5, ผู้มาเยือน 2/5)",
+		"Observing firefly updates journal to 3/10"
+	)
+
+	# 5. Open and close JournalPanel via JournalButton
+	assert_false(gview.get_journal_panel().is_journal_open(), "JournalPanel closed initially")
+	gview.get_journal_button().pressed.emit()
+	assert_true(gview.get_journal_panel().is_journal_open(), "JournalButton opens JournalPanel")
+	assert_eq(gview.get_journal_panel().get_discovered_entry_count(), 3, "JournalPanel displays 3 discovered entries")
+	gview.get_journal_panel().get_close_button().pressed.emit()
+	assert_false(gview.get_journal_panel().is_journal_open(), "CloseButton closes JournalPanel")
 
 	main_node.free()
 	app.free()

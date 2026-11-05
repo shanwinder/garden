@@ -50,6 +50,10 @@ static func try_register_plant(
 	if plant_collection == null:
 		return PlantRegistrationResult.invalid_input()
 
+	var journal: JournalState = state.get_journal()
+	if journal == null:
+		return PlantRegistrationResult.invalid_input()
+
 	# 2. Catalog membership validation
 	if not catalog.has_plant(definition_id):
 		return PlantRegistrationResult.unknown_definition_id()
@@ -66,6 +70,9 @@ static func try_register_plant(
 	var inserted: bool = plant_collection.try_add_plant(plant)
 	if not inserted:
 		return PlantRegistrationResult.insertion_rejected()
+
+	# 5. Record plant discovery sighting in JournalState
+	journal.try_record_sighting(definition_id, planted_at)
 
 	return PlantRegistrationResult.registered(plant)
 

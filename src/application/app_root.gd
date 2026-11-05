@@ -368,6 +368,35 @@ func evaluate_visitor_now() -> VisitorSelectionResult:
 	)
 
 
+## Gameplay entry method to observe an eligible visitor, record its discovery in the
+## Garden Journal, and immediately checkpoint persistence.
+##
+## If not ready: returns VisitorObservationCheckpointResult.not_ready() without mutating state or touching disk.
+func try_observe_visitor_and_checkpoint() -> VisitorObservationCheckpointResult:
+	if not _is_bootstrapped:
+		return VisitorObservationCheckpointResult.not_ready()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return VisitorObservationCheckpointResult.not_ready()
+
+	if (
+		content_catalog == null
+		or game_session == null
+		or save_repository == null
+		or game_clock == null
+		or random_source == null
+	):
+		return VisitorObservationCheckpointResult.not_ready()
+
+	return VisitorObservationPersistenceCoordinator.try_observe_visitor_and_save(
+		game_session,
+		content_catalog,
+		game_clock,
+		random_source,
+		save_repository
+	)
+
+
 ## Gameplay entry method to plant a plant and immediately checkpoint persistence.
 ##
 ## Preconditions:

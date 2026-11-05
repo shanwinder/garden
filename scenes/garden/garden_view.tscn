@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://src/presentation/garden/garden_view.gd" id="1_garden_view"]
 [ext_resource type="PackedScene" path="res://scenes/garden/planting_picker.tscn" id="2_planting_picker"]
+[ext_resource type="PackedScene" path="res://scenes/garden/journal_panel.tscn" id="3_journal_panel"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_content"]
 
@@ -113,6 +114,26 @@ focus_mode = 2
 disabled = true
 theme_override_font_sizes/font_size = 22
 text = "สำรวจผู้มาเยือน"
+
+[node name="JournalRow" type="HBoxContainer" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="JournalStatusLabel" type="Label" parent="MainMargin/LayoutBox/JournalRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.88, 0.72, 1)
+theme_override_font_sizes/font_size = 22
+text = "สมุดบ้านสวน: ค้นพบแล้ว 0 / 0 รายการ"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="JournalButton" type="Button" parent="MainMargin/LayoutBox/JournalRow"]
+custom_minimum_size = Vector2(200, 56)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "สมุดบ้านสวน"
 
 [node name="FeedbackArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
 visible = false
@@ -258,5 +279,9 @@ theme_override_font_sizes/font_size = 22
 text = "ยังไม่พร้อมเก็บเกี่ยว"
 
 [node name="PlantingPicker" parent="." instance=ExtResource("2_planting_picker")]
+visible = false
+layout_mode = 1
+
+[node name="JournalPanel" parent="." instance=ExtResource("3_journal_panel")]
 visible = false
 layout_mode = 1

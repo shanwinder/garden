@@ -41,6 +41,7 @@ func run_tests() -> void:
 	_test_validation_does_not_mutate_state_or_catalog()
 	_test_defensive_copies_on_returned_arrays()
 	_test_repeated_calls_deterministic()
+	_test_journal_discovery_references_validated()
 
 
 func _test_validator_is_ref_counted() -> void:
@@ -252,6 +253,41 @@ func _test_repeated_calls_deterministic() -> void:
 	assert_eq(res1.get_status(), res2.get_status(), "status must be identical")
 	assert_eq(res1.is_compatible(), res2.is_compatible(), "compatibility must be identical")
 	assert_eq(res1.get_unknown_definition_ids(), res2.get_unknown_definition_ids(), "unknown IDs must be identical")
+
+
+func _test_journal_discovery_references_validated() -> void:
+	describe("PlantSaveContentValidator validates saved journal plant and visitor discovery IDs against ContentCatalog")
+	var basil: PlantDefinition = PlantDefinition.new()
+	basil.id = "plant.holy_basil"
+	basil.sprout_after_seconds = 60
+	basil.growing_after_seconds = 180
+	basil.mature_after_seconds = 600
+
+	var butterfly: VisitorDefinition = VisitorDefinition.new()
+	butterfly.id = "visitor.butterfly"
+	butterfly.weight = 10.0
+	butterfly.required_trait_counts = {"flower": 1}
+
+	var catalog: ContentCatalog = ContentCatalog.try_create([basil], [butterfly])
+
+	# Known plant and visitor discoveries are COMPATIBLE
+	var state_ok: GameState = GameState.new()
+	state_ok.get_journal().try_record_sighting("plant.holy_basil", 1000)
+	state_ok.get_journal().try_record_sighting("visitor.butterfly", 1100)
+	var res_ok: PlantSaveContentValidationResult = PlantSaveContentValidator.validate(state_ok, catalog)
+	assert_true(res_ok.is_compatible(), "Known plant and visitor discoveries are COMPATIBLE")
+
+	# Unknown visitor discovery ID is detected and reported
+	var state_bad: GameState = GameState.new()
+	state_bad.get_journal().try_record_sighting("visitor.dragon", 1200)
+	state_bad.get_journal().try_record_sighting("plant.missing_herb", 1300)
+	var res_bad: PlantSaveContentValidationResult = PlantSaveContentValidator.validate(state_bad, catalog)
+	assert_false(res_bad.is_compatible(), "Unknown journal discovery IDs are incompatible")
+	assert_eq(
+		res_bad.get_unknown_definition_ids(),
+		["plant.missing_herb", "visitor.dragon"],
+		"Sorted unknown discovery IDs returned"
+	)
 
 
 func _create_test_catalog(ids: Array[String]) -> ContentCatalog:

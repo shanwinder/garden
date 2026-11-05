@@ -156,3 +156,33 @@ func evaluate_visitor_now(
 		game_clock,
 		random_source
 	)
+
+
+## Application operation to record a discovery in the session's JournalState at an explicit UTC timestamp.
+## Delegates directly to JournalDiscoveryService.
+func record_discovery_at(
+	catalog: ContentCatalog,
+	definition_id: String,
+	seen_at_utc_seconds: int
+) -> JournalDiscoveryResult:
+	return JournalDiscoveryService.record_discovery_at(
+		_state,
+		catalog,
+		definition_id,
+		seen_at_utc_seconds
+	)
+
+
+## Application operation to sample current UTC timestamp once and record a discovery in JournalState.
+## Delegates directly to JournalDiscoveryService.
+func record_discovery_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	definition_id: String
+) -> JournalDiscoveryResult:
+	return JournalDiscoveryService.record_discovery_now(
+		_state,
+		catalog,
+		game_clock,
+		definition_id
+	)

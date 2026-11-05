@@ -23,6 +23,7 @@ func run_tests() -> void:
 	_test_separate_instances()
 	_test_economy_ownership()
 	_test_plant_collection_ownership()
+	_test_journal_ownership()
 
 
 func _test_construction() -> void:
@@ -109,3 +110,28 @@ func _test_plant_collection_ownership() -> void:
 		other.get_plants().get_count(), 0,
 		"other GameState PlantCollectionState remains unaffected"
 	)
+
+
+func _test_journal_ownership() -> void:
+	describe("GameState owns exactly one JournalState slice with distinct instance per GameState")
+	var state: GameState = GameState.new()
+	assert_true(state.get_journal() != null, "fresh GameState.get_journal() must not be null")
+	assert_true(state.get_journal() is JournalState, "get_journal() must return a JournalState")
+	assert_eq(state.get_journal().get_count(), 0, "fresh GameState journal count must be 0")
+	assert_eq(
+		state.get_journal(),
+		state.get_journal(),
+		"repeated get_journal() calls must return the same instance"
+	)
+	var other: GameState = GameState.new()
+	assert_ne(
+		state.get_journal(),
+		other.get_journal(),
+		"separate GameState instances must own distinct JournalState instances"
+	)
+	assert_true(
+		state.get_journal().try_record_sighting("visitor.butterfly", 1000),
+		"try_record_sighting on owned journal succeeds"
+	)
+	assert_eq(state.get_journal().get_count(), 1, "owned journal reflects recorded sighting")
+	assert_eq(other.get_journal().get_count(), 0, "other GameState journal remains unaffected")

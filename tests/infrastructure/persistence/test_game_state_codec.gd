@@ -57,6 +57,9 @@ func run_tests() -> void:
 	_test_failure_plants_validation()
 	_test_failure_duplicate_plant_instance_ids()
 	_test_failure_unexpected_keys()
+	_test_v2_discoveries_round_trip_and_ordering()
+	_test_v1_to_v2_migration()
+	_test_failure_discoveries_validation()
 
 
 func _test_type_contract() -> void:
@@ -68,7 +71,9 @@ func _test_type_contract() -> void:
 	var obj: Variant = codec
 	assert_false(obj is Node, "GameStateCodec must not be a Node")
 	assert_false(obj is Resource, "GameStateCodec must not be a Resource")
-	assert_eq(GameStateCodec.CURRENT_SCHEMA_VERSION, 1, "CURRENT_SCHEMA_VERSION must be 1")
+	assert_eq(GameStateCodec.SCHEMA_VERSION_V1, 1, "SCHEMA_VERSION_V1 must be 1")
+	assert_eq(GameStateCodec.SCHEMA_VERSION_V2, 2, "SCHEMA_VERSION_V2 must be 2")
+	assert_eq(GameStateCodec.CURRENT_SCHEMA_VERSION, 2, "CURRENT_SCHEMA_VERSION must be 2")
 
 
 func _test_encode_null_state() -> void:
@@ -78,13 +83,14 @@ func _test_encode_null_state() -> void:
 
 
 func _test_default_state_encode_and_decode() -> void:
-	describe("Default empty GameState encodes to valid V1 shape and decodes cleanly")
+	describe("Default empty GameState encodes to valid V2 shape and decodes cleanly")
 	var original: GameState = GameState.new()
 	var encoded: Dictionary = GameStateCodec.encode(original)
 
-	assert_eq(encoded.get("schema_version"), 1, "Root schema_version must be 1")
+	assert_eq(encoded.get("schema_version"), 2, "Root schema_version must be 2")
 	assert_true(encoded.has("economy"), "Root must contain economy")
 	assert_true(encoded.has("plants"), "Root must contain plants")
+	assert_true(encoded.has("discoveries"), "Root must contain discoveries")
 
 	var economy_data: Variant = encoded.get("economy")
 	assert_true(economy_data is Dictionary, "economy must be a Dictionary")
@@ -94,10 +100,15 @@ func _test_default_state_encode_and_decode() -> void:
 	assert_true(plants_data is Array, "plants must be an Array")
 	assert_eq((plants_data as Array).size(), 0, "Default plants array must be empty")
 
+	var discoveries_data: Variant = encoded.get("discoveries")
+	assert_true(discoveries_data is Array, "discoveries must be an Array")
+	assert_eq((discoveries_data as Array).size(), 0, "Default discoveries array must be empty")
+
 	var decoded: GameState = GameStateCodec.decode(encoded)
 	assert_true(decoded != null, "Decoded GameState from default encoded must not be null")
 	assert_eq(decoded.get_economy().get_currency(), 0, "Decoded currency must be 0")
 	assert_eq(decoded.get_plants().get_count(), 0, "Decoded plants count must be 0")
+	assert_eq(decoded.get_journal().get_count(), 0, "Decoded journal count must be 0")
 
 
 func _test_economy_round_trip() -> void:
@@ -416,48 +427,71 @@ func _test_failure_root_validation() -> void:
 
 
 func _test_failure_schema_version_validation() -> void:
-	describe("Schema version validation accepts 1 and 1.0; rejects 0, 2, 999, fractional floats, strings, booleans, null")
-	var valid_base: Dictionary = {
+	describe("Schema version validation accepts V1 (1/1.0) and V2 (2/2.0); rejects 0, 3, 999, fractional floats, strings, booleans, null")
+	var valid_v1_base: Dictionary = {
 		"schema_version": 1,
 		"economy": {"currency": "0"},
 		"plants": []
 	}
+	var valid_v2_base: Dictionary = {
+		"schema_version": 2,
+		"economy": {"currency": "0"},
+		"plants": [],
+		"discoveries": []
+	}
 
-	# Accepted: native integer 1
-	var v1_int: Dictionary = valid_base.duplicate(true)
+	# Accepted: V1 native integer 1 and float 1.0 (migrated to V2)
+	var v1_int: Dictionary = valid_v1_base.duplicate(true)
 	v1_int["schema_version"] = 1
-	assert_true(GameStateCodec.decode(v1_int) != null, "Accept schema_version int 1")
+	assert_true(GameStateCodec.decode(v1_int) != null, "Accept schema_version int 1 (V1 migrated)")
 
-	# Accepted: JSON-deserialized float 1.0
-	var v1_float: Dictionary = valid_base.duplicate(true)
+	var v1_float: Dictionary = valid_v1_base.duplicate(true)
 	v1_float["schema_version"] = 1.0
-	assert_true(GameStateCodec.decode(v1_float) != null, "Accept schema_version float 1.0")
+	assert_true(GameStateCodec.decode(v1_float) != null, "Accept schema_version float 1.0 (V1 migrated)")
 
-	var v0: Dictionary = valid_base.duplicate(true)
+	# Accepted: V2 native integer 2 and float 2.0
+	var v2_int: Dictionary = valid_v2_base.duplicate(true)
+	v2_int["schema_version"] = 2
+	assert_true(GameStateCodec.decode(v2_int) != null, "Accept schema_version int 2 (V2)")
+
+	var v2_float: Dictionary = valid_v2_base.duplicate(true)
+	v2_float["schema_version"] = 2.0
+	assert_true(GameStateCodec.decode(v2_float) != null, "Accept schema_version float 2.0 (V2)")
+
+	var v0: Dictionary = valid_v1_base.duplicate(true)
 	v0["schema_version"] = 0
 	assert_true(GameStateCodec.decode(v0) == null, "Reject schema_version 0")
 
-	var v2: Dictionary = valid_base.duplicate(true)
-	v2["schema_version"] = 2
-	assert_true(GameStateCodec.decode(v2) == null, "Reject schema_version 2")
+	# V2 missing discoveries key must be rejected
+	var v2_missing_disc: Dictionary = valid_v1_base.duplicate(true)
+	v2_missing_disc["schema_version"] = 2
+	assert_true(GameStateCodec.decode(v2_missing_disc) == null, "Reject schema_version 2 when missing discoveries key")
 
-	var v999: Dictionary = valid_base.duplicate(true)
+	var v3: Dictionary = valid_v2_base.duplicate(true)
+	v3["schema_version"] = 3
+	assert_true(GameStateCodec.decode(v3) == null, "Reject schema_version 3")
+
+	var v999: Dictionary = valid_v1_base.duplicate(true)
 	v999["schema_version"] = 999
 	assert_true(GameStateCodec.decode(v999) == null, "Reject schema_version 999")
 
-	var v_str: Dictionary = valid_base.duplicate(true)
+	var v_str: Dictionary = valid_v1_base.duplicate(true)
 	v_str["schema_version"] = "1"
 	assert_true(GameStateCodec.decode(v_str) == null, "Reject string schema_version '1'")
 
-	var v_float_frac: Dictionary = valid_base.duplicate(true)
+	var v2_str: Dictionary = valid_v2_base.duplicate(true)
+	v2_str["schema_version"] = "2"
+	assert_true(GameStateCodec.decode(v2_str) == null, "Reject string schema_version '2'")
+
+	var v_float_frac: Dictionary = valid_v1_base.duplicate(true)
 	v_float_frac["schema_version"] = 1.5
 	assert_true(GameStateCodec.decode(v_float_frac) == null, "Reject fractional float schema_version 1.5")
 
-	var v_bool: Dictionary = valid_base.duplicate(true)
+	var v_bool: Dictionary = valid_v1_base.duplicate(true)
 	v_bool["schema_version"] = true
 	assert_true(GameStateCodec.decode(v_bool) == null, "Reject boolean schema_version true")
 
-	var v_null: Dictionary = valid_base.duplicate(true)
+	var v_null: Dictionary = valid_v1_base.duplicate(true)
 	v_null["schema_version"] = null
 	assert_true(GameStateCodec.decode(v_null) == null, "Reject null schema_version")
 
@@ -699,3 +733,158 @@ func _test_failure_unexpected_keys() -> void:
 		]
 	}
 	assert_true(GameStateCodec.decode(extra_plant) == null, "Reject unexpected key in plant entry (e.g. growth_stage)")
+
+
+func _test_v2_discoveries_round_trip_and_ordering() -> void:
+	describe("Schema V2 discoveries round-trip in deterministic ascending order with int64 fidelity")
+	var original: GameState = GameState.new()
+	original.get_economy().grant_currency(350)
+	original.get_plants().try_add_plant(PlantState.new("inst-1", "plant.jasmine", 1000))
+
+	# Insert discoveries out of sorted order
+	original.get_journal().try_put_record(DiscoveryRecord.new("visitor.frog", 9223372036854775807, 9007199254740993))
+	original.get_journal().try_put_record(DiscoveryRecord.new("plant.jasmine", 1000, 1))
+	original.get_journal().try_put_record(DiscoveryRecord.new("visitor.butterfly", 1500, 4))
+
+	var encoded: Dictionary = GameStateCodec.encode(original)
+	assert_eq(encoded.get("schema_version"), 2, "Encoded schema_version is 2")
+	var raw_disc: Array = encoded.get("discoveries") as Array
+	assert_eq(raw_disc.size(), 3, "3 discoveries encoded")
+	assert_eq((raw_disc[0] as Dictionary).get("definition_id"), "plant.jasmine", "Sorted index 0")
+	assert_eq((raw_disc[1] as Dictionary).get("definition_id"), "visitor.butterfly", "Sorted index 1")
+	assert_eq((raw_disc[2] as Dictionary).get("definition_id"), "visitor.frog", "Sorted index 2")
+	assert_eq((raw_disc[2] as Dictionary).get("first_seen_at"), "9223372036854775807", "MAX_INT64 first_seen_at wire string")
+	assert_eq((raw_disc[2] as Dictionary).get("times_seen"), "9007199254740993", "2^53+1 times_seen wire string")
+
+	var json_str: String = JSON.stringify(encoded)
+	var parsed: Variant = JSON.parse_string(json_str)
+	var decoded: GameState = GameStateCodec.decode(parsed)
+	assert_true(decoded != null, "Decoded V2 state not null")
+	assert_eq(decoded.get_journal().get_count(), 3, "3 discoveries decoded")
+	assert_eq(
+		decoded.get_journal().get_discovered_ids(),
+		["plant.jasmine", "visitor.butterfly", "visitor.frog"],
+		"Decoded discovery IDs match"
+	)
+	var frog_rec: DiscoveryRecord = decoded.get_journal().get_record("visitor.frog")
+	assert_eq(frog_rec.get_first_seen_at(), 9223372036854775807, "Exact MAX_INT64 first_seen_at preserved")
+	assert_eq(frog_rec.get_times_seen(), 9007199254740993, "Exact 2^53+1 times_seen preserved")
+
+
+func _test_v1_to_v2_migration() -> void:
+	describe("Explicit V1 -> V2 migration preserves V1 state and initializes empty discoveries")
+	var v1_snapshot: Dictionary = {
+		"schema_version": 1,
+		"economy": {"currency": "420"},
+		"plants": [
+			{
+				"instance_id": "v1-plant-1",
+				"definition_id": "plant.holy_basil",
+				"planted_at": "1700000000",
+			}
+		],
+	}
+
+	var migrated_var: Variant = GameStateCodec.migrate_v1_to_v2(v1_snapshot)
+	assert_true(migrated_var is Dictionary, "migrate_v1_to_v2 returns Dictionary")
+	var migrated: Dictionary = migrated_var as Dictionary
+	assert_eq(migrated.get("schema_version"), 2, "Migrated schema_version is 2")
+	assert_eq(migrated.get("discoveries"), [], "Migrated discoveries is empty array")
+	assert_eq(v1_snapshot.get("schema_version"), 1, "Source V1 dictionary not mutated")
+	assert_false(v1_snapshot.has("discoveries"), "Source V1 dictionary has no discoveries key added")
+
+	# Decoding V1 snapshot directly via GameStateCodec.decode()
+	var decoded: GameState = GameStateCodec.decode(v1_snapshot)
+	assert_true(decoded != null, "V1 snapshot decodes cleanly through V1 -> V2 migration")
+	assert_eq(decoded.get_economy().get_currency(), 420, "V1 currency preserved")
+	assert_eq(decoded.get_plants().get_count(), 1, "V1 plant preserved")
+	assert_eq(decoded.get_journal().get_count(), 0, "Migrated V1 journal starts with 0 entries")
+
+	# Re-encoding produces V2
+	var reencoded: Dictionary = GameStateCodec.encode(decoded)
+	assert_eq(reencoded.get("schema_version"), 2, "Re-encoded state uses Schema V2")
+
+	# V1 snapshot with discoveries key is rejected by migrate_v1_to_v2
+	var hybrid_v1: Dictionary = v1_snapshot.duplicate(true)
+	hybrid_v1["discoveries"] = []
+	assert_eq(GameStateCodec.migrate_v1_to_v2(hybrid_v1), null, "V1 with discoveries key rejected")
+	assert_eq(GameStateCodec.decode(hybrid_v1), null, "Decode rejects V1 with discoveries key")
+
+
+func _test_failure_discoveries_validation() -> void:
+	describe("Schema V2 discoveries validation rejects malformed entries, invalid IDs, and duplicates")
+	var valid_v2: Dictionary = {
+		"schema_version": 2,
+		"economy": {"currency": "0"},
+		"plants": [],
+		"discoveries": [],
+	}
+
+	var non_array_disc: Dictionary = valid_v2.duplicate(true)
+	non_array_disc["discoveries"] = {}
+	assert_eq(GameStateCodec.decode(non_array_disc), null, "Reject non-array discoveries")
+
+	var non_dict_item: Dictionary = valid_v2.duplicate(true)
+	non_dict_item["discoveries"] = ["invalid"]
+	assert_eq(GameStateCodec.decode(non_dict_item), null, "Reject non-dict discovery item")
+
+	# Missing fields
+	var missing_times: Dictionary = valid_v2.duplicate(true)
+	missing_times["discoveries"] = [{
+		"definition_id": "visitor.bird",
+		"first_seen_at": "1000",
+	}]
+	assert_eq(GameStateCodec.decode(missing_times), null, "Reject missing times_seen")
+
+	# Unexpected field
+	var extra_field: Dictionary = valid_v2.duplicate(true)
+	extra_field["discoveries"] = [{
+		"definition_id": "visitor.bird",
+		"first_seen_at": "1000",
+		"times_seen": "1",
+		"extra": "bad",
+	}]
+	assert_eq(GameStateCodec.decode(extra_field), null, "Reject unexpected key in discovery entry")
+
+	# Unsupported namespace
+	var bad_ns: Dictionary = valid_v2.duplicate(true)
+	bad_ns["discoveries"] = [{
+		"definition_id": "decoration.bench",
+		"first_seen_at": "1000",
+		"times_seen": "1",
+	}]
+	assert_eq(GameStateCodec.decode(bad_ns), null, "Reject unsupported namespace in discovery entry")
+
+	# Zero times_seen
+	var zero_seen: Dictionary = valid_v2.duplicate(true)
+	zero_seen["discoveries"] = [{
+		"definition_id": "visitor.bird",
+		"first_seen_at": "1000",
+		"times_seen": "0",
+	}]
+	assert_eq(GameStateCodec.decode(zero_seen), null, "Reject times_seen == '0'")
+
+	# Numeric first_seen_at or times_seen
+	var num_seen: Dictionary = valid_v2.duplicate(true)
+	num_seen["discoveries"] = [{
+		"definition_id": "visitor.bird",
+		"first_seen_at": 1000,
+		"times_seen": "1",
+	}]
+	assert_eq(GameStateCodec.decode(num_seen), null, "Reject numeric first_seen_at")
+
+	# Duplicate discovery definition_id
+	var dup_disc: Dictionary = valid_v2.duplicate(true)
+	dup_disc["discoveries"] = [
+		{
+			"definition_id": "visitor.bird",
+			"first_seen_at": "1000",
+			"times_seen": "1",
+		},
+		{
+			"definition_id": "visitor.bird",
+			"first_seen_at": "2000",
+			"times_seen": "2",
+		},
+	]
+	assert_eq(GameStateCodec.decode(dup_disc), null, "Reject duplicate discovery definition_id")
