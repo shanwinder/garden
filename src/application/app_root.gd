@@ -74,6 +74,18 @@ const EXPECTED_PRODUCTION_VISITOR_IDS: Array[String] = [
 	"visitor.frog",
 ]
 
+## Exact eight approved production decoration definitions expected in the production catalog.
+const EXPECTED_PRODUCTION_DECORATION_IDS: Array[String] = [
+	"decoration.bench",
+	"decoration.clay_jar",
+	"decoration.garden_lamp",
+	"decoration.plant_pot",
+	"decoration.small_pond",
+	"decoration.small_table",
+	"decoration.watering_can",
+	"decoration.wooden_fence",
+]
+
 ## The production clock for this application session.
 ## Constructed once at composition time; never replaced at runtime.
 ## Tests that require deterministic time should use FakeGameClock injected
@@ -97,6 +109,10 @@ var plant_content_loader: PlantContentLoader
 ## The loader adapter for authored visitor definition resources.
 ## Constructed once at composition time or injected during testing.
 var visitor_content_loader: VisitorContentLoader
+
+## The loader adapter for authored decoration definition resources.
+## Constructed once at composition time or injected during testing.
+var decoration_content_loader: DecorationContentLoader
 
 ## The coordinator for mobile pause/resume persistence checkpoints.
 ## Constructed once at composition time using save_repository; never replaced at runtime.
@@ -125,6 +141,9 @@ var _content_load_result: PlantContentLoadResult = null
 ## Retains the diagnostic result of the visitor content loader operation.
 var _visitor_content_load_result: VisitorContentLoadResult = null
 
+## Retains the diagnostic result of the decoration content loader operation.
+var _decoration_content_load_result: DecorationContentLoadResult = null
+
 ## Retains the outcome of the startup load operation.
 var _startup_load_result: LocalSaveLoadResult = null
 
@@ -137,7 +156,8 @@ func _init(
 	plant_content_loader_override: PlantContentLoader = null,
 	game_clock_override: GameClock = null,
 	random_source_override: RandomSource = null,
-	visitor_content_loader_override: VisitorContentLoader = null
+	visitor_content_loader_override: VisitorContentLoader = null,
+	decoration_content_loader_override: DecorationContentLoader = null
 ) -> void:
 	if game_clock_override != null:
 		game_clock = game_clock_override
@@ -161,6 +181,10 @@ func _init(
 		visitor_content_loader = visitor_content_loader_override
 	else:
 		visitor_content_loader = VisitorContentLoader.new()
+	if decoration_content_loader_override != null:
+		decoration_content_loader = decoration_content_loader_override
+	else:
+		decoration_content_loader = DecorationContentLoader.new()
 	lifecycle_coordinator = LifecycleCoordinator.new(save_repository)
 	content_catalog = null
 	game_session = null
@@ -168,6 +192,7 @@ func _init(
 	_content_bootstrap_status = ContentBootstrapStatus.NOT_ATTEMPTED
 	_content_load_result = null
 	_visitor_content_load_result = null
+	_decoration_content_load_result = null
 	_startup_load_result = null
 	_saved_content_validation_result = null
 
@@ -236,14 +261,28 @@ func bootstrap_session() -> LocalSaveLoadResult:
 		_startup_load_result = null
 		return null
 
+	_decoration_content_load_result = decoration_content_loader.load_production_definitions()
+	if not _decoration_content_load_result.is_loaded():
+		_content_bootstrap_status = ContentBootstrapStatus.LOAD_FAILED
+		content_catalog = null
+		game_session = null
+		_startup_load_result = null
+		return null
+
 	# Step 2: Construct and validate ContentCatalog with completeness guarantee.
 	var definitions: Array[PlantDefinition] = _content_load_result.get_definitions()
 	var visitor_definitions: Array[VisitorDefinition] = _visitor_content_load_result.get_definitions()
-	var catalog: ContentCatalog = ContentCatalog.try_create(definitions, visitor_definitions)
+	var decoration_definitions: Array[DecorationDefinition] = _decoration_content_load_result.get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(
+		definitions,
+		visitor_definitions,
+		decoration_definitions
+	)
 	if (
 		catalog == null
 		or catalog.get_plant_count() != EXPECTED_PRODUCTION_PLANT_IDS.size()
 		or catalog.get_visitor_count() != EXPECTED_PRODUCTION_VISITOR_IDS.size()
+		or catalog.get_decoration_count() != EXPECTED_PRODUCTION_DECORATION_IDS.size()
 	):
 		_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 		content_catalog = null
@@ -261,6 +300,14 @@ func bootstrap_session() -> LocalSaveLoadResult:
 
 	for expected_visitor_id: String in EXPECTED_PRODUCTION_VISITOR_IDS:
 		if not catalog.has_visitor(expected_visitor_id):
+			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
+			content_catalog = null
+			game_session = null
+			_startup_load_result = null
+			return null
+
+	for expected_decoration_id: String in EXPECTED_PRODUCTION_DECORATION_IDS:
+		if not catalog.has_decoration(expected_decoration_id):
 			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 			content_catalog = null
 			game_session = null
@@ -332,6 +379,11 @@ func get_content_load_result() -> PlantContentLoadResult:
 ## Returns the diagnostic VisitorContentLoadResult, or null if visitor content loading was not attempted.
 func get_visitor_content_load_result() -> VisitorContentLoadResult:
 	return _visitor_content_load_result
+
+
+## Returns the diagnostic DecorationContentLoadResult, or null if decoration content loading was not attempted.
+func get_decoration_content_load_result() -> DecorationContentLoadResult:
+	return _decoration_content_load_result
 
 
 ## Returns the result of validating saved plant references against the content catalog,
@@ -456,4 +508,36 @@ func try_harvest_and_checkpoint(runtime_instance_id: String) -> HarvestCheckpoin
 		game_clock,
 		save_repository,
 		runtime_instance_id
+	)
+
+
+## Gameplay entry method to purchase/place a decoration using authoritative currency
+## and immediately checkpoint persistence.
+##
+## If not ready: returns DecorationPurchaseCheckpointResult.not_ready() without mutating state or touching disk.
+func try_purchase_decoration_and_checkpoint(
+	definition_id: String
+) -> DecorationPurchaseCheckpointResult:
+	if not _is_bootstrapped:
+		return DecorationPurchaseCheckpointResult.not_ready()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return DecorationPurchaseCheckpointResult.not_ready()
+
+	if (
+		content_catalog == null
+		or game_session == null
+		or save_repository == null
+		or game_clock == null
+		or random_source == null
+	):
+		return DecorationPurchaseCheckpointResult.not_ready()
+
+	return DecorationPurchasePersistenceCoordinator.try_purchase_decoration_and_save(
+		game_session,
+		content_catalog,
+		game_clock,
+		random_source,
+		save_repository,
+		definition_id
 	)

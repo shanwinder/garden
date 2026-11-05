@@ -24,6 +24,7 @@ func run_tests() -> void:
 	_test_economy_ownership()
 	_test_plant_collection_ownership()
 	_test_journal_ownership()
+	_test_decoration_collection_ownership()
 
 
 func _test_construction() -> void:
@@ -135,3 +136,32 @@ func _test_journal_ownership() -> void:
 	)
 	assert_eq(state.get_journal().get_count(), 1, "owned journal reflects recorded sighting")
 	assert_eq(other.get_journal().get_count(), 0, "other GameState journal remains unaffected")
+
+
+func _test_decoration_collection_ownership() -> void:
+	describe("GameState owns exactly one DecorationCollectionState slice with distinct instance per GameState")
+	var state: GameState = GameState.new()
+	assert_true(state.get_decorations() != null, "fresh GameState.get_decorations() must not be null")
+	assert_true(
+		state.get_decorations() is DecorationCollectionState,
+		"get_decorations() must return a DecorationCollectionState"
+	)
+	assert_eq(state.get_decorations().get_count(), 0, "fresh GameState decoration count must be 0")
+	assert_eq(
+		state.get_decorations(),
+		state.get_decorations(),
+		"repeated get_decorations() calls must return the same instance"
+	)
+	var other: GameState = GameState.new()
+	assert_ne(
+		state.get_decorations(),
+		other.get_decorations(),
+		"separate GameState instances must own distinct DecorationCollectionState instances"
+	)
+	var decor: DecorationState = DecorationState.new("decor-001", "decoration.clay_jar", 1000)
+	assert_true(
+		state.get_decorations().try_add_decoration(decor),
+		"try_add_decoration on owned decorations slice succeeds"
+	)
+	assert_eq(state.get_decorations().get_count(), 1, "owned decorations reflects added decoration")
+	assert_eq(other.get_decorations().get_count(), 0, "other GameState decorations remains unaffected")

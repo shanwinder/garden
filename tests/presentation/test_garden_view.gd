@@ -106,6 +106,7 @@ func run_tests() -> void:
 	_test_harvest_feedback_rendering()
 	_test_integration_harvest_button_grants_coins_resets_plant_and_saves()
 	_test_environment_and_visitor_hud_and_observation()
+	_test_decoration_hud_picker_and_purchase_flow()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -1505,6 +1506,63 @@ func _test_environment_and_visitor_hud_and_observation() -> void:
 	assert_eq(gview.get_journal_panel().get_discovered_entry_count(), 3, "JournalPanel displays 3 discovered entries")
 	gview.get_journal_panel().get_close_button().pressed.emit()
 	assert_false(gview.get_journal_panel().is_journal_open(), "CloseButton closes JournalPanel")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_decoration_hud_picker_and_purchase_flow() -> void:
+	describe("GardenView displays decoration status, opens DecorationPicker, and dispatches decoration purchases")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.05], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	assert_eq(gview.get_decoration_status_text(), "ของตกแต่งในสวน: ยังไม่มี", "Empty garden decoration status")
+	assert_true(gview.is_decorating_enabled(), "Decorating enabled on active session")
+	assert_false(gview.get_decoration_picker().is_picker_open(), "DecorationPicker closed initially")
+
+	# Open DecorationPicker via DecorateButton and attempt purchase with 0 coins -> rejected with feedback
+	gview.get_decorate_button().pressed.emit()
+	assert_true(gview.get_decoration_picker().is_picker_open(), "DecorateButton opens DecorationPicker")
+	assert_eq(gview.get_decoration_picker().get_available_decoration_ids().size(), 8, "8 decorations available")
+	gview.get_decoration_picker().select_decoration_definition("decoration.clay_jar")
+	gview.get_decoration_picker().confirm_purchase()
+	assert_eq(repo.save_call_count, 0, "Rejected purchase with 0 coins does not save")
+	assert_true(
+		gview.get_feedback_text().contains("เหรียญไม่เพียงพอสำหรับการซื้อของตกแต่ง"),
+		"Insufficient currency feedback displayed"
+	)
+
+	# Grant 20 coins and purchase decoration.clay_jar (price 15, trait "water")
+	app.game_session.grant_currency(20)
+	gview.refresh_from_session()
+	var saves_before: int = repo.save_call_count
+	gview.get_decorate_button().pressed.emit()
+	gview.get_decoration_picker().select_decoration_definition("decoration.clay_jar")
+	gview.get_decoration_picker().confirm_purchase()
+
+	assert_eq(repo.save_call_count, saves_before + 1, "Purchasing decoration saves once")
+	assert_eq(gview.get_currency_text(), "เหรียญ: 5", "HUD updated to 5 coins")
+	assert_eq(
+		gview.get_decoration_status_text(),
+		"ของตกแต่งในสวน (1 ชิ้น): ตุ่มน้ำดินเผา (1)",
+		"Decoration status shows clay jar"
+	)
+	assert_true(gview.get_environment_text().contains("แหล่งน้ำ"), "Environment HUD shows water trait from clay jar")
+	assert_true(
+		gview.get_feedback_text().contains("ซื้อและวางของตกแต่งสำเร็จ (-15 เหรียญ) และบันทึกเรียบร้อยแล้ว"),
+		"Decoration purchase feedback displayed"
+	)
 
 	main_node.free()
 	app.free()

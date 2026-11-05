@@ -12,6 +12,7 @@ func run_tests() -> void:
 	_test_type_contract_and_empty_defaults()
 	_test_trait_and_plant_queries()
 	_test_defensive_encapsulation_and_sanitization()
+	_test_decoration_queries()
 
 
 func _test_type_contract_and_empty_defaults() -> void:
@@ -115,3 +116,25 @@ func _test_defensive_encapsulation_and_sanitization() -> void:
 	var active: Array[String] = snap.get_active_traits()
 	active.clear()
 	assert_eq(snap.get_active_traits(), ["flower"], "Returned active traits array is a defensive copy")
+
+
+func _test_decoration_queries() -> void:
+	describe("GardenSnapshot stores and queries decoration counts and sorted present decoration IDs")
+	var traits: Dictionary = {"water": 2, "shade": 1}
+	var plants: Dictionary = {"plant.holy_basil": 1}
+	var decors: Dictionary = {
+		"decoration.small_pond": 1,
+		"decoration.clay_jar": 2,
+		"decoration.plant_pot": 0,
+	}
+	var snap: GardenSnapshot = GardenSnapshot.new(traits, plants, 1, 0, decors, 3)
+
+	assert_eq(snap.get_total_decoration_count(), 3, "Total decoration count is 3")
+	assert_eq(snap.get_decoration_count_for_definition("decoration.clay_jar"), 2, "Clay jar count is 2")
+	assert_eq(snap.get_decoration_count_for_definition("decoration.small_pond"), 1, "Small pond count is 1")
+	assert_eq(snap.get_decoration_count_for_definition("decoration.plant_pot"), 0, "Zero count decoration ignored")
+	assert_eq(
+		snap.get_present_decoration_definition_ids(),
+		["decoration.clay_jar", "decoration.small_pond"],
+		"Present decoration definition IDs sorted in ascending order"
+	)

@@ -12,12 +12,18 @@ func run_tests() -> void:
 	_test_null_inputs_and_empty_garden()
 	_test_trait_accumulation_and_plant_counts()
 	_test_maturity_count_across_time_and_clock_rollback()
+	_test_decoration_trait_contribution_and_frog_eligibility()
 
 
 func _create_production_catalog() -> ContentCatalog:
 	var p_res: PlantContentLoadResult = PlantContentLoader.new().load_production_definitions()
 	var v_res: VisitorContentLoadResult = VisitorContentLoader.new().load_production_definitions()
-	return ContentCatalog.try_create(p_res.get_definitions(), v_res.get_definitions())
+	var d_res: DecorationContentLoadResult = DecorationContentLoader.new().load_production_definitions()
+	return ContentCatalog.try_create(
+		p_res.get_definitions(),
+		v_res.get_definitions(),
+		d_res.get_definitions()
+	)
 
 
 func _test_null_inputs_and_empty_garden() -> void:
@@ -95,3 +101,29 @@ func _test_maturity_count_across_time_and_clock_rollback() -> void:
 	assert_eq(snap_rollback.get_total_plant_count(), 2, "Total plants still 2 on rollback")
 	assert_eq(snap_rollback.get_mature_plant_count(), 0, "Mature count clamped to 0 on rollback")
 	assert_eq(snap_rollback.get_trait_count("food"), 2, "Trait counts remain intact on rollback")
+
+
+func _test_decoration_trait_contribution_and_frog_eligibility() -> void:
+	describe("GardenSnapshotBuilder aggregates decoration traits and counts, unlocking visitor.frog via water trait")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var state: GameState = GameState.new()
+
+	# Plant holy_basil ("food" only -> no water)
+	state.get_plants().try_add_plant(PlantState.new("basil-1", "plant.holy_basil", 1000))
+	var snap_before: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 1000)
+	assert_eq(snap_before.get_trait_count("water"), 0, "No water trait before placing clay_jar")
+	assert_eq(snap_before.get_total_decoration_count(), 0, "0 decorations placed")
+	var frog_def: VisitorDefinition = catalog.get_visitor("visitor.frog")
+	assert_false(VisitorEligibility.is_eligible(frog_def, snap_before), "visitor.frog not eligible without water")
+
+	# Place clay_jar ("water") and small_pond ("shelter", "water")
+	state.get_decorations().try_add_decoration(DecorationState.new("dec-1", "decoration.clay_jar", 1100))
+	state.get_decorations().try_add_decoration(DecorationState.new("dec-2", "decoration.small_pond", 1200))
+
+	var snap_after: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 1200)
+	assert_eq(snap_after.get_total_decoration_count(), 2, "2 decorations placed")
+	assert_eq(snap_after.get_decoration_count_for_definition("decoration.clay_jar"), 1, "1 clay_jar")
+	assert_eq(snap_after.get_decoration_count_for_definition("decoration.small_pond"), 1, "1 small_pond")
+	assert_eq(snap_after.get_trait_count("water"), 2, "water count = 2 from clay_jar + small_pond")
+	assert_eq(snap_after.get_trait_count("shelter"), 1, "shelter count = 1 from small_pond")
+	assert_true(VisitorEligibility.is_eligible(frog_def, snap_after), "visitor.frog is now eligible with water trait")

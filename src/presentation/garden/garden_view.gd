@@ -19,6 +19,7 @@ extends Control
 signal planting_requested(definition_id: String)
 signal harvest_requested(runtime_instance_id: String)
 signal visitor_observation_requested()
+signal decoration_purchase_requested(definition_id: String)
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
 
@@ -56,6 +57,7 @@ var _last_checkpoint_result: PlantingCheckpointResult = null
 var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
 var _last_visitor_selection_result: VisitorSelectionResult = null
 var _last_visitor_observation_checkpoint_result: VisitorObservationCheckpointResult = null
+var _last_decoration_purchase_checkpoint_result: DecorationPurchaseCheckpointResult = null
 
 var _refresh_button: Button = null
 var _plant_button: Button = null
@@ -67,10 +69,14 @@ var _observe_visitor_button: Button = null
 var _journal_row: Control = null
 var _journal_status_label: Label = null
 var _journal_button: Button = null
+var _decoration_row: Control = null
+var _decoration_status_label: Label = null
+var _decorate_button: Button = null
 var _feedback_area: Control = null
 var _feedback_label: Label = null
 var _planting_picker: PlantingPicker = null
 var _journal_panel: JournalPanel = null
+var _decoration_picker: DecorationPicker = null
 
 var _plants_container: Container = null
 var _plants_scroll: ScrollContainer = null
@@ -119,6 +125,12 @@ func _resolve_nodes() -> void:
 		_journal_status_label = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalStatusLabel") as Label
 	if _journal_button == null:
 		_journal_button = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalButton") as Button
+	if _decoration_row == null:
+		_decoration_row = get_node_or_null("MainMargin/LayoutBox/DecorationRow") as Control
+	if _decoration_status_label == null:
+		_decoration_status_label = get_node_or_null("MainMargin/LayoutBox/DecorationRow/DecorationStatusLabel") as Label
+	if _decorate_button == null:
+		_decorate_button = get_node_or_null("MainMargin/LayoutBox/DecorationRow/DecorateButton") as Button
 	if _feedback_area == null:
 		_feedback_area = get_node_or_null("MainMargin/LayoutBox/FeedbackArea") as Control
 	if _feedback_label == null:
@@ -127,6 +139,8 @@ func _resolve_nodes() -> void:
 		_planting_picker = get_node_or_null("PlantingPicker") as PlantingPicker
 	if _journal_panel == null:
 		_journal_panel = get_node_or_null("JournalPanel") as JournalPanel
+	if _decoration_picker == null:
+		_decoration_picker = get_node_or_null("DecorationPicker") as DecorationPicker
 	if _plants_container == null:
 		_plants_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/PlantsContainer") as Container
 	if _plants_scroll == null:
@@ -171,6 +185,10 @@ func _connect_signals() -> void:
 		_observe_visitor_button.pressed.connect(_on_observe_visitor_button_pressed)
 	if _journal_button != null and not _journal_button.pressed.is_connected(open_journal_panel):
 		_journal_button.pressed.connect(open_journal_panel)
+	if _decorate_button != null and not _decorate_button.pressed.is_connected(open_decoration_picker):
+		_decorate_button.pressed.connect(open_decoration_picker)
+	if _decoration_picker != null and not _decoration_picker.decoration_purchase_requested.is_connected(_on_picker_decoration_purchase_requested):
+		_decoration_picker.decoration_purchase_requested.connect(_on_picker_decoration_purchase_requested)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -190,11 +208,16 @@ func bind_garden(
 		_planting_picker.set_picker_enabled(true)
 	if _journal_panel != null:
 		_journal_panel.set_journal_enabled(true)
+	if _decoration_picker != null and _catalog != null:
+		_decoration_picker.bind_catalog(_catalog)
+		_decoration_picker.set_picker_enabled(true)
 
 	if _plant_button != null:
 		_plant_button.disabled = false
 	if _journal_button != null:
 		_journal_button.disabled = false
+	if _decorate_button != null:
+		_decorate_button.disabled = false
 
 	if _session == null or _catalog == null or _game_clock == null:
 		show_blocked_startup("ไม่สามารถเริ่มต้นสวนได้เนื่องจากข้อมูลไม่สมบูรณ์")
@@ -214,12 +237,17 @@ func show_blocked_startup(message: String = "") -> void:
 		_plant_button.disabled = true
 	if _journal_button != null:
 		_journal_button.disabled = true
+	if _decorate_button != null:
+		_decorate_button.disabled = true
 	if _planting_picker != null:
 		_planting_picker.set_picker_enabled(false)
 		_planting_picker.close_picker()
 	if _journal_panel != null:
 		_journal_panel.set_journal_enabled(false)
 		_journal_panel.close_journal()
+	if _decoration_picker != null:
+		_decoration_picker.set_picker_enabled(false)
+		_decoration_picker.close_picker()
 	_show_blocked_visual()
 
 
@@ -435,6 +463,10 @@ func _show_blocked_visual() -> void:
 		_journal_row.visible = false
 	if _journal_button != null:
 		_journal_button.disabled = true
+	if _decoration_row != null:
+		_decoration_row.visible = false
+	if _decorate_button != null:
+		_decorate_button.disabled = true
 	if _feedback_area != null:
 		_feedback_area.visible = false
 	if _empty_container != null:
@@ -501,6 +533,27 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 			_visitor_status_label.text = "ผู้มาเยือนที่อาจพบ: %s" % ", ".join(names)
 		else:
 			_visitor_status_label.text = "ผู้มาเยือน: ยังไม่มีผู้มาเยือน"
+
+	if _decoration_row != null:
+		_decoration_row.visible = true
+	if _decorate_button != null:
+		_decorate_button.disabled = _is_blocked or _session == null
+	if _decoration_status_label != null:
+		var total_decor: int = _last_snapshot.get_total_decoration_count()
+		if total_decor <= 0:
+			_decoration_status_label.text = "ของตกแต่งในสวน: ยังไม่มี"
+		else:
+			var decor_parts: PackedStringArray = PackedStringArray()
+			for decor_id: String in _last_snapshot.get_present_decoration_definition_ids():
+				var decor_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(
+					decor_id,
+					decor_id
+				)
+				var d_count: int = _last_snapshot.get_decoration_count_for_definition(decor_id)
+				decor_parts.append("%s (%d)" % [decor_name, d_count])
+			_decoration_status_label.text = (
+				"ของตกแต่งในสวน (%d ชิ้น): %s" % [total_decor, ", ".join(decor_parts)]
+			)
 
 
 func _update_journal_ui() -> void:
@@ -967,3 +1020,117 @@ func get_journal_status_text() -> String:
 ## Pure query for testing: returns last received VisitorObservationCheckpointResult.
 func get_last_visitor_observation_checkpoint_result() -> VisitorObservationCheckpointResult:
 	return _last_visitor_observation_checkpoint_result
+
+
+func _on_picker_decoration_purchase_requested(definition_id: String) -> void:
+	decoration_purchase_requested.emit(definition_id)
+
+
+## Opens the decoration picker modal.
+func open_decoration_picker() -> void:
+	if _is_blocked or _session == null:
+		return
+	_resolve_nodes()
+	if _decoration_picker != null:
+		_decoration_picker.open_picker()
+
+
+## Closes the decoration picker modal.
+func close_decoration_picker() -> void:
+	_resolve_nodes()
+	if _decoration_picker != null:
+		_decoration_picker.close_picker()
+
+
+## Displays user feedback from a DecorationPurchaseCheckpointResult.
+func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult) -> void:
+	_last_decoration_purchase_checkpoint_result = result
+	_resolve_nodes()
+	if _feedback_area == null or _feedback_label == null or result == null:
+		return
+
+	_feedback_area.visible = true
+	match result.get_status():
+		DecorationPurchaseCheckpointResult.Status.NOT_READY:
+			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการซื้อของตกแต่ง"
+		DecorationPurchaseCheckpointResult.Status.PURCHASE_REJECTED:
+			var reason_str: String = ""
+			var purchase_res: DecorationPurchaseResult = result.get_purchase_result()
+			if purchase_res != null:
+				match purchase_res.get_status():
+					DecorationPurchaseResult.INSUFFICIENT_CURRENCY:
+						_feedback_label.text = "เหรียญไม่เพียงพอสำหรับการซื้อของตกแต่ง (INSUFFICIENT_CURRENCY)"
+						return
+					DecorationPurchaseResult.INVALID_INPUT:
+						reason_str = "INVALID_INPUT"
+					DecorationPurchaseResult.UNKNOWN_DEFINITION_ID:
+						reason_str = "UNKNOWN_DEFINITION_ID"
+					DecorationPurchaseResult.INVALID_PRICE:
+						reason_str = "INVALID_PRICE"
+					DecorationPurchaseResult.DUPLICATE_INSTANCE_ID:
+						reason_str = "DUPLICATE_INSTANCE_ID"
+					DecorationPurchaseResult.ID_GENERATION_FAILED:
+						reason_str = "ID_GENERATION_FAILED"
+					DecorationPurchaseResult.CURRENCY_SPEND_REJECTED:
+						reason_str = "CURRENCY_SPEND_REJECTED"
+					DecorationPurchaseResult.INSERTION_REJECTED:
+						reason_str = "INSERTION_REJECTED"
+					_:
+						reason_str = "UNKNOWN"
+			if not reason_str.is_empty():
+				_feedback_label.text = "ไม่สามารถซื้อของตกแต่งได้ (%s)" % reason_str
+			else:
+				_feedback_label.text = "ไม่สามารถซื้อของตกแต่งได้"
+		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVED:
+			_feedback_label.text = (
+				"ซื้อและวางของตกแต่งสำเร็จ (-%d เหรียญ) และบันทึกเรียบร้อยแล้ว"
+				% result.get_price_spent()
+			)
+		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVE_FAILED:
+			_feedback_label.text = (
+				"ซื้อและวางของตกแต่งสำเร็จ (-%d เหรียญ) แต่ยังบันทึกไม่สำเร็จ"
+				% result.get_price_spent()
+			)
+		_:
+			_feedback_label.text = "สถานะการซื้อของตกแต่งไม่ระบุ"
+
+
+## Pure query for testing: returns child DecorationPicker instance.
+func get_decoration_picker() -> DecorationPicker:
+	_resolve_nodes()
+	return _decoration_picker
+
+
+## Pure query for testing: returns DecorateButton instance.
+func get_decorate_button() -> Button:
+	_resolve_nodes()
+	return _decorate_button
+
+
+## Pure query for testing: returns true if decoration interaction is currently enabled.
+func is_decorating_enabled() -> bool:
+	_resolve_nodes()
+	return (
+		not _is_blocked
+		and _session != null
+		and _decorate_button != null
+		and not _decorate_button.disabled
+		and _decoration_picker != null
+		and _decoration_picker.is_picker_enabled()
+	)
+
+
+## Pure query for testing: returns decoration status text in HUD.
+func get_decoration_status_text() -> String:
+	_resolve_nodes()
+	return _decoration_status_label.text if _decoration_status_label != null else ""
+
+
+## Pure query for testing: returns count of placed decorations in the latest snapshot.
+func get_displayed_decoration_count() -> int:
+	return _last_snapshot.get_total_decoration_count() if _last_snapshot != null else 0
+
+
+## Pure query for testing: returns last received DecorationPurchaseCheckpointResult.
+func get_last_decoration_purchase_checkpoint_result() -> DecorationPurchaseCheckpointResult:
+	return _last_decoration_purchase_checkpoint_result

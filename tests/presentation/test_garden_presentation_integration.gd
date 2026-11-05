@@ -93,6 +93,7 @@ func run_tests() -> void:
 	_test_in_process_pause_resume_offline_growth_and_clock_rollback_safety()
 	_test_harvest_and_economy_loop_across_restart_and_second_cycle()
 	_test_reactive_garden_traits_and_visitor_loop()
+	_test_decoration_shop_water_trait_and_frog_discovery_loop()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
@@ -534,6 +535,96 @@ func _test_reactive_garden_traits_and_visitor_loop() -> void:
 	_cleanup_test_files()
 
 
+func _test_decoration_shop_water_trait_and_frog_discovery_loop() -> void:
+	describe("E2E: Plant marigold -> harvest coins -> buy clay_jar (-15 coins, adds water trait) -> visitor.frog unlocked and discovered in Journal -> Save V3 survives restart")
+	_cleanup_test_files()
+
+	var repo_1: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_1: FakeGameClock = FakeGameClock.new(1000, 0)
+	# Marigold provides ["flower"] -> visitor.butterfly (weight 30.0)
+	# Clay jar provides ["water"] -> visitor.frog (weight 10.0)
+	# Combined eligible visitors:
+	#   0: visitor.butterfly (weight 30.0) -> normalized [0.0, 0.75)
+	#   1: visitor.frog      (weight 10.0) -> normalized [0.75, 1.0)
+	# Float roll 0.85 selects visitor.frog!
+	var rng_1: FakeRandomSource = FakeRandomSource.new([0.85], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app_1: AppRoot = AppRoot.new(repo_1, PlantContentLoader.new(), clock_1, rng_1)
+	app_1.bootstrap_session()
+
+	var main_1: MainScreen = _instantiate_bound_main_screen(app_1)
+	var view_1: GardenView = main_1.get_garden_view()
+
+	# 1. Plant marigold (harvest_reward = 20, mature_after_seconds = 2700) at t = 1000
+	view_1.get_plant_button().pressed.emit()
+	view_1.get_planting_picker().select_plant_definition("plant.marigold")
+	view_1.get_planting_picker().confirm_planting()
+
+	var marigold_id: String = view_1.get_plant_views()[0].get_runtime_instance_id()
+	view_1.get_plant_view_by_id(marigold_id).simulate_selection_input()
+
+	# Before buying clay_jar, only butterfly is eligible (no frog)
+	assert_false(view_1.get_visitor_status_text().contains("กบ"), "Frog not eligible before water decoration")
+
+	# 2. Advance clock to t = 3700 (+2700s -> MATURE) and harvest marigold (+20 coins)
+	clock_1.set_utc_seconds(3700)
+	view_1.refresh_from_session()
+	view_1.get_harvest_button().pressed.emit()
+	assert_eq(view_1.get_currency_text(), "เหรียญ: 20", "20 coins after harvesting marigold")
+
+	# 3. Open DecorationPicker and buy decoration.clay_jar (price = 15, trait = "water")
+	view_1.get_decorate_button().pressed.emit()
+	var dec_picker_1: DecorationPicker = view_1.get_decoration_picker()
+	assert_true(dec_picker_1.is_picker_open(), "DecorationPicker opened")
+	dec_picker_1.select_decoration_definition("decoration.clay_jar")
+	dec_picker_1.confirm_purchase()
+
+	assert_eq(view_1.get_currency_text(), "เหรียญ: 5", "5 coins remaining after buying clay_jar")
+	assert_eq(
+		view_1.get_decoration_status_text(),
+		"ของตกแต่งในสวน (1 ชิ้น): ตุ่มน้ำดินเผา (1)",
+		"Clay jar displayed in garden HUD"
+	)
+	assert_true(view_1.get_environment_text().contains("แหล่งน้ำ"), "Water trait active in environment HUD")
+	assert_true(view_1.get_visitor_status_text().contains("กบ"), "Frog now eligible in visitor HUD")
+
+	# 4. Observe visitor -> roll 0.85 selects visitor.frog and records discovery in Journal
+	view_1.get_observe_visitor_button().pressed.emit()
+	assert_true(view_1.get_visitor_status_text().contains("กบ"), "Visitor status shows frog visit")
+	assert_eq(
+		view_1.get_journal_status_text(),
+		"สมุดบ้านสวน: ค้นพบแล้ว 2 / 10 รายการ (พืช 1/5, ผู้มาเยือน 1/5)",
+		"Marigold + Frog discovered in journal"
+	)
+
+	main_1.free()
+	app_1.free()
+
+	# 5. Restart into Session 2 and verify Save Schema V3 preserves decorations, coins, water trait, and frog discovery
+	var repo_2: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_2: FakeGameClock = FakeGameClock.new(4000, 0)
+	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, FakeRandomSource.new([], []))
+	var load_res_2: LocalSaveLoadResult = app_2.bootstrap_session()
+	assert_eq(load_res_2.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Save V3 loads cleanly after restart")
+
+	var main_2: MainScreen = _instantiate_bound_main_screen(app_2)
+	var view_2: GardenView = main_2.get_garden_view()
+	assert_eq(view_2.get_currency_text(), "เหรียญ: 5", "5 coins preserved on restart")
+	assert_eq(
+		view_2.get_decoration_status_text(),
+		"ของตกแต่งในสวน (1 ชิ้น): ตุ่มน้ำดินเผา (1)",
+		"Persisted clay_jar displayed on restart"
+	)
+	assert_true(view_2.get_environment_text().contains("แหล่งน้ำ"), "Water trait recomputed from persisted clay_jar")
+	assert_true(
+		view_2.get_journal_panel().get_entry_text_for_id("visitor.frog").contains("กบ"),
+		"Frog entry unlocked in JournalPanel after restart"
+	)
+
+	main_2.free()
+	app_2.free()
+	_cleanup_test_files()
+
+
 func _test_save_failure_recovered_by_lifecycle_pause_and_restart() -> void:
 	describe("E2E: REGISTERED_SAVE_FAILED in UI -> recovered on APPLICATION_PAUSED -> survives restart")
 	_cleanup_test_files()
@@ -746,14 +837,19 @@ func _test_portrait_layout_bounds_regression() -> void:
 
 		var view: GardenView = main_screen.get_garden_view()
 		var picker: PlantingPicker = view.get_planting_picker()
+		var dec_picker: DecorationPicker = view.get_decoration_picker()
 		var journal: JournalPanel = view.get_journal_panel()
 		var picker_panel: Control = picker.get_node_or_null("CenterContainer/PickerPanel") as Control
 		var confirm_panel: Control = picker.get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel") as Control
+		var dec_picker_panel: Control = dec_picker.get_node_or_null("CenterContainer/PickerPanel") as Control
+		var dec_confirm_panel: Control = dec_picker.get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel") as Control
 		var journal_modal_panel: Control = journal.get_node_or_null("CenterContainer/JournalModalPanel") as Control
 		var blocked_label: Control = view.get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer/BlockedLabel") as Control
 
 		assert_true(picker_panel != null, "PickerPanel exists")
 		assert_true(confirm_panel != null, "ConfirmPanel exists")
+		assert_true(dec_picker_panel != null, "DecorationPicker PickerPanel exists")
+		assert_true(dec_confirm_panel != null, "DecorationPicker ConfirmPanel exists")
 		assert_true(journal_modal_panel != null, "JournalModalPanel exists")
 		assert_true(blocked_label != null, "BlockedLabel exists")
 
@@ -764,6 +860,14 @@ func _test_portrait_layout_bounds_regression() -> void:
 		assert_true(
 			confirm_panel.custom_minimum_size.x <= vp_size.x and confirm_panel.custom_minimum_size.y <= vp_size.y,
 			"ConfirmPanel custom_minimum_size fits within viewport %s" % str(vp_size)
+		)
+		assert_true(
+			dec_picker_panel.custom_minimum_size.x <= vp_size.x and dec_picker_panel.custom_minimum_size.y <= vp_size.y,
+			"DecorationPicker PickerPanel custom_minimum_size fits within viewport %s" % str(vp_size)
+		)
+		assert_true(
+			dec_confirm_panel.custom_minimum_size.x <= vp_size.x and dec_confirm_panel.custom_minimum_size.y <= vp_size.y,
+			"DecorationPicker ConfirmPanel custom_minimum_size fits within viewport %s" % str(vp_size)
 		)
 		assert_true(
 			journal_modal_panel.custom_minimum_size.x <= vp_size.x and journal_modal_panel.custom_minimum_size.y <= vp_size.y,

@@ -37,9 +37,14 @@ static func validate(
 	if journal == null:
 		return PlantSaveContentValidationResult.invalid_input()
 
+	var decoration_collection: DecorationCollectionState = state.get_decorations()
+	if decoration_collection == null:
+		return PlantSaveContentValidationResult.invalid_input()
+
 	var plants: Array[PlantState] = plant_collection.get_all_plants()
 	var records: Array[DiscoveryRecord] = journal.get_all_records()
-	if plants.is_empty() and records.is_empty():
+	var decorations: Array[DecorationState] = decoration_collection.get_all_decorations()
+	if plants.is_empty() and records.is_empty() and decorations.is_empty():
 		return PlantSaveContentValidationResult.compatible()
 
 	var unknown_ids_map: Dictionary = {}
@@ -63,6 +68,13 @@ static func validate(
 				unknown_ids_map[disc_id] = true
 		else:
 			unknown_ids_map[disc_id] = true
+
+	for decoration: DecorationState in decorations:
+		if decoration == null:
+			return PlantSaveContentValidationResult.invalid_input()
+		var decor_id: String = decoration.get_definition_id()
+		if not catalog.has_decoration(decor_id):
+			unknown_ids_map[decor_id] = true
 
 	if unknown_ids_map.is_empty():
 		return PlantSaveContentValidationResult.compatible()

@@ -87,6 +87,7 @@ func run_tests() -> void:
 	_test_try_harvest_and_checkpoint_preconditions_and_delegation()
 	_test_visitor_content_bootstrap_and_evaluate_visitor_now()
 	_test_try_observe_visitor_and_checkpoint_and_v1_migration()
+	_test_decoration_content_bootstrap_and_purchase_checkpoint()
 
 
 func _test_instantiation() -> void:
@@ -1892,8 +1893,85 @@ func _test_try_observe_visitor_and_checkpoint_and_v1_migration() -> void:
 	var raw_saved: Variant = JSON.parse_string(_read_raw_file(TEST_PRIMARY))
 	assert_true(raw_saved is Dictionary, "Saved PRIMARY is JSON object")
 	if raw_saved is Dictionary:
-		assert_eq(int(raw_saved["schema_version"]), 2, "Saved PRIMARY upgraded to schema_version 2")
+		assert_eq(int(raw_saved["schema_version"]), 3, "Saved PRIMARY upgraded to schema_version 3")
 		assert_true(raw_saved.has("discoveries"), "Saved PRIMARY has discoveries array")
+		assert_true(raw_saved.has("decorations"), "Saved PRIMARY has decorations array")
 
 	root.free()
+	_cleanup_test_files()
+
+
+class FailingDecorationContentLoader extends DecorationContentLoader:
+	func load_production_definitions() -> DecorationContentLoadResult:
+		return DecorationContentLoadResult.create_failed(
+			"res://content/decorations/missing.tres",
+			"Simulated decoration load failure"
+		)
+
+
+func _test_decoration_content_bootstrap_and_purchase_checkpoint() -> void:
+	describe("AppRoot bootstraps 8 production decorations, blocks on decoration load failure, and checkpoints decoration purchase")
+	_cleanup_test_files()
+
+	# 1. Failing decoration loader blocks bootstrap with LOAD_FAILED
+	var repo_fail: LocalSaveRepository = _create_test_repo()
+	var root_fail: AppRoot = AppRoot.new(
+		repo_fail,
+		null,
+		FakeGameClock.new(1000, 0),
+		FakeRandomSource.new([], []),
+		null,
+		FailingDecorationContentLoader.new()
+	)
+	root_fail.bootstrap_session()
+	assert_eq(
+		root_fail.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.LOAD_FAILED,
+		"Decoration loader failure must result in LOAD_FAILED"
+	)
+	assert_false(root_fail.has_active_session(), "Session must not be active when decoration loader fails")
+	assert_true(root_fail.get_decoration_content_load_result() != null, "Decoration load result recorded")
+	assert_false(root_fail.get_decoration_content_load_result().is_loaded(), "Decoration load result is failed")
+	var fail_purch: DecorationPurchaseCheckpointResult = root_fail.try_purchase_decoration_and_checkpoint("decoration.clay_jar")
+	assert_eq(
+		fail_purch.get_status(),
+		DecorationPurchaseCheckpointResult.NOT_READY,
+		"try_purchase_decoration_and_checkpoint returns NOT_READY when session is blocked"
+	)
+	root_fail.free()
+
+	# 2. Successful bootstrap loads all 8 production decorations and checkpoints purchase
+	var repo_ok: LocalSaveRepository = _create_test_repo()
+	var clock_ok: FakeGameClock = FakeGameClock.new(3000, 0)
+	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.85], [1, 2, 3, 4, 5, 6, 7, 8])
+	var root_ok: AppRoot = AppRoot.new(repo_ok, null, clock_ok, rng_ok)
+	root_ok.bootstrap_session()
+
+	assert_true(root_ok.has_content_catalog(), "Catalog exists")
+	assert_eq(root_ok.get_content_catalog().get_decoration_count(), 8, "All 8 production decorations in catalog")
+	assert_eq(
+		root_ok.get_content_catalog().get_all_decoration_ids(),
+		AppRoot.EXPECTED_PRODUCTION_DECORATION_IDS,
+		"Expected 8 production decoration IDs"
+	)
+
+	# Grant 20 coins and buy decoration.clay_jar (price 15, trait "water")
+	root_ok.game_session.grant_currency(20)
+	var purch_res: DecorationPurchaseCheckpointResult = root_ok.try_purchase_decoration_and_checkpoint("decoration.clay_jar")
+	assert_eq(
+		purch_res.get_status(),
+		DecorationPurchaseCheckpointResult.PURCHASED_SAVED,
+		"Clay jar purchased and saved"
+	)
+	assert_eq(purch_res.get_price_spent(), 15, "Price spent is 15")
+	assert_eq(root_ok.game_session.get_currency(), 5, "Remaining currency is 5")
+	assert_eq(root_ok.game_session.get_state().get_decorations().get_count(), 1, "1 decoration placed")
+
+	# Plant holy_basil so min_total_plants >= 1, then verify visitor.frog ("water") is now eligible!
+	root_ok.try_plant_and_checkpoint("plant.holy_basil")
+	var eval_res: VisitorSelectionResult = root_ok.evaluate_visitor_now()
+	assert_true(eval_res.is_selected(), "Visitor selected when basil + clay_jar present")
+	assert_eq(eval_res.get_selected_visitor_id(), "visitor.frog", "visitor.frog selected via clay_jar water trait")
+
+	root_ok.free()
 	_cleanup_test_files()

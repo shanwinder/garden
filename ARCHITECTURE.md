@@ -783,11 +783,11 @@ Rules:
 - Coin balance must never become negative because two UI actions raced or validation was bypassed.
 - Floating-point currency is not allowed.
 
-#### Implementation Status (Milestone 10)
+#### Implementation Status (Milestones 10 and 13)
 
 - **Authored plant harvest rewards**: `PlantDefinition` (`src/domain/plants/plant_definition.gd`) defines `@export var harvest_reward: int = 0` (validated non-negative via `is_valid()`), and all five authored production `.tres` definitions specify positive integer rewards (`plant.holy_basil`: 5, `plant.chili`: 10, `plant.marigold`: 20, `plant.jasmine`: 25, `plant.banana`: 60).
 - **Validated harvest & cycle reset**: `PlantHarvestService` (`src/application/plants/plant_harvest_service.gd`) validates plant existence, catalog membership, maturity (`PlantGrowth.Stage.MATURE`), positive reward (`harvest_reward > 0`), and `EconomyState.MAX_CURRENCY` overflow before replacing the plant in `PlantCollectionState.try_replace_existing_plant(...)` with a new `PlantState(runtime_instance_id, definition_id, now_utc_seconds)` and granting `harvest_reward` to `EconomyState`.
-- **Save Schema V1 preserved**: Harvesting resets the plant's cycle start timestamp (`planted_at = now_utc_seconds`) while preserving its `runtime_instance_id` and `definition_id`, requiring no V2 schema migration.
+- **Authored decoration prices & purchase loop (Milestone 13)**: `DecorationDefinition` (`src/domain/decorations/decoration_definition.gd`) defines `@export var price: int = 0` (`>= 0`) and `@export var environmental_traits: Array[String] = []` across the 8 authored MVP decorations (`decoration.bench`, `decoration.clay_jar`, `decoration.garden_lamp`, `decoration.plant_pot`, `decoration.small_pond`, `decoration.small_table`, `decoration.watering_can`, `decoration.wooden_fence`). `DecorationPurchaseService` (`src/application/decorations/decoration_purchase_service.gd`) validates catalog membership and sufficient coins (`EconomyState.can_afford(price)`), generates a unique `"decor-inst-"` runtime instance ID via `DecorationRuntimeIdGenerator`, deducts `price`, and adds `DecorationState` to `DecorationCollectionState`. Placed decorations contribute their environmental traits to `GardenSnapshotBuilder`, unlocking `"water"` habitat (`decoration.clay_jar` and `decoration.small_pond`) for `visitor.frog`.
 
 ---
 
@@ -857,13 +857,13 @@ During early architectural planning, a conceptual save structure was outlined as
 
 This conceptual shape served to illustrate versioning and modular data groupings before persistence was implemented.
 
-#### Current Implemented V2 Contract and V1 Compatibility (Normative)
+#### Current Implemented V3 Contract and V1/V2 Compatibility (Normative)
 
-Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. As of Milestone 12, `CURRENT_SCHEMA_VERSION = 2`. The canonical V2 wire format is:
+Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. As of Milestone 13, `CURRENT_SCHEMA_VERSION = 3`. The canonical V3 wire format is:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "economy": {
     "currency": "250"
   },
@@ -885,15 +885,22 @@ Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepos
       "first_seen_at": "1700000300",
       "times_seen": "2"
     }
+  ],
+  "decorations": [
+    {
+      "instance_id": "decor-instance-a",
+      "definition_id": "decoration.clay_jar",
+      "placed_at": "1700000600"
+    }
   ]
 }
 ```
 
-Legacy Schema V1 saves (containing exact root keys `schema_version: 1`, `economy`, and `plants`) remain supported on decode through explicit deterministic migration (`GameStateCodec.migrate_v1_to_v2(v1_snapshot)`), which upgrades `schema_version` to `2` and initializes `"discoveries": []`.
+Legacy Schema V1 and V2 saves remain supported on decode through explicit sequential deterministic migration (`GameStateCodec.migrate_v1_to_v2(v1_snapshot)` followed by `GameStateCodec.migrate_v2_to_v3(v2_snapshot)`), which upgrades `schema_version` to `3` and initializes `"discoveries": []` (for V1) and `"decorations": []` (for V1/V2).
 
 #### Int64 Wire Encoding Rule
 
-Important: `currency`, `planted_at`, `first_seen_at`, and `times_seen` are canonical non-negative decimal **strings** at the JSON wire boundary.
+Important: `currency`, `planted_at`, `first_seen_at`, `times_seen`, and `placed_at` are canonical non-negative decimal **strings** at the JSON wire boundary.
 
 - Runtime/domain types remain `int` (signed 64-bit integer).
 - Reason: Godot's built-in `JSON` parser represents numeric values as 64-bit floating-point numbers (`float`). A 64-bit IEEE-754 float cannot losslessly represent arbitrary signed 64-bit integers beyond $2^{53}$ (9,007,199,254,740,992). To avoid precision loss on large values up to `9223372036854775807`, persistent int64 domain values are encoded as exact decimal strings on the wire.
@@ -904,22 +911,23 @@ Important: `currency`, `planted_at`, `first_seen_at`, and `times_seen` are canon
   - Valid wire examples: `"0"`, `"42"`, `"9007199254740993"`, `"9223372036854775807"`.
   - Invalid wire examples: `"01"` (leading zero), `"+1"` (explicit plus), `"-1"` (negative), `"1.0"` (float), `"1e3"` (exponent).
 
-#### Strict V2 Validation Rules
+#### Strict V3 Validation Rules
 
-The V2 codec enforces strict schema integrity:
+The V3 codec enforces strict schema integrity:
 
-- `CURRENT_SCHEMA_VERSION = 2` (with explicit `SCHEMA_VERSION_V1 = 1` auto-migration on `decode`).
-- Root exact required keys (V2): `schema_version`, `economy`, `plants`, `discoveries`.
+- `CURRENT_SCHEMA_VERSION = 3` (with explicit `SCHEMA_VERSION_V1 = 1` and `SCHEMA_VERSION_V2 = 2` sequential auto-migration on `decode`).
+- Root exact required keys (V3): `schema_version`, `economy`, `plants`, `discoveries`, `decorations`.
 - Economy exact required key: `currency`.
 - Plant exact required keys: `instance_id`, `definition_id`, `planted_at`.
 - Discovery exact required keys: `definition_id`, `first_seen_at`, `times_seen` (`times_seen >= 1`, `definition_id` in `"plant."` or `"visitor."` namespace).
-- Unexpected keys in root, economy, plant, or discovery objects: rejected.
-- Unsupported schema versions (anything other than `1` or `2`): rejected.
-- Duplicate plant runtime `instance_id` or duplicate discovery `definition_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
+- Decoration exact required keys: `instance_id`, `definition_id`, `placed_at` (`definition_id` in `"decoration."` namespace, `placed_at >= 0`).
+- Unexpected keys in root, economy, plant, discovery, or decoration objects: rejected.
+- Unsupported schema versions (anything other than `1`, `2`, or `3`): rejected.
+- Duplicate plant runtime `instance_id`, duplicate discovery `definition_id`, or duplicate decoration runtime `instance_id`: rejects the whole snapshot (atomic all-or-nothing decoding).
 - Malformed required data: rejected.
-- `ContentCatalog` existence validation: intentionally NOT placed in `GameStateCodec` (codec validates schema syntax and namespace prefixes only, keeping infrastructure persistence independent of the catalog; `PlantSaveContentValidator` validates saved plant and discovery IDs against `ContentCatalog` at the startup boundary).
+- `ContentCatalog` existence validation: intentionally NOT placed in `GameStateCodec` (codec validates schema syntax and namespace prefixes only, keeping infrastructure persistence independent of the catalog; `PlantSaveContentValidator` validates saved plant, discovery, and decoration IDs against `ContentCatalog` at the startup boundary).
 - Derived plant growth stage: not persisted (computed at runtime from `planted_at`).
-- `PlantDefinition` and `VisitorDefinition` static data: not duplicated into save.
+- `PlantDefinition`, `VisitorDefinition`, and `DecorationDefinition` static data: not duplicated into save.
 
 #### Local Storage File Layout
 
@@ -1022,10 +1030,11 @@ When content IDs are renamed or removed, migration/alias rules must preserve val
 
 Resetting all progress is not an acceptable migration strategy unless the owner explicitly approves it for a pre-release prototype.
 
-#### Implementation Status (Milestone 12)
+#### Implementation Status (Milestones 12 and 13)
 
 - **Deterministic V1 -> V2 migration**: `GameStateCodec.migrate_v1_to_v2(v1_snapshot: Variant) -> Variant` validates that `v1_snapshot` is a `Dictionary` with `schema_version == 1` and exact V1 root keys (`schema_version`, `economy`, `plants`), returning a new V2 `Dictionary` with `"schema_version": 2`, preserved `"economy"` and `"plants"`, and `"discoveries": []` without mutating the caller's input dictionary.
-- **Automatic decode upgrade**: `GameStateCodec.decode(snapshot)` transparently runs `migrate_v1_to_v2(snapshot)` when `schema_version == 1` before validating and decoding into `GameState`. All subsequent `GameStateCodec.encode(state)` calls write Schema V2.
+- **Deterministic V2 -> V3 migration**: `GameStateCodec.migrate_v2_to_v3(v2_snapshot: Variant) -> Variant` validates that `v2_snapshot` is a `Dictionary` with `schema_version == 2` and exact V2 root keys (`schema_version`, `economy`, `plants`, `discoveries`), returning a new V3 `Dictionary` with `"schema_version": 3`, preserved `"economy"`, `"plants"`, and `"discoveries"`, and `"decorations": []` without mutating the caller's input dictionary.
+- **Automatic sequential decode upgrade**: `GameStateCodec.decode(snapshot)` transparently runs `migrate_v1_to_v2(snapshot)` (when `schema_version == 1`) and `migrate_v2_to_v3(...)` (when `schema_version == 2`) before validating and decoding into `GameState`. All subsequent `GameStateCodec.encode(state)` calls write Schema V3.
 
 ---
 
@@ -1063,9 +1072,10 @@ Milestone 7 (Task 7.3) introduced the first approved gameplay mutation persisten
   - `PLANTING_REJECTED`: Logical planting failed; no persistence save is attempted.
   - `NOT_READY`: Preconditions or dependencies unmet; no planting or save attempted.
 - **Successful logical harvest checkpoint (Milestone 10)**: Following a validated harvest (`PlantHarvestService.try_harvest_now`), `HarvestPersistenceCoordinator.try_harvest_and_save()` immediately checkpoints `GameState` via `LocalSaveRepository.save(GameState)` and returns a typed `HarvestCheckpointResult` (`HARVESTED_SAVED`, `HARVESTED_SAVE_FAILED`, `HARVEST_REJECTED`, or `NOT_READY`). Rejected harvests never call `repository.save()`.
-- **Successful visitor observation & discovery checkpoint (Milestone 12)**: Following a successful visitor observation (`VisitorObservationPersistenceCoordinator.try_observe_visitor_and_save()`), the visitor sighting is recorded in `JournalState` and `GameState` is immediately checkpointed in Save Schema V2 via `LocalSaveRepository.save(GameState)`, returning a typed `VisitorObservationCheckpointResult` (`OBSERVED_SAVED`, `OBSERVED_SAVE_FAILED`, `NO_ELIGIBLE_VISITORS`, `OBSERVATION_REJECTED`, or `NOT_READY`). When no visitors are eligible, zero state mutations and zero disk writes occur.
-- **Independent boundaries**: Planting persistence checkpoints, harvest persistence checkpoints, visitor observation checkpoints, and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
-- **Deferred gameplay features**: Seed/decoration purchasing, currency deduction, and placement coordinates remain out of scope through Milestone 10 and deferred to future tasks.
+- **Successful visitor observation & discovery checkpoint (Milestone 12)**: Following a successful visitor observation (`VisitorObservationPersistenceCoordinator.try_observe_visitor_and_save()`), the visitor sighting is recorded in `JournalState` and `GameState` is immediately checkpointed via `LocalSaveRepository.save(GameState)`, returning a typed `VisitorObservationCheckpointResult` (`OBSERVED_SAVED`, `OBSERVED_SAVE_FAILED`, `NO_ELIGIBLE_VISITORS`, `OBSERVATION_REJECTED`, or `NOT_READY`). When no visitors are eligible, zero state mutations and zero disk writes occur.
+- **Successful decoration purchase & placement checkpoint (Milestone 13)**: Following a validated decoration purchase (`DecorationPurchasePersistenceCoordinator.try_purchase_and_checkpoint_now()`), `GameState` is immediately checkpointed in Save Schema V3 via `LocalSaveRepository.save(GameState)`, returning a typed `DecorationPurchaseCheckpointResult` (`PURCHASED_SAVED`, `PURCHASED_SAVE_FAILED`, `PURCHASE_REJECTED`, or `NOT_READY`). Rejected purchases never call `repository.save()`.
+- **Independent boundaries**: Planting persistence checkpoints, harvest persistence checkpoints, visitor observation checkpoints, decoration purchase checkpoints, and lifecycle pause checkpoints are completely independent. A later approved checkpoint (such as `APPLICATION_PAUSED`) may persist the active in-memory state that remained unpersisted during a prior failed save.
+- **Deferred gameplay features**: Seed purchasing and free-form placement coordinates remain out of scope through Milestone 13 and deferred to future tasks.
 
 All other save triggers (after purchase, discovery, or debounced interval checkpoints) remain provisional and will only be introduced through explicit future tasks.
 
@@ -1197,9 +1207,9 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestones 8, 9, 10, 11, and 12)
+#### Implementation Status (Milestones 8, 9, 10, 11, 12, and 13)
 
-Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, in Milestone 11 with environmental trait summary and visitor observation controls, and in Milestone 12 with the Garden Journal HUD row and modal `JournalPanel`):
+Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, in Milestone 11 with environmental trait summary and visitor observation controls, in Milestone 12 with the Garden Journal HUD row and modal `JournalPanel`, and in Milestone 13 with the Decoration HUD row and modal `DecorationPicker`):
 
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
@@ -1209,6 +1219,7 @@ Main (res://scenes/app/main.tscn — MainScreen)
     ├── EnvironmentLabel (Derived GardenSnapshot trait summary)
     ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton)
     ├── JournalRow (JournalStatusLabel + JournalButton)
+    ├── DecorationRow (DecorationStatusLabel + DecorateButton)
     ├── FeedbackArea (FeedbackLabel)
     ├── ContentArea
     │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
@@ -1218,6 +1229,9 @@ Main (res://scenes/app/main.tscn — MainScreen)
     ├── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
     │   ├── PickerPanel (Catalog plant option buttons)
     │   └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
+    ├── DecorationPicker (res://scenes/garden/decoration_picker.tscn — DecorationPicker)
+    │   ├── PickerPanel (Catalog decoration shop buttons with price, traits, and owned count)
+    │   └── ConfirmationOverlay (Explicit Confirm / Cancel purchase dialog)
     └── JournalPanel (res://scenes/garden/journal_panel.tscn — JournalPanel)
         └── JournalModalPanel (SummaryLabel, ScrollContainer -> EntriesContainer, CloseButton)
 ```

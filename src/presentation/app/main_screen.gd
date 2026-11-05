@@ -45,6 +45,8 @@ func _connect_garden_signals() -> void:
 		_garden_view.harvest_requested.connect(_on_garden_harvest_requested)
 	if _garden_view != null and not _garden_view.visitor_observation_requested.is_connected(_on_garden_visitor_observation_requested):
 		_garden_view.visitor_observation_requested.connect(_on_garden_visitor_observation_requested)
+	if _garden_view != null and not _garden_view.decoration_purchase_requested.is_connected(_on_garden_decoration_purchase_requested):
+		_garden_view.decoration_purchase_requested.connect(_on_garden_decoration_purchase_requested)
 
 
 ## Explicit dependency injection seam allowing tests or coordinators to bind an isolated AppRoot.
@@ -206,6 +208,29 @@ func _on_garden_visitor_observation_requested() -> void:
 	if _garden_view != null:
 		_garden_view.show_visitor_observation_result(result)
 		if result != null and result.is_observed():
+			_garden_view.refresh_from_session()
+
+
+func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_decoration_purchase_result(DecorationPurchaseCheckpointResult.not_ready())
+		return
+
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+	):
+		if _garden_view != null:
+			_garden_view.show_decoration_purchase_result(DecorationPurchaseCheckpointResult.not_ready())
+		return
+
+	var result: DecorationPurchaseCheckpointResult = app.try_purchase_decoration_and_checkpoint(definition_id)
+	if _garden_view != null:
+		_garden_view.show_decoration_purchase_result(result)
+		if result != null and result.is_purchased():
 			_garden_view.refresh_from_session()
 
 

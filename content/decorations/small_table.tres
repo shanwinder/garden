@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="DecorationDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/domain/decorations/decoration_definition.gd" id="1_decor_def"]
+
+[resource]
+script = ExtResource("1_decor_def")
+id = "decoration.small_table"
+price = 20
+environmental_traits = Array[String](["perch", "shade"])

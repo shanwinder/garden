@@ -25,6 +25,8 @@ static func build_snapshot(
 	var plant_counts_by_id: Dictionary = {}
 	var total_plant_count: int = 0
 	var mature_plant_count: int = 0
+	var decoration_counts_by_id: Dictionary = {}
+	var total_decoration_count: int = 0
 
 	var plants: Array[PlantState] = state.get_plants().get_all_plants()
 	for plant_state: PlantState in plants:
@@ -54,9 +56,32 @@ static func build_snapshot(
 			if stage == PlantGrowth.Stage.MATURE:
 				mature_plant_count += 1
 
+	var decorations_collection: DecorationCollectionState = state.get_decorations()
+	if decorations_collection != null:
+		var decorations: Array[DecorationState] = decorations_collection.get_all_decorations()
+		for decoration_state: DecorationState in decorations:
+			if decoration_state == null or not decoration_state.is_valid():
+				continue
+
+			var decor_def_id: String = decoration_state.get_definition_id()
+			var decor_def: DecorationDefinition = catalog.get_decoration(decor_def_id)
+			if decor_def == null or not decor_def.is_valid():
+				continue
+
+			total_decoration_count += 1
+			var current_decor_count: int = decoration_counts_by_id.get(decor_def_id, 0) as int
+			decoration_counts_by_id[decor_def_id] = current_decor_count + 1
+
+			for trait_id: String in decor_def.environmental_traits:
+				if EnvironmentalTrait.is_valid(trait_id):
+					var current_trait_count: int = trait_counts.get(trait_id, 0) as int
+					trait_counts[trait_id] = current_trait_count + 1
+
 	return GardenSnapshot.new(
 		trait_counts,
 		plant_counts_by_id,
 		total_plant_count,
-		mature_plant_count
+		mature_plant_count,
+		decoration_counts_by_id,
+		total_decoration_count
 	)

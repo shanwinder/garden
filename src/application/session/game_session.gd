@@ -186,3 +186,38 @@ func record_discovery_now(
 		game_clock,
 		definition_id
 	)
+
+
+## Application operation to purchase and place a decoration at an explicit UTC timestamp.
+## Delegates directly to DecorationPurchaseService.
+func try_purchase_decoration_at(
+	catalog: ContentCatalog,
+	instance_id: String,
+	definition_id: String,
+	placed_at: int
+) -> DecorationPurchaseResult:
+	return DecorationPurchaseService.try_purchase_and_place_at(
+		_state,
+		catalog,
+		instance_id,
+		definition_id,
+		placed_at
+	)
+
+
+## Application operation to capture current UTC timestamp, generate runtime identity,
+## and purchase/place a decoration into this session.
+## Delegates directly to DecorationPurchaseService.
+func try_purchase_decoration_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	random_source: RandomSource,
+	definition_id: String
+) -> DecorationPurchaseResult:
+	return DecorationPurchaseService.try_purchase_and_place_now(
+		_state,
+		catalog,
+		game_clock,
+		random_source,
+		definition_id
+	)

@@ -50,6 +50,7 @@ func run_tests() -> void:
 	_test_try_harvest_delegation_and_atomicity()
 	_test_snapshot_and_visitor_evaluation_delegation()
 	_test_record_discovery_delegation()
+	_test_try_purchase_decoration_delegation()
 
 
 
@@ -565,3 +566,39 @@ func _test_record_discovery_delegation() -> void:
 	assert_true(second.is_repeat_sighting(), "Reported as repeat sighting")
 	assert_eq(second.get_record().get_first_seen_at(), 1200, "first_seen_at preserved at 1200")
 	assert_eq(second.get_record().get_times_seen(), 2, "times_seen incremented to 2")
+
+
+func _test_try_purchase_decoration_delegation() -> void:
+	describe("GameSession try_purchase_decoration_at and try_purchase_decoration_now delegate to DecorationPurchaseService")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var decors: Array[DecorationDefinition] = DecorationContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors, decors)
+
+	var session: GameSession = GameSession.new()
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+
+	# Insufficient funds rejected without mutating state
+	var r_poor: DecorationPurchaseResult = session.try_purchase_decoration_at(
+		catalog, "dec-1", "decoration.clay_jar", 1000
+	)
+	assert_eq(r_poor.get_status(), DecorationPurchaseResult.INSUFFICIENT_CURRENCY, "Insufficient currency rejected")
+	assert_eq(session.get_state().get_decorations().get_count(), 0, "0 decorations")
+
+	# Grant 50 coins and purchase clay_jar (price 15) and bench (price 25)
+	session.grant_currency(50)
+	var r_jar: DecorationPurchaseResult = session.try_purchase_decoration_at(
+		catalog, "dec-1", "decoration.clay_jar", 1000
+	)
+	assert_true(r_jar.is_purchased(), "Clay jar purchased")
+	assert_eq(r_jar.get_price_spent(), 15, "Spent 15")
+	assert_eq(session.get_currency(), 35, "Balance is 35")
+
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	var r_bench: DecorationPurchaseResult = session.try_purchase_decoration_now(
+		catalog, clock, rng, "decoration.bench"
+	)
+	assert_true(r_bench.is_purchased(), "Bench purchased via try_purchase_decoration_now")
+	assert_eq(r_bench.get_price_spent(), 25, "Spent 25")
+	assert_eq(session.get_currency(), 10, "Balance is 10")
+	assert_eq(session.get_state().get_decorations().get_count(), 2, "2 decorations placed")

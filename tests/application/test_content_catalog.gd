@@ -36,6 +36,7 @@ func run_tests() -> void:
 	_test_failure_rejection_duplicate_ids()
 	_test_visitor_catalog_queries_and_sorting()
 	_test_visitor_catalog_rejection()
+	_test_decoration_catalog_queries_and_rejection()
 
 
 func _create_valid_definition(
@@ -362,3 +363,51 @@ func _test_visitor_catalog_rejection() -> void:
 	assert_true(ContentCatalog.try_create([plant_a], [null]) == null, "Null visitor rejected")
 	assert_true(ContentCatalog.try_create([plant_a], [invalid_vis]) == null, "Invalid visitor rejected")
 	assert_true(ContentCatalog.try_create([plant_a], [valid_vis, dup_vis]) == null, "Duplicate visitor ID rejected")
+
+
+func _create_valid_decoration(id: String = "decoration.clay_jar", price: int = 15) -> DecorationDefinition:
+	var def: DecorationDefinition = DecorationDefinition.new()
+	def.id = id
+	def.price = price
+	def.environmental_traits = ["water"]
+	return def
+
+
+func _test_decoration_catalog_queries_and_rejection() -> void:
+	describe("Decoration definitions in ContentCatalog support lookup, sorting, defensive copying, and validation")
+	var plant_a: PlantDefinition = _create_valid_definition("plant.jasmine")
+	var dec_pond: DecorationDefinition = _create_valid_decoration("decoration.small_pond", 50)
+	var dec_jar: DecorationDefinition = _create_valid_decoration("decoration.clay_jar", 15)
+	var dec_bench: DecorationDefinition = _create_valid_decoration("decoration.bench", 25)
+
+	var catalog: ContentCatalog = ContentCatalog.try_create([plant_a], [], [dec_pond, dec_jar, dec_bench])
+	assert_true(catalog != null, "Catalog with valid decorations must build")
+	assert_eq(catalog.get_decoration_count(), 3, "Decoration count must be 3")
+	assert_true(catalog.has_decoration("decoration.bench"), "Must have decoration.bench")
+	assert_true(catalog.has_decoration("decoration.clay_jar"), "Must have decoration.clay_jar")
+	assert_true(catalog.has_decoration("decoration.small_pond"), "Must have decoration.small_pond")
+	assert_false(catalog.has_decoration("decoration.unknown"), "Must not have decoration.unknown")
+	assert_true(catalog.get_decoration("decoration.unknown") == null, "Unknown decoration lookup returns null")
+	assert_true(
+		catalog.get_decoration("decoration.clay_jar") == dec_jar,
+		"Exact DecorationDefinition reference preserved"
+	)
+	assert_eq(
+		catalog.get_all_decoration_ids(),
+		["decoration.bench", "decoration.clay_jar", "decoration.small_pond"],
+		"Decoration IDs enumerate in ascending order"
+	)
+
+	var all_decs: Array[DecorationDefinition] = catalog.get_all_decorations()
+	assert_eq(all_decs.size(), 3, "get_all_decorations returns 3 definitions")
+	all_decs.clear()
+	assert_eq(catalog.get_decoration_count(), 3, "Mutating returned decorations array does not alter catalog")
+
+	var dup_jar: DecorationDefinition = _create_valid_decoration("decoration.clay_jar", 15)
+	var invalid_dec: DecorationDefinition = DecorationDefinition.new()
+	assert_true(ContentCatalog.try_create([plant_a], [], [null]) == null, "Null decoration rejected")
+	assert_true(ContentCatalog.try_create([plant_a], [], [invalid_dec]) == null, "Invalid decoration rejected")
+	assert_true(
+		ContentCatalog.try_create([plant_a], [], [dec_jar, dup_jar]) == null,
+		"Duplicate decoration ID rejected"
+	)

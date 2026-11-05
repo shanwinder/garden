@@ -1,7 +1,7 @@
 ## game_state_codec.gd
 ## Versioned GameState snapshot encoder, migrator, and decoder.
 ##
-## GameStateCodec provides pure, deterministic serialization, schema migration (V1 -> V2),
+## GameStateCodec provides pure, deterministic serialization, schema migration (V1 -> V2 -> V3),
 ## and deserialization between authoritative runtime GameState instances and JSON-compatible
 ## snapshot dictionaries.
 ##
@@ -11,41 +11,45 @@
 ## - GameState remains the authoritative runtime state model.
 ## - Schema contains only persistent facts; derived plant growth stages and timings
 ##   are intentionally excluded.
-## - Static definition resources (PlantDefinition, VisitorDefinition) are NOT serialized into the snapshot.
-## - Current schema contract: CURRENT_SCHEMA_VERSION = 2 (with sequential V1 -> V2 migration).
-## - Unsupported schema versions (0, 3, 999, etc.) are strictly rejected.
+## - Static definition resources (PlantDefinition, VisitorDefinition, DecorationDefinition)
+##   are NOT serialized into the snapshot.
+## - Current schema contract: CURRENT_SCHEMA_VERSION = 3 (with sequential V1 -> V2 -> V3 migration).
+## - Unsupported schema versions (0, 4, 999, etc.) are strictly rejected.
 ## - Validates definition IDs structurally (namespace prefix and syntax); catalog existence
 ##   is validated at the application startup boundary (PlantSaveContentValidator).
 ## - Pure codec: extends RefCounted; no Node, Resource, singleton, Autoload, SceneTree,
 ##   GameClock, or RandomSource dependencies.
 ## - Decode is all-or-nothing: invalid or corrupted data returns null and never exposes
 ##   a partially reconstructed GameState.
-## - Persistent int64 domain values (currency, planted_at, first_seen_at, times_seen) are
+## - Persistent int64 domain values (currency, planted_at, first_seen_at, times_seen, placed_at) are
 ##   encoded as canonical decimal Strings to prevent 64-bit float precision loss through
 ##   Godot JSON stringify/parse.
 ## - Runtime domain values remain int; string conversion exists only at the persistence wire boundary.
-## - schema_version remains a small numeric discriminator (accepts native int 1/2 and JSON-parsed float 1.0/2.0).
+## - schema_version remains a small numeric discriminator (accepts native int 1/2/3 and JSON-parsed float 1.0/2.0/3.0).
 class_name GameStateCodec
 extends RefCounted
 
 ## Supported schema versions.
 const SCHEMA_VERSION_V1: int = 1
 const SCHEMA_VERSION_V2: int = 2
-const CURRENT_SCHEMA_VERSION: int = SCHEMA_VERSION_V2
+const SCHEMA_VERSION_V3: int = 3
+const CURRENT_SCHEMA_VERSION: int = SCHEMA_VERSION_V3
 
 ## Field keys for deterministic root snapshot.
 const KEY_SCHEMA_VERSION: String = "schema_version"
 const KEY_ECONOMY: String = "economy"
 const KEY_PLANTS: String = "plants"
 const KEY_DISCOVERIES: String = "discoveries"
+const KEY_DECORATIONS: String = "decorations"
 
 ## Field keys for economy snapshot.
 const KEY_CURRENCY: String = "currency"
 
-## Field keys for plant instance snapshot entries.
+## Field keys for plant and decoration instance snapshot entries.
 const KEY_INSTANCE_ID: String = "instance_id"
 const KEY_DEFINITION_ID: String = "definition_id"
 const KEY_PLANTED_AT: String = "planted_at"
+const KEY_PLACED_AT: String = "placed_at"
 
 ## Field keys for discovery record snapshot entries (V2+).
 const KEY_FIRST_SEEN_AT: String = "first_seen_at"
@@ -57,14 +61,15 @@ const MAX_INT64_DIV_10: int = 922337203685477580
 const MAX_INT64_MOD_10: int = 7
 
 
-## Encodes an authoritative [param state] into a JSON-compatible V2 snapshot dictionary.
+## Encodes an authoritative [param state] into a JSON-compatible V3 snapshot dictionary.
 ##
 ## Requirements and guarantees:
 ## - Returns a new Dictionary containing only JSON-compatible primitive types (Dictionary, Array, String, int).
-## - Persistent int64 domain values (currency, planted_at, first_seen_at, times_seen) are encoded
+## - Persistent int64 domain values (currency, planted_at, first_seen_at, times_seen, placed_at) are encoded
 ##   as exact canonical decimal Strings to prevent 64-bit float precision loss through Godot JSON stringify/parse.
 ## - Plants are serialized in deterministic ascending order of runtime instance ID.
 ## - Discoveries are serialized in deterministic ascending order of definition ID.
+## - Decorations are serialized in deterministic ascending order of runtime instance ID.
 ## - Does not serialize derived growth data or static definition resources.
 ## - Does not mutate [param state].
 ## - If [param state] is null, returns an empty Dictionary without crashing.
@@ -99,11 +104,25 @@ static func encode(state: GameState) -> Dictionary:
 			KEY_TIMES_SEEN: str(record.get_times_seen()),
 		})
 
+	var decorations_collection: DecorationCollectionState = state.get_decorations()
+	var all_decorations: Array[DecorationState] = (
+		decorations_collection.get_all_decorations() if decorations_collection != null else []
+	)
+	var decorations_data: Array = []
+
+	for decoration: DecorationState in all_decorations:
+		decorations_data.append({
+			KEY_INSTANCE_ID: decoration.get_runtime_instance_id(),
+			KEY_DEFINITION_ID: decoration.get_definition_id(),
+			KEY_PLACED_AT: str(decoration.get_placed_at()),
+		})
+
 	return {
 		KEY_SCHEMA_VERSION: CURRENT_SCHEMA_VERSION,
 		KEY_ECONOMY: economy_data,
 		KEY_PLANTS: plants_data,
 		KEY_DISCOVERIES: discoveries_data,
+		KEY_DECORATIONS: decorations_data,
 	}
 
 
@@ -112,7 +131,7 @@ static func encode(state: GameState) -> Dictionary:
 ## Validation and guarantees:
 ## - Requires [param v1_snapshot] to be a Dictionary with exact V1 root keys
 ##   (schema_version, economy, plants) and schema_version == 1 (or 1.0).
-## - Rejects any V1 dictionary containing unexpected root keys (including "discoveries").
+## - Rejects any V1 dictionary containing unexpected root keys (including "discoveries" or "decorations").
 ## - Does not mutate [param v1_snapshot].
 ## - Returns the migrated V2 Dictionary on success, or null if V1 root validation fails.
 static func migrate_v1_to_v2(v1_snapshot: Variant) -> Variant:
@@ -150,18 +169,67 @@ static func migrate_v1_to_v2(v1_snapshot: Variant) -> Variant:
 	}
 
 
-## Decodes a V1 or V2 [param snapshot] into a newly reconstructed GameState.
+## Deterministically migrates a V2 root snapshot dictionary into a V3 root snapshot dictionary.
+##
+## Validation and guarantees:
+## - Requires [param v2_snapshot] to be a Dictionary with exact V2 root keys
+##   (schema_version, economy, plants, discoveries) and schema_version == 2 (or 2.0).
+## - Rejects any V2 dictionary containing unexpected root keys (including "decorations").
+## - Does not mutate [param v2_snapshot].
+## - Returns the migrated V3 Dictionary on success, or null if V2 root validation fails.
+static func migrate_v2_to_v3(v2_snapshot: Variant) -> Variant:
+	if typeof(v2_snapshot) != TYPE_DICTIONARY:
+		return null
+
+	var v2_dict: Dictionary = v2_snapshot
+	if (
+		not v2_dict.has(KEY_SCHEMA_VERSION)
+		or not v2_dict.has(KEY_ECONOMY)
+		or not v2_dict.has(KEY_PLANTS)
+		or not v2_dict.has(KEY_DISCOVERIES)
+	):
+		return null
+
+	for key: Variant in v2_dict.keys():
+		if typeof(key) != TYPE_STRING:
+			return null
+		var key_str: String = key
+		if (
+			key_str != KEY_SCHEMA_VERSION
+			and key_str != KEY_ECONOMY
+			and key_str != KEY_PLANTS
+			and key_str != KEY_DISCOVERIES
+		):
+			return null
+
+	var version: int = _extract_integral_schema_version(v2_dict[KEY_SCHEMA_VERSION])
+	if version != SCHEMA_VERSION_V2:
+		return null
+
+	return {
+		KEY_SCHEMA_VERSION: SCHEMA_VERSION_V3,
+		KEY_ECONOMY: v2_dict[KEY_ECONOMY],
+		KEY_PLANTS: v2_dict[KEY_PLANTS],
+		KEY_DISCOVERIES: v2_dict[KEY_DISCOVERIES],
+		KEY_DECORATIONS: [],
+	}
+
+
+## Decodes a V1, V2, or V3 [param snapshot] into a newly reconstructed GameState.
 ##
 ## Validation and guarantees:
 ## - [param snapshot] must be a Dictionary.
-## - schema_version must be an integral JSON number equal to 1 (V1, automatically migrated to V2)
-##   or 2 (V2). Rejects unsupported versions (0, 3, 999, strings, booleans, fractional floats).
+## - schema_version must be an integral JSON number equal to 1 (migrated V1 -> V2 -> V3),
+##   2 (migrated V2 -> V3), or 3 (V3). Rejects unsupported versions (0, 4, 999, strings, booleans, fractional floats).
 ## - V1 snapshots must have exact V1 root keys (schema_version, economy, plants) before migration.
-## - V2 snapshots must have exact V2 root keys (schema_version, economy, plants, discoveries).
+## - V2 snapshots must have exact V2 root keys (schema_version, economy, plants, discoveries) before migration.
+## - V3 snapshots must have exact V3 root keys (schema_version, economy, plants, discoveries, decorations).
 ## - economy must be a Dictionary with exact allowed keys and canonical decimal String currency.
 ## - plants must be an Array of Dictionaries with exact allowed keys; duplicate instance_ids rejected.
 ## - discoveries must be an Array of Dictionaries with exact allowed keys (definition_id,
 ##   first_seen_at, times_seen); duplicate definition_ids rejected.
+## - decorations must be an Array of Dictionaries with exact allowed keys (instance_id,
+##   definition_id, placed_at); duplicate instance_ids rejected.
 ## - All-or-nothing: returns null on any validation failure, never returns partial state.
 static func decode(snapshot: Variant) -> GameState:
 	if typeof(snapshot) != TYPE_DICTIONARY:
@@ -174,21 +242,30 @@ static func decode(snapshot: Variant) -> GameState:
 	var version: int = _extract_integral_schema_version(input_dict[KEY_SCHEMA_VERSION])
 	var root_dict: Dictionary
 	if version == SCHEMA_VERSION_V1:
-		var migrated: Variant = migrate_v1_to_v2(input_dict)
-		if typeof(migrated) != TYPE_DICTIONARY:
+		var migrated_v2: Variant = migrate_v1_to_v2(input_dict)
+		if typeof(migrated_v2) != TYPE_DICTIONARY:
 			return null
-		root_dict = migrated
+		var migrated_v3: Variant = migrate_v2_to_v3(migrated_v2)
+		if typeof(migrated_v3) != TYPE_DICTIONARY:
+			return null
+		root_dict = migrated_v3
 	elif version == SCHEMA_VERSION_V2:
+		var migrated_from_v2: Variant = migrate_v2_to_v3(input_dict)
+		if typeof(migrated_from_v2) != TYPE_DICTIONARY:
+			return null
+		root_dict = migrated_from_v2
+	elif version == SCHEMA_VERSION_V3:
 		root_dict = input_dict
 	else:
 		return null
 
-	# Validate V2 root keys strictly (exact shape, no unexpected keys).
+	# Validate V3 root keys strictly (exact shape, no unexpected keys).
 	if (
 		not root_dict.has(KEY_SCHEMA_VERSION)
 		or not root_dict.has(KEY_ECONOMY)
 		or not root_dict.has(KEY_PLANTS)
 		or not root_dict.has(KEY_DISCOVERIES)
+		or not root_dict.has(KEY_DECORATIONS)
 	):
 		return null
 
@@ -201,6 +278,7 @@ static func decode(snapshot: Variant) -> GameState:
 			and key_str != KEY_ECONOMY
 			and key_str != KEY_PLANTS
 			and key_str != KEY_DISCOVERIES
+			and key_str != KEY_DECORATIONS
 		):
 			return null
 
@@ -351,6 +429,64 @@ static func decode(snapshot: Variant) -> GameState:
 
 		parsed_discoveries.append(record)
 
+	# Validate decorations array (V3).
+	var raw_decorations: Variant = root_dict[KEY_DECORATIONS]
+	if typeof(raw_decorations) != TYPE_ARRAY:
+		return null
+
+	var decorations_array: Array = raw_decorations
+	var parsed_decorations: Array[DecorationState] = []
+
+	for item: Variant in decorations_array:
+		if typeof(item) != TYPE_DICTIONARY:
+			return null
+
+		var decor_dict: Dictionary = item
+		if (
+			not decor_dict.has(KEY_INSTANCE_ID)
+			or not decor_dict.has(KEY_DEFINITION_ID)
+			or not decor_dict.has(KEY_PLACED_AT)
+		):
+			return null
+
+		for key: Variant in decor_dict.keys():
+			if typeof(key) != TYPE_STRING:
+				return null
+			var key_str: String = key
+			if (
+				key_str != KEY_INSTANCE_ID
+				and key_str != KEY_DEFINITION_ID
+				and key_str != KEY_PLACED_AT
+			):
+				return null
+
+		var raw_decor_instance_id: Variant = decor_dict[KEY_INSTANCE_ID]
+		var raw_decor_def_id: Variant = decor_dict[KEY_DEFINITION_ID]
+		var raw_placed_at: Variant = decor_dict[KEY_PLACED_AT]
+
+		if typeof(raw_decor_instance_id) != TYPE_STRING:
+			return null
+		if typeof(raw_decor_def_id) != TYPE_STRING:
+			return null
+
+		var parsed_placed_at: Variant = _parse_canonical_non_negative_int(raw_placed_at)
+		if parsed_placed_at == null:
+			return null
+
+		var placed_at: int = parsed_placed_at
+		if placed_at < 0 or placed_at > MAX_INT64:
+			return null
+
+		var decoration_state: DecorationState = DecorationState.new(
+			raw_decor_instance_id,
+			raw_decor_def_id,
+			placed_at
+		)
+		if not decoration_state.is_valid():
+			return null
+
+		parsed_decorations.append(decoration_state)
+
 	# Reconstruct GameState atomically using authoritative domain methods.
 	var reconstructed: GameState = GameState.new()
 
@@ -373,22 +509,29 @@ static func decode(snapshot: Variant) -> GameState:
 			# Duplicate definition_id or domain validation rejection -> reject entire snapshot.
 			return null
 
+	var decorations_collection: DecorationCollectionState = reconstructed.get_decorations()
+	for decoration: DecorationState in parsed_decorations:
+		var add_decor_ok: bool = decorations_collection.try_add_decoration(decoration)
+		if not add_decor_ok:
+			# Duplicate instance_id or domain validation rejection -> reject entire snapshot.
+			return null
+
 	return reconstructed
 
 
-## Extracts an integral schema version (1 or 2) from [param raw_version], or returns -1 if invalid.
+## Extracts an integral schema version (1, 2, or 3) from [param raw_version], or returns -1 if invalid.
 static func _extract_integral_schema_version(raw_version: Variant) -> int:
 	var val_type: int = typeof(raw_version)
 	if val_type == TYPE_INT:
 		var v: int = raw_version
-		if v == SCHEMA_VERSION_V1 or v == SCHEMA_VERSION_V2:
+		if v == SCHEMA_VERSION_V1 or v == SCHEMA_VERSION_V2 or v == SCHEMA_VERSION_V3:
 			return v
 		return -1
 	if val_type == TYPE_FLOAT:
 		var f: float = raw_version
 		if is_finite(f) and floor(f) == f:
 			var iv: int = int(f)
-			if iv == SCHEMA_VERSION_V1 or iv == SCHEMA_VERSION_V2:
+			if iv == SCHEMA_VERSION_V1 or iv == SCHEMA_VERSION_V2 or iv == SCHEMA_VERSION_V3:
 				return iv
 		return -1
 	return -1

@@ -28,6 +28,8 @@ var _plants_by_id: Dictionary = {}
 var _sorted_plant_ids: Array[String] = []
 var _visitors_by_id: Dictionary = {}
 var _sorted_visitor_ids: Array[String] = []
+var _decorations_by_id: Dictionary = {}
+var _sorted_decoration_ids: Array[String] = []
 
 
 ## Private constructor. Use [method try_create] to instantiate.
@@ -35,27 +37,33 @@ func _init(
 	plants_by_id: Dictionary,
 	sorted_plant_ids: Array[String],
 	visitors_by_id: Dictionary = {},
-	sorted_visitor_ids: Array[String] = []
+	sorted_visitor_ids: Array[String] = [],
+	decorations_by_id: Dictionary = {},
+	sorted_decoration_ids: Array[String] = []
 ) -> void:
 	_plants_by_id = plants_by_id
 	_sorted_plant_ids = sorted_plant_ids
 	_visitors_by_id = visitors_by_id
 	_sorted_visitor_ids = sorted_visitor_ids
+	_decorations_by_id = decorations_by_id
+	_sorted_decoration_ids = sorted_decoration_ids
 
 
-## Validates and constructs a ContentCatalog from the supplied [param plant_definitions]
-## and optional [param visitor_definitions].
+## Validates and constructs a ContentCatalog from the supplied [param plant_definitions],
+## optional [param visitor_definitions], and optional [param decoration_definitions].
 ##
 ## All-or-nothing validation rules:
-## - Returns null if any entry in [param plant_definitions] or [param visitor_definitions] is null.
+## - Returns null if any entry in [param plant_definitions], [param visitor_definitions],
+##   or [param decoration_definitions] is null.
 ## - Returns null if any entry has is_valid() == false.
-## - Returns null if there are duplicate definition IDs within plants or visitors.
+## - Returns null if there are duplicate definition IDs within plants, visitors, or decorations.
 ## - Returns a valid ContentCatalog if inputs are empty or all entries are valid and unique.
 ##
 ## Does not mutate caller's Arrays. Preserves exact Resource references.
 static func try_create(
 	plant_definitions: Array[PlantDefinition],
-	visitor_definitions: Array[VisitorDefinition] = []
+	visitor_definitions: Array[VisitorDefinition] = [],
+	decoration_definitions: Array[DecorationDefinition] = []
 ) -> ContentCatalog:
 	var plants_map: Dictionary = {}
 	var plant_ids: Array[String] = []
@@ -91,10 +99,35 @@ static func try_create(
 		visitors_map[visitor_id] = visitor_def
 		visitor_ids.append(visitor_id)
 
+	var decorations_map: Dictionary = {}
+	var decoration_ids: Array[String] = []
+
+	for decoration_def: DecorationDefinition in decoration_definitions:
+		if decoration_def == null:
+			return null
+
+		if not decoration_def.is_valid():
+			return null
+
+		var decoration_id: String = decoration_def.id
+		if decorations_map.has(decoration_id):
+			return null
+
+		decorations_map[decoration_id] = decoration_def
+		decoration_ids.append(decoration_id)
+
 	plant_ids.sort()
 	visitor_ids.sort()
+	decoration_ids.sort()
 
-	return ContentCatalog.new(plants_map, plant_ids, visitors_map, visitor_ids)
+	return ContentCatalog.new(
+		plants_map,
+		plant_ids,
+		visitors_map,
+		visitor_ids,
+		decorations_map,
+		decoration_ids
+	)
 
 
 ## Returns true if the catalog contains a plant definition with the exact [param definition_id].
@@ -163,3 +196,37 @@ func get_all_visitors() -> Array[VisitorDefinition]:
 ## Mutating the returned Array does not mutate the catalog.
 func get_all_visitor_ids() -> Array[String]:
 	return _sorted_visitor_ids.duplicate()
+
+
+## Returns true if the catalog contains a decoration definition with the exact [param definition_id].
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func has_decoration(definition_id: String) -> bool:
+	return _decorations_by_id.has(definition_id)
+
+
+## Returns the exact DecorationDefinition reference for [param definition_id], or null if not found.
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func get_decoration(definition_id: String) -> DecorationDefinition:
+	return _decorations_by_id.get(definition_id, null)
+
+
+## Returns the total number of decoration definitions in the catalog.
+func get_decoration_count() -> int:
+	return _sorted_decoration_ids.size()
+
+
+## Returns a new Array containing all DecorationDefinition references in deterministic ascending ID order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_decorations() -> Array[DecorationDefinition]:
+	var result: Array[DecorationDefinition] = []
+	result.resize(_sorted_decoration_ids.size())
+	for i: int in range(_sorted_decoration_ids.size()):
+		var def_id: String = _sorted_decoration_ids[i]
+		result[i] = _decorations_by_id[def_id]
+	return result
+
+
+## Returns a new Array containing all decoration definition IDs in deterministic ascending order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_decoration_ids() -> Array[String]:
+	return _sorted_decoration_ids.duplicate()
