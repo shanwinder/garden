@@ -25,6 +25,7 @@ const PLANT_NAMESPACE_PREFIX: String = "plant."
 @export var growing_after_seconds: int = 0
 @export var mature_after_seconds: int = 0
 @export var harvest_reward: int = 0
+@export var environmental_traits: Array[String] = []
 
 
 ## Returns true if this definition is structurally valid.
@@ -41,7 +42,22 @@ func is_valid() -> bool:
 	if not _is_valid_harvest_reward(harvest_reward):
 		return false
 
+	if not EnvironmentalTrait.is_valid_trait_list(environmental_traits):
+		return false
+
 	return true
+
+
+## Returns true if this plant definition includes the exact [param trait_id].
+func has_environmental_trait(trait_id: String) -> bool:
+	if trait_id.is_empty():
+		return false
+	return environmental_traits.has(trait_id)
+
+
+## Returns a defensive copy of this plant definition's environmental traits.
+func get_environmental_traits() -> Array[String]:
+	return environmental_traits.duplicate()
 
 
 static func _is_valid_id(definition_id: String) -> bool:

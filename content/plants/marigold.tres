@@ -9,3 +9,4 @@ sprout_after_seconds = 180
 growing_after_seconds = 900
 mature_after_seconds = 2700
 harvest_reward = 20
+environmental_traits = Array[String](["flower"])

@@ -65,6 +65,15 @@ const EXPECTED_PRODUCTION_PLANT_IDS: Array[String] = [
 	"plant.marigold",
 ]
 
+## Exact five approved production visitor definitions expected in the production catalog.
+const EXPECTED_PRODUCTION_VISITOR_IDS: Array[String] = [
+	"visitor.bird",
+	"visitor.butterfly",
+	"visitor.cat",
+	"visitor.firefly",
+	"visitor.frog",
+]
+
 ## The production clock for this application session.
 ## Constructed once at composition time; never replaced at runtime.
 ## Tests that require deterministic time should use FakeGameClock injected
@@ -84,6 +93,10 @@ var save_repository: LocalSaveRepository
 ## The loader adapter for authored plant definition resources.
 ## Constructed once at composition time or injected during testing.
 var plant_content_loader: PlantContentLoader
+
+## The loader adapter for authored visitor definition resources.
+## Constructed once at composition time or injected during testing.
+var visitor_content_loader: VisitorContentLoader
 
 ## The coordinator for mobile pause/resume persistence checkpoints.
 ## Constructed once at composition time using save_repository; never replaced at runtime.
@@ -109,6 +122,9 @@ var _content_bootstrap_status: ContentBootstrapStatus = ContentBootstrapStatus.N
 ## Retains the diagnostic result of the plant content loader operation.
 var _content_load_result: PlantContentLoadResult = null
 
+## Retains the diagnostic result of the visitor content loader operation.
+var _visitor_content_load_result: VisitorContentLoadResult = null
+
 ## Retains the outcome of the startup load operation.
 var _startup_load_result: LocalSaveLoadResult = null
 
@@ -120,7 +136,8 @@ func _init(
 	save_repository_override: LocalSaveRepository = null,
 	plant_content_loader_override: PlantContentLoader = null,
 	game_clock_override: GameClock = null,
-	random_source_override: RandomSource = null
+	random_source_override: RandomSource = null,
+	visitor_content_loader_override: VisitorContentLoader = null
 ) -> void:
 	if game_clock_override != null:
 		game_clock = game_clock_override
@@ -140,12 +157,17 @@ func _init(
 		plant_content_loader = plant_content_loader_override
 	else:
 		plant_content_loader = PlantContentLoader.new()
+	if visitor_content_loader_override != null:
+		visitor_content_loader = visitor_content_loader_override
+	else:
+		visitor_content_loader = VisitorContentLoader.new()
 	lifecycle_coordinator = LifecycleCoordinator.new(save_repository)
 	content_catalog = null
 	game_session = null
 	_is_bootstrapped = false
 	_content_bootstrap_status = ContentBootstrapStatus.NOT_ATTEMPTED
 	_content_load_result = null
+	_visitor_content_load_result = null
 	_startup_load_result = null
 	_saved_content_validation_result = null
 
@@ -197,7 +219,7 @@ func bootstrap_session() -> LocalSaveLoadResult:
 
 	_is_bootstrapped = true
 
-	# Step 1: Attempt production content loading.
+	# Step 1: Attempt production plant and visitor content loading.
 	_content_load_result = plant_content_loader.load_production_definitions()
 	if not _content_load_result.is_loaded():
 		_content_bootstrap_status = ContentBootstrapStatus.LOAD_FAILED
@@ -206,10 +228,23 @@ func bootstrap_session() -> LocalSaveLoadResult:
 		_startup_load_result = null
 		return null
 
+	_visitor_content_load_result = visitor_content_loader.load_production_definitions()
+	if not _visitor_content_load_result.is_loaded():
+		_content_bootstrap_status = ContentBootstrapStatus.LOAD_FAILED
+		content_catalog = null
+		game_session = null
+		_startup_load_result = null
+		return null
+
 	# Step 2: Construct and validate ContentCatalog with completeness guarantee.
 	var definitions: Array[PlantDefinition] = _content_load_result.get_definitions()
-	var catalog: ContentCatalog = ContentCatalog.try_create(definitions)
-	if catalog == null or catalog.get_plant_count() != EXPECTED_PRODUCTION_PLANT_IDS.size():
+	var visitor_definitions: Array[VisitorDefinition] = _visitor_content_load_result.get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(definitions, visitor_definitions)
+	if (
+		catalog == null
+		or catalog.get_plant_count() != EXPECTED_PRODUCTION_PLANT_IDS.size()
+		or catalog.get_visitor_count() != EXPECTED_PRODUCTION_VISITOR_IDS.size()
+	):
 		_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 		content_catalog = null
 		game_session = null
@@ -218,6 +253,14 @@ func bootstrap_session() -> LocalSaveLoadResult:
 
 	for expected_id: String in EXPECTED_PRODUCTION_PLANT_IDS:
 		if not catalog.has_plant(expected_id):
+			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
+			content_catalog = null
+			game_session = null
+			_startup_load_result = null
+			return null
+
+	for expected_visitor_id: String in EXPECTED_PRODUCTION_VISITOR_IDS:
+		if not catalog.has_visitor(expected_visitor_id):
 			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 			content_catalog = null
 			game_session = null
@@ -286,10 +329,43 @@ func get_content_load_result() -> PlantContentLoadResult:
 	return _content_load_result
 
 
+## Returns the diagnostic VisitorContentLoadResult, or null if visitor content loading was not attempted.
+func get_visitor_content_load_result() -> VisitorContentLoadResult:
+	return _visitor_content_load_result
+
+
 ## Returns the result of validating saved plant references against the content catalog,
 ## or null if content loading failed, or if persistence was NO_SAVE, INVALID_DATA, or IO_ERROR.
 func get_saved_content_validation_result() -> PlantSaveContentValidationResult:
 	return _saved_content_validation_result
+
+
+## Gameplay entry method to evaluate visitor eligibility and select an eligible visitor.
+##
+## Preconditions:
+## - bootstrap_session() already attempted
+## - content status READY
+## - content_catalog exists
+## - game_session exists
+## - game_clock exists
+## - random_source exists
+##
+## If not ready: returns VisitorSelectionResult.invalid_input() without sampling clock or consuming RNG.
+func evaluate_visitor_now() -> VisitorSelectionResult:
+	if not _is_bootstrapped:
+		return VisitorSelectionResult.invalid_input()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return VisitorSelectionResult.invalid_input()
+
+	if content_catalog == null or game_session == null or game_clock == null or random_source == null:
+		return VisitorSelectionResult.invalid_input()
+
+	return game_session.evaluate_visitor_now(
+		content_catalog,
+		game_clock,
+		random_source
+	)
 
 
 ## Gameplay entry method to plant a plant and immediately checkpoint persistence.

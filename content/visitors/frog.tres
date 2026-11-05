@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="VisitorDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/domain/visitors/visitor_definition.gd" id="1_visitor_def"]
+
+[resource]
+script = ExtResource("1_visitor_def")
+id = "visitor.frog"
+weight = 10.0
+required_trait_counts = {
+"water": 1
+}
+required_plant_ids = Array[String]([])
+min_total_plants = 1
+min_mature_plants = 0

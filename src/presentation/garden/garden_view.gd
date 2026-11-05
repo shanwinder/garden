@@ -18,22 +18,51 @@ extends Control
 
 signal planting_requested(definition_id: String)
 signal harvest_requested(runtime_instance_id: String)
+signal visitor_observation_requested()
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
+
+const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
+	"dense_vegetation": "พุ่มไม้หนาแน่น",
+	"flower": "ดอกไม้",
+	"food": "พืชอาหาร",
+	"fruit": "ผลไม้",
+	"light": "แสงไฟ",
+	"perch": "กิ่งไม้เกาะพัก",
+	"shade": "ร่มเงา",
+	"shelter": "ที่หลบพัก",
+	"water": "แหล่งน้ำ",
+}
+
+const PROVISIONAL_VISITOR_DISPLAY_NAMES: Dictionary = {
+	"visitor.bird": "นกกระจอกบ้านสวน",
+	"visitor.butterfly": "ผีเสื้อบ้านสวน",
+	"visitor.cat": "แมวข้างบ้าน",
+	"visitor.firefly": "หิ่งห้อย",
+	"visitor.frog": "กบในสวน",
+}
 
 var _session: GameSession = null
 var _catalog: ContentCatalog = null
 var _game_clock: GameClock = null
 
 var _selected_runtime_instance_id: String = ""
+var _current_visitor_id: String = ""
+var _eligible_visitor_ids: Array[String] = []
+var _last_snapshot: GardenSnapshot = null
 var _is_blocked: bool = false
 var _blocked_message: String = ""
 var _last_checkpoint_result: PlantingCheckpointResult = null
 var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
+var _last_visitor_selection_result: VisitorSelectionResult = null
 
 var _refresh_button: Button = null
 var _plant_button: Button = null
 var _currency_label: Label = null
+var _environment_label: Label = null
+var _visitor_row: Control = null
+var _visitor_status_label: Label = null
+var _observe_visitor_button: Button = null
 var _feedback_area: Control = null
 var _feedback_label: Label = null
 var _planting_picker: PlantingPicker = null
@@ -71,6 +100,14 @@ func _resolve_nodes() -> void:
 		_plant_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/PlantButton") as Button
 	if _currency_label == null:
 		_currency_label = get_node_or_null("MainMargin/LayoutBox/CurrencyLabel") as Label
+	if _environment_label == null:
+		_environment_label = get_node_or_null("MainMargin/LayoutBox/EnvironmentLabel") as Label
+	if _visitor_row == null:
+		_visitor_row = get_node_or_null("MainMargin/LayoutBox/VisitorRow") as Control
+	if _visitor_status_label == null:
+		_visitor_status_label = get_node_or_null("MainMargin/LayoutBox/VisitorRow/VisitorStatusLabel") as Label
+	if _observe_visitor_button == null:
+		_observe_visitor_button = get_node_or_null("MainMargin/LayoutBox/VisitorRow/ObserveVisitorButton") as Button
 	if _feedback_area == null:
 		_feedback_area = get_node_or_null("MainMargin/LayoutBox/FeedbackArea") as Control
 	if _feedback_label == null:
@@ -117,6 +154,8 @@ func _connect_signals() -> void:
 		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
 	if _harvest_button != null and not _harvest_button.pressed.is_connected(_on_harvest_button_pressed):
 		_harvest_button.pressed.connect(_on_harvest_button_pressed)
+	if _observe_visitor_button != null and not _observe_visitor_button.pressed.is_connected(_on_observe_visitor_button_pressed):
+		_observe_visitor_button.pressed.connect(_on_observe_visitor_button_pressed)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -179,6 +218,7 @@ func refresh_from_session() -> void:
 	var plants: Array[PlantState] = _session.get_state().get_plants().get_all_plants()
 
 	_render_plants(plants, now_utc)
+	_update_environment_and_visitors(now_utc)
 
 
 func _on_refresh_button_pressed() -> void:
@@ -354,9 +394,18 @@ func _show_blocked_visual() -> void:
 	_resolve_nodes()
 	_clear_plant_views()
 	_selected_runtime_instance_id = ""
+	_current_visitor_id = ""
+	_eligible_visitor_ids = []
+	_last_snapshot = null
 
 	if _currency_label != null:
 		_currency_label.visible = false
+	if _environment_label != null:
+		_environment_label.visible = false
+	if _visitor_row != null:
+		_visitor_row.visible = false
+	if _observe_visitor_button != null:
+		_observe_visitor_button.disabled = true
 	if _feedback_area != null:
 		_feedback_area.visible = false
 	if _empty_container != null:
@@ -369,6 +418,60 @@ func _show_blocked_visual() -> void:
 		_blocked_label.text = _blocked_message if not _blocked_message.is_empty() else "ไม่สามารถโหลดสวนได้ในขณะนี้"
 
 	_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
+
+
+func _update_environment_and_visitors(now_utc: int) -> void:
+	_resolve_nodes()
+	_last_snapshot = GardenSnapshotBuilder.build_snapshot(
+		_session.get_state(),
+		_catalog,
+		now_utc
+	)
+
+	if _environment_label != null:
+		_environment_label.visible = true
+		var active_traits: Array[String] = _last_snapshot.get_active_traits()
+		if active_traits.is_empty():
+			_environment_label.text = "สภาพแวดล้อมสวน: ยังไม่มี"
+		else:
+			var trait_parts: PackedStringArray = PackedStringArray()
+			for trait_id: String in active_traits:
+				var trait_name: String = PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+				var count: int = _last_snapshot.get_trait_count(trait_id)
+				trait_parts.append("%s (%d)" % [trait_name, count])
+			_environment_label.text = "สภาพแวดล้อมสวน: %s" % ", ".join(trait_parts)
+
+	var eligible_visitors: Array[VisitorDefinition] = VisitorEligibility.filter_eligible_visitors(
+		_catalog.get_all_visitors(),
+		_last_snapshot
+	)
+	_eligible_visitor_ids = []
+	for visitor_def: VisitorDefinition in eligible_visitors:
+		_eligible_visitor_ids.append(visitor_def.id)
+
+	if not _current_visitor_id.is_empty() and not _eligible_visitor_ids.has(_current_visitor_id):
+		_current_visitor_id = ""
+
+	if _visitor_row != null:
+		_visitor_row.visible = true
+
+	if _observe_visitor_button != null:
+		_observe_visitor_button.disabled = _is_blocked or _eligible_visitor_ids.is_empty()
+
+	if _visitor_status_label != null:
+		if not _current_visitor_id.is_empty():
+			var visitor_name: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(
+				_current_visitor_id,
+				_current_visitor_id
+			)
+			_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [visitor_name, _current_visitor_id]
+		elif not _eligible_visitor_ids.is_empty():
+			var names: PackedStringArray = PackedStringArray()
+			for vid: String in _eligible_visitor_ids:
+				names.append(PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid))
+			_visitor_status_label.text = "ผู้มาเยือนที่อาจพบ: %s" % ", ".join(names)
+		else:
+			_visitor_status_label.text = "ผู้มาเยือน: ยังไม่มีผู้มาเยือน"
 
 
 ## Pure query for testing: returns true if startup is blocked.
@@ -629,3 +732,81 @@ func is_harvest_button_enabled() -> bool:
 ## Pure query for testing: returns last received HarvestCheckpointResult.
 func get_last_harvest_checkpoint_result() -> HarvestCheckpointResult:
 	return _last_harvest_checkpoint_result
+
+
+func _on_observe_visitor_button_pressed() -> void:
+	if _is_blocked or _session == null:
+		return
+	if _observe_visitor_button != null and _observe_visitor_button.disabled:
+		return
+	visitor_observation_requested.emit()
+
+
+## Displays user feedback and active visitor state from a VisitorSelectionResult.
+func show_visitor_result(result: VisitorSelectionResult) -> void:
+	_last_visitor_selection_result = result
+	_resolve_nodes()
+	if result == null:
+		return
+
+	if _feedback_area != null and _feedback_label != null:
+		_feedback_area.visible = true
+		match result.get_status():
+			VisitorSelectionResult.Status.SELECTED:
+				var vid: String = result.get_selected_visitor_id()
+				_current_visitor_id = vid
+				var vname: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid)
+				_feedback_label.text = "พบผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+				if _visitor_status_label != null:
+					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+			VisitorSelectionResult.Status.NO_ELIGIBLE_VISITORS:
+				_current_visitor_id = ""
+				_feedback_label.text = "ยังไม่มีผู้มาเยือนที่ตรงกับสภาพแวดล้อมสวนในขณะนี้"
+			VisitorSelectionResult.Status.INVALID_INPUT, VisitorSelectionResult.Status.SELECTION_FAILED:
+				_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการสำรวจผู้มาเยือน"
+			_:
+				_feedback_label.text = "สถานะผู้มาเยือนไม่ระบุ"
+
+
+## Pure query for testing: returns environment summary text.
+func get_environment_text() -> String:
+	_resolve_nodes()
+	return _environment_label.text if _environment_label != null else ""
+
+
+## Pure query for testing: returns visitor status text.
+func get_visitor_status_text() -> String:
+	_resolve_nodes()
+	return _visitor_status_label.text if _visitor_status_label != null else ""
+
+
+## Pure query for testing: returns ObserveVisitorButton instance.
+func get_observe_visitor_button() -> Button:
+	_resolve_nodes()
+	return _observe_visitor_button
+
+
+## Pure query for testing: returns true if ObserveVisitorButton is currently enabled.
+func is_observe_visitor_button_enabled() -> bool:
+	_resolve_nodes()
+	return not _is_blocked and _session != null and _observe_visitor_button != null and not _observe_visitor_button.disabled
+
+
+## Pure query for testing: returns current active ephemeral visitor ID, or empty string.
+func get_current_visitor_id() -> String:
+	return _current_visitor_id
+
+
+## Pure query for testing: returns eligible visitor IDs from last refresh.
+func get_eligible_visitor_ids() -> Array[String]:
+	return _eligible_visitor_ids.duplicate()
+
+
+## Pure query for testing: returns last derived GardenSnapshot.
+func get_last_garden_snapshot() -> GardenSnapshot:
+	return _last_snapshot
+
+
+## Pure query for testing: returns last received VisitorSelectionResult.
+func get_last_visitor_selection_result() -> VisitorSelectionResult:
+	return _last_visitor_selection_result

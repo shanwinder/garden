@@ -9,3 +9,4 @@ sprout_after_seconds = 1800
 growing_after_seconds = 5400
 mature_after_seconds = 21600
 harvest_reward = 60
+environmental_traits = Array[String](["fruit", "perch", "shade", "shelter"])

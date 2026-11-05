@@ -25,6 +25,7 @@ func run_tests() -> void:
 	_test_invalid_ids()
 	_test_invalid_growth_thresholds()
 	_test_harvest_reward_validation()
+	_test_environmental_traits_validation()
 	_test_field_independence_and_no_mutation()
 	_test_api_purity_and_idempotence()
 
@@ -193,6 +194,38 @@ func _test_harvest_reward_validation() -> void:
 		def.harvest_reward = bad_reward
 		assert_false(def.is_valid(), "Negative harvest_reward %d must be invalid" % bad_reward)
 		assert_eq(def.harvest_reward, bad_reward, "Invalid harvest_reward %d must not be normalized" % bad_reward)
+
+
+func _test_environmental_traits_validation() -> void:
+	describe("environmental_traits validation accepts canonical unique traits and rejects unknown or duplicate traits")
+	var def: PlantDefinition = PlantDefinition.new()
+	def.id = "plant.holy_basil"
+	def.sprout_after_seconds = 60
+	def.growing_after_seconds = 180
+	def.mature_after_seconds = 600
+	assert_eq(def.environmental_traits.size(), 0, "Default environmental_traits must be empty")
+	assert_true(def.is_valid(), "Empty environmental_traits must be valid")
+
+	def.environmental_traits = ["dense_vegetation", "food"]
+	assert_true(def.is_valid(), "Canonical unique environmental_traits must be valid")
+	assert_true(def.has_environmental_trait("dense_vegetation"), "Must have dense_vegetation")
+	assert_true(def.has_environmental_trait("food"), "Must have food")
+	assert_false(def.has_environmental_trait("flower"), "Must not have flower")
+
+	var returned_traits: Array[String] = def.get_environmental_traits()
+	assert_eq(returned_traits, ["dense_vegetation", "food"], "get_environmental_traits returns exact copy")
+	returned_traits.clear()
+	assert_eq(def.environmental_traits.size(), 2, "Mutating returned traits array must not mutate PlantDefinition")
+
+	# Reject duplicate traits
+	def.environmental_traits = ["flower", "flower"]
+	assert_false(def.is_valid(), "Duplicate environmental_traits must be rejected")
+
+	# Reject unknown traits
+	def.environmental_traits = ["unknown_trait"]
+	assert_false(def.is_valid(), "Unknown environmental_trait must be rejected")
+	def.environmental_traits = [""]
+	assert_false(def.is_valid(), "Empty string environmental_trait must be rejected")
 
 
 func _test_field_independence_and_no_mutation() -> void:

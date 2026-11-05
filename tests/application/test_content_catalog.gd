@@ -34,6 +34,8 @@ func run_tests() -> void:
 	_test_query_idempotence()
 	_test_failure_rejection_null_and_invalid()
 	_test_failure_rejection_duplicate_ids()
+	_test_visitor_catalog_queries_and_sorting()
+	_test_visitor_catalog_rejection()
 
 
 func _create_valid_definition(
@@ -309,3 +311,54 @@ func _test_failure_rejection_duplicate_ids() -> void:
 	# 3. Duplicate IDs separated by other definitions
 	var catalog_separated_dup: ContentCatalog = ContentCatalog.try_create([def_a1, def_b, def_c, def_a2])
 	assert_true(catalog_separated_dup == null, "Catalog with separated duplicate IDs must return null")
+
+
+func _create_valid_visitor(id: String = "visitor.butterfly", weight: float = 30.0) -> VisitorDefinition:
+	var def: VisitorDefinition = VisitorDefinition.new()
+	def.id = id
+	def.weight = weight
+	return def
+
+
+func _test_visitor_catalog_queries_and_sorting() -> void:
+	describe("Visitor definitions in ContentCatalog support lookup, sorting, and defensive copying")
+	var plant_a: PlantDefinition = _create_valid_definition("plant.jasmine")
+	var vis_cat: VisitorDefinition = _create_valid_visitor("visitor.cat", 15.0)
+	var vis_bird: VisitorDefinition = _create_valid_visitor("visitor.bird", 25.0)
+	var vis_butterfly: VisitorDefinition = _create_valid_visitor("visitor.butterfly", 30.0)
+
+	var catalog: ContentCatalog = ContentCatalog.try_create([plant_a], [vis_cat, vis_bird, vis_butterfly])
+	assert_true(catalog != null, "Catalog with valid visitors must build")
+	assert_eq(catalog.get_visitor_count(), 3, "Visitor count must be 3")
+	assert_true(catalog.has_visitor("visitor.bird"), "Must have visitor.bird")
+	assert_true(catalog.has_visitor("visitor.butterfly"), "Must have visitor.butterfly")
+	assert_true(catalog.has_visitor("visitor.cat"), "Must have visitor.cat")
+	assert_false(catalog.has_visitor("visitor.unknown"), "Must not have visitor.unknown")
+	assert_true(catalog.get_visitor("visitor.unknown") == null, "Unknown visitor lookup returns null")
+	assert_true(catalog.get_visitor("visitor.butterfly") == vis_butterfly, "Exact VisitorDefinition reference preserved")
+
+	assert_eq(
+		catalog.get_all_visitor_ids(),
+		["visitor.bird", "visitor.butterfly", "visitor.cat"],
+		"Visitor IDs enumerate in ascending order"
+	)
+	var all_visitors: Array[VisitorDefinition] = catalog.get_all_visitors()
+	assert_eq(all_visitors.size(), 3, "get_all_visitors returns 3 definitions")
+	assert_true(all_visitors[0] == vis_bird, "First visitor is bird")
+	assert_true(all_visitors[1] == vis_butterfly, "Second visitor is butterfly")
+	assert_true(all_visitors[2] == vis_cat, "Third visitor is cat")
+
+	all_visitors.clear()
+	assert_eq(catalog.get_visitor_count(), 3, "Mutating returned visitors array does not alter catalog")
+
+
+func _test_visitor_catalog_rejection() -> void:
+	describe("try_create rejects null, invalid, or duplicate VisitorDefinitions")
+	var plant_a: PlantDefinition = _create_valid_definition("plant.jasmine")
+	var valid_vis: VisitorDefinition = _create_valid_visitor("visitor.butterfly")
+	var dup_vis: VisitorDefinition = _create_valid_visitor("visitor.butterfly")
+	var invalid_vis: VisitorDefinition = VisitorDefinition.new()
+
+	assert_true(ContentCatalog.try_create([plant_a], [null]) == null, "Null visitor rejected")
+	assert_true(ContentCatalog.try_create([plant_a], [invalid_vis]) == null, "Invalid visitor rejected")
+	assert_true(ContentCatalog.try_create([plant_a], [valid_vis, dup_vis]) == null, "Duplicate visitor ID rejected")

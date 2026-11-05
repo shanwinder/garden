@@ -92,6 +92,7 @@ func run_tests() -> void:
 	_test_full_player_loop_across_restart_and_offline_growth()
 	_test_in_process_pause_resume_offline_growth_and_clock_rollback_safety()
 	_test_harvest_and_economy_loop_across_restart_and_second_cycle()
+	_test_reactive_garden_traits_and_visitor_loop()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
@@ -433,6 +434,66 @@ func _test_harvest_and_economy_loop_across_restart_and_second_cycle() -> void:
 		2200,
 		"Cycle 3 start timestamp reset to 2200"
 	)
+
+	main_2.free()
+	app_2.free()
+	_cleanup_test_files()
+
+
+func _test_reactive_garden_traits_and_visitor_loop() -> void:
+	describe("E2E: Empty garden -> plant banana -> traits emerge -> observe bird & cat -> Save V1 preserved across restart")
+	_cleanup_test_files()
+
+	var repo_1: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_1: FakeGameClock = FakeGameClock.new(1000, 0)
+	# Banana provides ["fruit", "perch", "shade", "shelter"]:
+	# Eligible visitors:
+	#   0: visitor.bird (weight 25.0) -> normalized [0.0, 0.625)
+	#   1: visitor.cat  (weight 15.0) -> normalized [0.625, 1.0)
+	var rng_1: FakeRandomSource = FakeRandomSource.new([0.2, 0.8], [11, 12, 13, 14])
+	var app_1: AppRoot = AppRoot.new(repo_1, PlantContentLoader.new(), clock_1, rng_1)
+	app_1.bootstrap_session()
+
+	var main_1: MainScreen = _instantiate_bound_main_screen(app_1)
+	var view_1: GardenView = main_1.get_garden_view()
+
+	assert_false(view_1.is_observe_visitor_button_enabled(), "Cannot observe visitors on empty garden")
+
+	# Plant banana at t = 1000
+	view_1.get_plant_button().pressed.emit()
+	view_1.get_planting_picker().select_plant_definition("plant.banana")
+	view_1.get_planting_picker().confirm_planting()
+
+	assert_true(view_1.get_environment_text().contains("ผลไม้"), "Banana provides fruit trait in HUD")
+	assert_true(view_1.get_environment_text().contains("ร่มเงา"), "Banana provides shade trait in HUD")
+	assert_true(view_1.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled after planting banana")
+
+	# Observe visitor 1 (roll 0.2 -> visitor.bird)
+	view_1.get_observe_visitor_button().pressed.emit()
+	assert_true(view_1.get_visitor_status_text().contains("นก"), "First observation selects bird")
+
+	# Observe visitor 2 (roll 0.8 -> visitor.cat)
+	view_1.get_observe_visitor_button().pressed.emit()
+	assert_true(view_1.get_visitor_status_text().contains("แมว"), "Second observation selects cat")
+
+	main_1.free()
+	app_1.free()
+
+	# Restart into Session 2 and verify Save Schema V1 compatibility and restored traits
+	var repo_2: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_2: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng_2: FakeRandomSource = FakeRandomSource.new([0.9], [])
+	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, rng_2)
+	var load_res_2: LocalSaveLoadResult = app_2.bootstrap_session()
+	assert_eq(load_res_2.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Save V1 loads cleanly after restart")
+
+	var main_2: MainScreen = _instantiate_bound_main_screen(app_2)
+	var view_2: GardenView = main_2.get_garden_view()
+	assert_true(view_2.get_environment_text().contains("ผลไม้"), "Traits recomputed from persisted banana on restart")
+	assert_true(view_2.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled on restart")
+
+	view_2.get_observe_visitor_button().pressed.emit()
+	assert_true(view_2.get_visitor_status_text().contains("แมว"), "Observation works after restart")
 
 	main_2.free()
 	app_2.free()

@@ -43,6 +43,8 @@ func _connect_garden_signals() -> void:
 		_garden_view.planting_requested.connect(_on_garden_planting_requested)
 	if _garden_view != null and not _garden_view.harvest_requested.is_connected(_on_garden_harvest_requested):
 		_garden_view.harvest_requested.connect(_on_garden_harvest_requested)
+	if _garden_view != null and not _garden_view.visitor_observation_requested.is_connected(_on_garden_visitor_observation_requested):
+		_garden_view.visitor_observation_requested.connect(_on_garden_visitor_observation_requested)
 
 
 ## Explicit dependency injection seam allowing tests or coordinators to bind an isolated AppRoot.
@@ -182,6 +184,27 @@ func _on_garden_harvest_requested(runtime_instance_id: String) -> void:
 		_garden_view.show_harvest_result(result)
 		if result != null and result.is_harvested():
 			_garden_view.refresh_from_session()
+
+
+func _on_garden_visitor_observation_requested() -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_visitor_result(VisitorSelectionResult.invalid_input())
+		return
+
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+	):
+		if _garden_view != null:
+			_garden_view.show_visitor_result(VisitorSelectionResult.invalid_input())
+		return
+
+	var result: VisitorSelectionResult = app.evaluate_visitor_now()
+	if _garden_view != null:
+		_garden_view.show_visitor_result(result)
 
 
 func _determine_blocked_reason(app: AppRoot) -> String:

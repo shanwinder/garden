@@ -1,0 +1,127 @@
+## test_visitor_selection_service.gd
+## Deterministic unit tests for VisitorSelectionService and VisitorSelectionResult.
+class_name TestVisitorSelectionService
+extends TestSuiteBase
+
+
+class CountingClock extends FakeGameClock:
+	var utc_calls: int = 0
+
+	func _init(initial_utc: int) -> void:
+		super(initial_utc, 0)
+
+	func utc_now_seconds() -> int:
+		utc_calls += 1
+		return super.utc_now_seconds()
+
+
+func _init() -> void:
+	suite_name = "TestVisitorSelectionService"
+
+
+func run_tests() -> void:
+	_test_prevalidation_rejects_invalid_inputs_without_clock_or_rng()
+	_test_empty_garden_or_no_matches_consumes_zero_rng()
+	_test_single_eligible_visitor_selected_deterministically()
+	_test_multiple_eligible_visitors_weighted_selection_deterministic()
+
+
+func _create_production_catalog() -> ContentCatalog:
+	var p_res: PlantContentLoadResult = PlantContentLoader.new().load_production_definitions()
+	var v_res: VisitorContentLoadResult = VisitorContentLoader.new().load_production_definitions()
+	return ContentCatalog.try_create(p_res.get_definitions(), v_res.get_definitions())
+
+
+func _test_prevalidation_rejects_invalid_inputs_without_clock_or_rng() -> void:
+	describe("Prevalidation rejects null dependencies or negative time without sampling clock or consuming RNG")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var state: GameState = GameState.new()
+	var clock: CountingClock = CountingClock.new(1000)
+	# Empty float sequence proves next_float() is never called!
+	var rng: FakeRandomSource = FakeRandomSource.new([], [])
+
+	var r1: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_now(null, catalog, clock, rng)
+	assert_eq(r1.get_status(), VisitorSelectionResult.INVALID_INPUT, "Null state rejected")
+	assert_eq(clock.utc_calls, 0, "Clock not sampled on null state")
+
+	var r2: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_now(state, null, clock, rng)
+	assert_eq(r2.get_status(), VisitorSelectionResult.INVALID_INPUT, "Null catalog rejected")
+	assert_eq(clock.utc_calls, 0, "Clock not sampled on null catalog")
+
+	var r3: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_now(state, catalog, null, rng)
+	assert_eq(r3.get_status(), VisitorSelectionResult.INVALID_INPUT, "Null clock rejected")
+
+	var r4: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_now(state, catalog, clock, null)
+	assert_eq(r4.get_status(), VisitorSelectionResult.INVALID_INPUT, "Null rng rejected")
+	assert_eq(clock.utc_calls, 0, "Clock not sampled on null rng")
+
+	var r5: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, -1)
+	assert_eq(r5.get_status(), VisitorSelectionResult.INVALID_INPUT, "Negative timestamp rejected")
+
+
+func _test_empty_garden_or_no_matches_consumes_zero_rng() -> void:
+	describe("NO_ELIGIBLE_VISITORS returns snapshot and consumes zero random floats")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var empty_state: GameState = GameState.new()
+	var clock: CountingClock = CountingClock.new(1000)
+	# Empty float array: any call to next_float() would assert and fail the test!
+	var rng: FakeRandomSource = FakeRandomSource.new([], [])
+
+	var result: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_now(
+		empty_state,
+		catalog,
+		clock,
+		rng
+	)
+	assert_eq(result.get_status(), VisitorSelectionResult.NO_ELIGIBLE_VISITORS, "Empty garden has no eligible visitors")
+	assert_false(result.is_selected(), "is_selected() is false")
+	assert_eq(result.get_selected_visitor(), null, "Selected visitor is null")
+	assert_eq(result.get_selected_visitor_id(), "", "Selected visitor ID is empty")
+	assert_eq(result.get_eligible_visitor_ids().size(), 0, "Eligible IDs empty")
+	assert_true(result.get_snapshot() != null and result.get_snapshot().is_empty_garden(), "Snapshot retained")
+	assert_eq(clock.utc_calls, 1, "Clock sampled exactly once")
+
+
+func _test_single_eligible_visitor_selected_deterministically() -> void:
+	describe("Single eligible visitor is selected deterministically")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var state: GameState = GameState.new()
+	# Marigold provides only "flower" -> only visitor.butterfly is eligible!
+	state.get_plants().try_add_plant(PlantState.new("marigold-1", "plant.marigold", 1000))
+
+	var rng: FakeRandomSource = FakeRandomSource.new([0.0, 0.99], [])
+	var res1: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_true(res1.is_selected(), "Selected on roll 0.0")
+	assert_eq(res1.get_selected_visitor_id(), "visitor.butterfly", "Butterfly selected")
+	assert_eq(res1.get_eligible_visitor_ids(), ["visitor.butterfly"], "Only butterfly eligible")
+
+	var res2: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_true(res2.is_selected(), "Selected on roll 0.99")
+	assert_eq(res2.get_selected_visitor_id(), "visitor.butterfly", "Butterfly selected at upper bound")
+
+
+func _test_multiple_eligible_visitors_weighted_selection_deterministic() -> void:
+	describe("Multiple eligible visitors are selected deterministically by cumulative weight")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var state: GameState = GameState.new()
+	# Jasmine provides "flower" and "dense_vegetation":
+	# Eligible visitors in ascending ID order:
+	#   0: visitor.butterfly (weight = 30.0) -> [0.0, 30.0), normalized [0.0, 0.6)
+	#   1: visitor.firefly   (weight = 20.0) -> [30.0, 50.0), normalized [0.6, 1.0)
+	# Ineligible: visitor.bird, visitor.cat, visitor.frog
+	state.get_plants().try_add_plant(PlantState.new("jasmine-1", "plant.jasmine", 1000))
+
+	var rng: FakeRandomSource = FakeRandomSource.new([0.0, 0.59, 0.60, 0.99], [])
+
+	var r_low: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_eq(r_low.get_eligible_visitor_ids(), ["visitor.butterfly", "visitor.firefly"], "Exact 2 eligible visitors")
+	assert_eq(r_low.get_selected_visitor_id(), "visitor.butterfly", "Roll 0.0 selects visitor.butterfly")
+
+	var r_mid: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_eq(r_mid.get_selected_visitor_id(), "visitor.butterfly", "Roll 0.59 selects visitor.butterfly")
+
+	var r_threshold: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_eq(r_threshold.get_selected_visitor_id(), "visitor.firefly", "Roll 0.60 selects visitor.firefly")
+
+	var r_high: VisitorSelectionResult = VisitorSelectionService.evaluate_and_select_at(state, catalog, rng, 1000)
+	assert_eq(r_high.get_selected_visitor_id(), "visitor.firefly", "Roll 0.99 selects visitor.firefly")

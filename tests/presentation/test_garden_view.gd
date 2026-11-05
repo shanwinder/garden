@@ -105,6 +105,7 @@ func run_tests() -> void:
 	_test_harvest_button_state_and_signal_emission()
 	_test_harvest_feedback_rendering()
 	_test_integration_harvest_button_grants_coins_resets_plant_and_saves()
+	_test_environment_and_visitor_hud_and_observation()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -1419,6 +1420,61 @@ func _test_integration_harvest_button_grants_coins_resets_plant_and_saves() -> v
 		gview.get_feedback_text().contains("เก็บเกี่ยวสำเร็จ (+5 เหรียญ) และบันทึกเรียบร้อยแล้ว"),
 		"Harvest success feedback shown"
 	)
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_environment_and_visitor_hud_and_observation() -> void:
+	describe("GardenView displays environmental traits, eligible visitor status, and dispatches visitor observation")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	# Float 0.1 selects first visitor (butterfly), 0.8 selects second visitor (firefly) when jasmine is planted
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1, 0.8], [1, 2, 3, 4])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# 1. Empty garden: no traits, no eligible visitors, observe button disabled
+	assert_eq(gview.get_environment_text(), "สภาพแวดล้อมสวน: ยังไม่มี", "Empty garden environment text")
+	assert_true(
+		gview.get_visitor_status_text().contains("ยังไม่มีผู้มาเยือน"),
+		"Empty garden visitor status text"
+	)
+	assert_false(gview.is_observe_visitor_button_enabled(), "ObserveVisitorButton disabled on empty garden")
+
+	# 2. Plant jasmine ("dense_vegetation", "flower" -> butterfly and firefly eligible)
+	var picker: PlantingPicker = gview.get_planting_picker()
+	picker.open_picker()
+	picker.select_plant_definition("plant.jasmine")
+	picker.confirm_planting()
+
+	assert_true(gview.get_environment_text().contains("ดอกไม้"), "Environment HUD shows flower trait")
+	assert_true(gview.get_environment_text().contains("พุ่มไม้หนา"), "Environment HUD shows dense_vegetation trait")
+	assert_true(
+		gview.get_visitor_status_text().contains("ผู้มาเยือนที่อาจพบ: ผีเสื้อบ้านสวน, หิ่งห้อย"),
+		"Visitor status shows 2 eligible visitors"
+	)
+	assert_true(gview.is_observe_visitor_button_enabled(), "ObserveVisitorButton enabled when visitors eligible")
+
+	# 3. Press ObserveVisitorButton -> roll 0.1 selects visitor.butterfly (ผีเสื้อ) without saving
+	var saves_before_observe: int = repo.save_call_count
+	gview.get_observe_visitor_button().pressed.emit()
+	assert_eq(repo.save_call_count, saves_before_observe, "Observing visitor is ephemeral and does not save")
+	assert_true(gview.get_visitor_status_text().contains("ผีเสื้อ"), "Visitor status shows butterfly")
+	assert_true(gview.get_feedback_text().contains("พบผู้มาเยือนในสวน: ผีเสื้อ"), "Feedback shows butterfly visit")
+
+	# 4. Press ObserveVisitorButton again -> roll 0.8 selects visitor.firefly (หิ่งห้อย)
+	gview.get_observe_visitor_button().pressed.emit()
+	assert_true(gview.get_visitor_status_text().contains("หิ่งห้อย"), "Visitor status shows firefly")
+	assert_true(gview.get_feedback_text().contains("พบผู้มาเยือนในสวน: หิ่งห้อย"), "Feedback shows firefly visit")
 
 	main_node.free()
 	app.free()

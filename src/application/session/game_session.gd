@@ -114,3 +114,45 @@ func try_harvest_now(
 		game_clock,
 		runtime_instance_id
 	)
+
+
+## Pure application query to derive an immutable GardenSnapshot at [param now_utc_seconds].
+func build_garden_snapshot(
+	catalog: ContentCatalog,
+	now_utc_seconds: int
+) -> GardenSnapshot:
+	return GardenSnapshotBuilder.build_snapshot(
+		_state,
+		catalog,
+		now_utc_seconds
+	)
+
+
+## Application operation to evaluate visitor eligibility and select a visitor at [param now_utc_seconds].
+## Delegates directly to VisitorSelectionService; does not mutate GameState.
+func evaluate_visitor_at(
+	catalog: ContentCatalog,
+	random_source: RandomSource,
+	now_utc_seconds: int
+) -> VisitorSelectionResult:
+	return VisitorSelectionService.evaluate_and_select_at(
+		_state,
+		catalog,
+		random_source,
+		now_utc_seconds
+	)
+
+
+## Application operation to sample current UTC timestamp once and select an eligible visitor.
+## Delegates directly to VisitorSelectionService; does not mutate GameState.
+func evaluate_visitor_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	random_source: RandomSource
+) -> VisitorSelectionResult:
+	return VisitorSelectionService.evaluate_and_select_now(
+		_state,
+		catalog,
+		game_clock,
+		random_source
+	)

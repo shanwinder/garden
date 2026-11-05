@@ -456,6 +456,12 @@ Do not create an embedded mini-language or allow arbitrary executable scripts in
 
 Event requirements should use a finite, typed set of requirement kinds that can be validated and tested.
 
+#### Implementation Status (Milestones 6 and 11)
+
+- **Plant & Visitor definition loading**: `PlantContentLoader` (`src/infrastructure/content/plant_content_loader.gd`) loads the five authored MVP plant `.tres` resources (`plant.banana`, `plant.chili`, `plant.holy_basil`, `plant.jasmine`, `plant.marigold`), and `VisitorContentLoader` (`src/infrastructure/content/visitor_content_loader.gd`) loads the five authored MVP visitor `.tres` resources (`visitor.bird`, `visitor.butterfly`, `visitor.cat`, `visitor.firefly`, `visitor.frog`).
+- **Validated catalog**: `ContentCatalog.try_create(plant_definitions, visitor_definitions = [])` (`src/application/content/content_catalog.gd`) validates every `PlantDefinition` and `VisitorDefinition` in an all-or-nothing pass, enforces unique canonical IDs, and provides deterministic ascending-order enumeration (`get_all_plants()`, `get_all_plant_ids()`, `get_all_visitors()`, `get_all_visitor_ids()`).
+- **Startup completeness check**: `AppRoot.bootstrap_session()` (`src/application/app_root.gd`) verifies that all five `EXPECTED_PRODUCTION_PLANT_IDS` and all five `EXPECTED_PRODUCTION_VISITOR_IDS` are present in the built `ContentCatalog` before marking content `READY`.
+
 ---
 
 ## 12. Environmental Traits
@@ -494,6 +500,12 @@ weather: RAIN
 Visitors/events should generally query this derived state rather than searching scene nodes directly.
 
 Do not encode core eligibility as `get_tree().get_nodes_in_group(...)` checks inside visitor presentation scripts.
+
+#### Implementation Status (Milestone 11)
+
+- **Canonical trait vocabulary**: `EnvironmentalTrait` (`src/domain/environment/environmental_trait.gd`) defines the nine canonical traits (`dense_vegetation`, `flower`, `food`, `fruit`, `light`, `perch`, `shade`, `shelter`, `water`) and validates trait lists for membership and uniqueness.
+- **Authored plant traits**: `PlantDefinition` (`src/domain/plants/plant_definition.gd`) includes `@export var environmental_traits: Array[String] = []` (validated via `EnvironmentalTrait.is_valid_trait_list(...)`), and the five authored plant `.tres` resources define their provisional trait contributions (`plant.banana`: `["fruit", "perch", "shade", "shelter"]`; `plant.chili`: `["food", "fruit"]`; `plant.holy_basil`: `["dense_vegetation", "food"]`; `plant.jasmine`: `["dense_vegetation", "flower"]`; `plant.marigold`: `["flower"]`).
+- **Immutable derived snapshot**: `GardenSnapshot` (`src/domain/environment/garden_snapshot.gd`) and `GardenSnapshotBuilder` (`src/application/environment/garden_snapshot_builder.gd`) derive active environmental trait counts, per-definition plant counts, total plant count, and mature plant count at an explicit `now_utc_seconds` timestamp without querying the scene tree.
 
 ---
 
@@ -675,6 +687,13 @@ The rule engine decides **whether/what may happen**.
 Presentation decides **how it looks and animates**.
 
 A cat animation script must not become the place where eligibility, economy, journal state, and cooldown logic are all implemented.
+
+#### Implementation Status (Milestone 11)
+
+- **Typed visitor definitions**: `VisitorDefinition` (`src/domain/visitors/visitor_definition.gd`) defines `id` (`visitor.` namespace), `weight` (`> 0.0`), `required_trait_counts`, `required_plant_ids`, `min_total_plants`, and `min_mature_plants`, validated via pure `is_valid()`.
+- **Pure deterministic eligibility**: `VisitorEligibility` (`src/domain/visitors/visitor_eligibility.gd`) evaluates `is_eligible(visitor, snapshot)` and `filter_eligible_visitors(visitors, snapshot)` purely from `VisitorDefinition` and `GardenSnapshot` with zero randomness or scene queries.
+- **Deterministic weighted selection**: `VisitorSelectionService` (`src/application/visitors/visitor_selection_service.gd`) builds a `GardenSnapshot`, filters eligible visitors in deterministic ascending ID order, and selects one candidate via `RandomSource.choose_weighted_index(weights)`, returning a typed `VisitorSelectionResult` (`SELECTED`, `NO_ELIGIBLE_VISITORS`, `INVALID_INPUT`, or `SELECTION_FAILED`). When no visitors are eligible, zero random numbers are consumed.
+- **Ephemeral visitor state (Save V1 preserved)**: Per Section 17, active visitor observations in Milestone 11 are ephemeral and do not alter `GameStateCodec` V1.
 
 ---
 
@@ -1149,15 +1168,17 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestones 8, 9, and 10)
+#### Implementation Status (Milestones 8, 9, 10, and 11)
 
-Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls):
+Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, and in Milestone 11 with environmental trait summary and visitor observation controls):
 
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
 └── GardenView (res://scenes/garden/garden_view.tscn — GardenView)
     ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
     ├── CurrencyLabel (Authoritative Coin HUD display)
+    ├── EnvironmentLabel (Derived GardenSnapshot trait summary)
+    ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton)
     ├── FeedbackArea (FeedbackLabel)
     ├── ContentArea
     │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
@@ -1199,14 +1220,15 @@ Signals should be owned by the object/service whose state they describe.
 
 For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot refresh is acceptable.
 
-#### Implementation Status (Milestones 8, 9, and 10)
+#### Implementation Status (Milestones 8, 9, 10, and 11)
 
-- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_currency()` for `CurrencyLabel`, reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, and computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`.
+- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_currency()` for `CurrencyLabel`, reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`, and derives the garden's environmental traits and eligible visitors via `GardenSnapshotBuilder.build_snapshot(...)` and `VisitorEligibility.filter_eligible_visitors(...)` using the same `now_utc` sample without consuming RNG.
 - **No per-frame polling**: Neither `GardenView`, `PlantView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
 - **Ephemeral selection**: `GardenView` tracks selected `runtime_instance_id` purely in presentation memory, preserving selection across refreshes if the plant still exists and clearing it safely otherwise.
 - **Narrow command & lifecycle signals**:
   - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
   - `GardenView` enables `HarvestButton` only when the selected plant's derived stage is `PlantGrowth.Stage.MATURE` and `definition.harvest_reward > 0`, emitting `harvest_requested(runtime_instance_id)` to `MainScreen` to execute `AppRoot.try_harvest_and_checkpoint(runtime_instance_id)`, render `HarvestCheckpointResult` feedback, and trigger `refresh_from_session()` when `result.is_harvested()` is true.
+  - `GardenView` enables `ObserveVisitorButton` only when at least one visitor is eligible in the current `GardenSnapshot`, emitting `visitor_observation_requested()` to `MainScreen` to execute `AppRoot.evaluate_visitor_now()` and display the ephemeral visitor observation via `GardenView.show_visitor_result(result)`.
   - `AppRoot` emits `session_resumed()` only when `LifecycleCoordinator.on_application_resumed(game_session)` reports `ResumeOutcome.RESUMED` and both `GameSession` and `ContentCatalog` are ready; `MainScreen` listens to `session_resumed` and calls `GardenView.refresh_from_session()` once per genuine pause-to-resume transition.
 
 ---

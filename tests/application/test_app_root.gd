@@ -85,6 +85,7 @@ func run_tests() -> void:
 	_test_session_resumed_signal_suppressed_when_not_paused_or_duplicate()
 	_test_session_resumed_signal_suppressed_when_unbootstrapped_or_blocked()
 	_test_try_harvest_and_checkpoint_preconditions_and_delegation()
+	_test_visitor_content_bootstrap_and_evaluate_visitor_now()
 
 
 func _test_instantiation() -> void:
@@ -1772,4 +1773,77 @@ func _test_try_harvest_and_checkpoint_preconditions_and_delegation() -> void:
 		"planted_at reset to 1600"
 	)
 	root.free()
+	_cleanup_test_files()
+
+
+class FailingVisitorContentLoader extends VisitorContentLoader:
+	func load_production_definitions() -> VisitorContentLoadResult:
+		return VisitorContentLoadResult.create_failed(
+			"res://content/visitors/missing.tres",
+			"Simulated visitor load failure"
+		)
+
+
+func _test_visitor_content_bootstrap_and_evaluate_visitor_now() -> void:
+	describe("AppRoot bootstraps 5 production visitors, blocks on visitor load failure, and evaluates visitors")
+	_cleanup_test_files()
+
+	# 1. Failing visitor loader blocks bootstrap with LOAD_FAILED
+	var repo_fail: LocalSaveRepository = _create_test_repo()
+	var root_fail: AppRoot = AppRoot.new(
+		repo_fail,
+		null,
+		FakeGameClock.new(1000, 0),
+		FakeRandomSource.new([], []),
+		FailingVisitorContentLoader.new()
+	)
+	root_fail.bootstrap_session()
+	assert_eq(
+		root_fail.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.LOAD_FAILED,
+		"Visitor loader failure must result in LOAD_FAILED"
+	)
+	assert_false(root_fail.has_active_session(), "Session must not be active when visitor loader fails")
+	assert_true(root_fail.get_visitor_content_load_result() != null, "Visitor load result recorded")
+	assert_false(root_fail.get_visitor_content_load_result().is_loaded(), "Visitor load result is failed")
+	var fail_eval: VisitorSelectionResult = root_fail.evaluate_visitor_now()
+	assert_eq(
+		fail_eval.get_status(),
+		VisitorSelectionResult.INVALID_INPUT,
+		"evaluate_visitor_now returns INVALID_INPUT when session is blocked"
+	)
+	root_fail.free()
+
+	# 2. Successful bootstrap loads all 5 production visitors and evaluates visitor
+	var repo_ok: LocalSaveRepository = _create_test_repo()
+	var clock_ok: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.15], [1, 2, 3, 4])
+	var root_ok: AppRoot = AppRoot.new(repo_ok, null, clock_ok, rng_ok)
+	root_ok.bootstrap_session()
+
+	assert_true(root_ok.has_content_catalog(), "Catalog exists")
+	assert_eq(root_ok.get_content_catalog().get_visitor_count(), 5, "All 5 production visitors in catalog")
+	assert_eq(
+		root_ok.get_content_catalog().get_all_visitor_ids(),
+		AppRoot.EXPECTED_PRODUCTION_VISITOR_IDS,
+		"Expected 5 production visitor IDs"
+	)
+
+	# Empty garden -> NO_ELIGIBLE_VISITORS
+	var empty_eval: VisitorSelectionResult = root_ok.evaluate_visitor_now()
+	assert_eq(
+		empty_eval.get_status(),
+		VisitorSelectionResult.NO_ELIGIBLE_VISITORS,
+		"Empty garden has no eligible visitors"
+	)
+
+	# Plant marigold (provides "flower" -> visitor.butterfly eligible)
+	var plant_res: PlantingCheckpointResult = root_ok.try_plant_and_checkpoint("plant.marigold")
+	assert_true(plant_res.is_registered(), "Marigold planted")
+
+	var eval_res: VisitorSelectionResult = root_ok.evaluate_visitor_now()
+	assert_true(eval_res.is_selected(), "Visitor selected after planting marigold")
+	assert_eq(eval_res.get_selected_visitor_id(), "visitor.butterfly", "Butterfly selected for marigold")
+
+	root_ok.free()
 	_cleanup_test_files()

@@ -48,6 +48,7 @@ func run_tests() -> void:
 	_test_try_plant_now_session_isolation()
 	_test_try_plant_now_persistence_round_trip()
 	_test_try_harvest_delegation_and_atomicity()
+	_test_snapshot_and_visitor_evaluation_delegation()
 
 
 
@@ -519,3 +520,28 @@ func _test_try_harvest_delegation_and_atomicity() -> void:
 		1900,
 		"Planted_at reset to 1900"
 	)
+
+
+func _test_snapshot_and_visitor_evaluation_delegation() -> void:
+	describe("GameSession build_garden_snapshot, evaluate_visitor_at, and evaluate_visitor_now delegate deterministically")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors)
+
+	var session: GameSession = GameSession.new()
+	session.try_register_plant(catalog, "jasmine-1", "plant.jasmine", 1000)
+
+	var snapshot: GardenSnapshot = session.build_garden_snapshot(catalog, 1000)
+	assert_true(snapshot != null, "Snapshot built via GameSession")
+	assert_eq(snapshot.get_active_traits(), ["dense_vegetation", "flower"], "Snapshot reflects jasmine traits")
+
+	var rng_at: FakeRandomSource = FakeRandomSource.new([0.1], [])
+	var res_at: VisitorSelectionResult = session.evaluate_visitor_at(catalog, rng_at, 1000)
+	assert_true(res_at.is_selected(), "evaluate_visitor_at selects visitor")
+	assert_eq(res_at.get_selected_visitor_id(), "visitor.butterfly", "Roll 0.1 selects visitor.butterfly")
+
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng_now: FakeRandomSource = FakeRandomSource.new([0.8], [])
+	var res_now: VisitorSelectionResult = session.evaluate_visitor_now(catalog, clock, rng_now)
+	assert_true(res_now.is_selected(), "evaluate_visitor_now selects visitor")
+	assert_eq(res_now.get_selected_visitor_id(), "visitor.firefly", "Roll 0.8 selects visitor.firefly")

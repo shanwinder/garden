@@ -26,26 +26,39 @@ extends RefCounted
 
 var _plants_by_id: Dictionary = {}
 var _sorted_plant_ids: Array[String] = []
+var _visitors_by_id: Dictionary = {}
+var _sorted_visitor_ids: Array[String] = []
 
 
 ## Private constructor. Use [method try_create] to instantiate.
-func _init(plants_by_id: Dictionary, sorted_plant_ids: Array[String]) -> void:
+func _init(
+	plants_by_id: Dictionary,
+	sorted_plant_ids: Array[String],
+	visitors_by_id: Dictionary = {},
+	sorted_visitor_ids: Array[String] = []
+) -> void:
 	_plants_by_id = plants_by_id
 	_sorted_plant_ids = sorted_plant_ids
+	_visitors_by_id = visitors_by_id
+	_sorted_visitor_ids = sorted_visitor_ids
 
 
-## Validates and constructs a ContentCatalog from the supplied [param plant_definitions].
+## Validates and constructs a ContentCatalog from the supplied [param plant_definitions]
+## and optional [param visitor_definitions].
 ##
 ## All-or-nothing validation rules:
-## - Returns null if any entry in [param plant_definitions] is null.
-## - Returns null if any entry in [param plant_definitions] has is_valid() == false.
-## - Returns null if there are duplicate definition IDs.
-## - Returns a valid ContentCatalog if [param plant_definitions] is empty or all entries are valid and unique.
+## - Returns null if any entry in [param plant_definitions] or [param visitor_definitions] is null.
+## - Returns null if any entry has is_valid() == false.
+## - Returns null if there are duplicate definition IDs within plants or visitors.
+## - Returns a valid ContentCatalog if inputs are empty or all entries are valid and unique.
 ##
-## Does not mutate caller's Array. Preserves exact PlantDefinition references.
-static func try_create(plant_definitions: Array[PlantDefinition]) -> ContentCatalog:
+## Does not mutate caller's Arrays. Preserves exact Resource references.
+static func try_create(
+	plant_definitions: Array[PlantDefinition],
+	visitor_definitions: Array[VisitorDefinition] = []
+) -> ContentCatalog:
 	var plants_map: Dictionary = {}
-	var ids: Array[String] = []
+	var plant_ids: Array[String] = []
 
 	for definition: PlantDefinition in plant_definitions:
 		if definition == null:
@@ -59,11 +72,29 @@ static func try_create(plant_definitions: Array[PlantDefinition]) -> ContentCata
 			return null
 
 		plants_map[def_id] = definition
-		ids.append(def_id)
+		plant_ids.append(def_id)
 
-	ids.sort()
+	var visitors_map: Dictionary = {}
+	var visitor_ids: Array[String] = []
 
-	return ContentCatalog.new(plants_map, ids)
+	for visitor_def: VisitorDefinition in visitor_definitions:
+		if visitor_def == null:
+			return null
+
+		if not visitor_def.is_valid():
+			return null
+
+		var visitor_id: String = visitor_def.id
+		if visitors_map.has(visitor_id):
+			return null
+
+		visitors_map[visitor_id] = visitor_def
+		visitor_ids.append(visitor_id)
+
+	plant_ids.sort()
+	visitor_ids.sort()
+
+	return ContentCatalog.new(plants_map, plant_ids, visitors_map, visitor_ids)
 
 
 ## Returns true if the catalog contains a plant definition with the exact [param definition_id].
@@ -94,7 +125,41 @@ func get_all_plants() -> Array[PlantDefinition]:
 	return result
 
 
-## Returns a new Array containing all definition IDs in deterministic ascending order.
+## Returns a new Array containing all plant definition IDs in deterministic ascending order.
 ## Mutating the returned Array does not mutate the catalog.
 func get_all_plant_ids() -> Array[String]:
 	return _sorted_plant_ids.duplicate()
+
+
+## Returns true if the catalog contains a visitor definition with the exact [param definition_id].
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func has_visitor(definition_id: String) -> bool:
+	return _visitors_by_id.has(definition_id)
+
+
+## Returns the exact VisitorDefinition reference for [param definition_id], or null if not found.
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func get_visitor(definition_id: String) -> VisitorDefinition:
+	return _visitors_by_id.get(definition_id, null)
+
+
+## Returns the total number of visitor definitions in the catalog.
+func get_visitor_count() -> int:
+	return _sorted_visitor_ids.size()
+
+
+## Returns a new Array containing all VisitorDefinition references in deterministic ascending ID order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_visitors() -> Array[VisitorDefinition]:
+	var result: Array[VisitorDefinition] = []
+	result.resize(_sorted_visitor_ids.size())
+	for i: int in range(_sorted_visitor_ids.size()):
+		var def_id: String = _sorted_visitor_ids[i]
+		result[i] = _visitors_by_id[def_id]
+	return result
+
+
+## Returns a new Array containing all visitor definition IDs in deterministic ascending order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_visitor_ids() -> Array[String]:
+	return _sorted_visitor_ids.duplicate()
