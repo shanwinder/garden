@@ -45,6 +45,8 @@ func _connect_garden_signals() -> void:
 		_garden_view.harvest_requested.connect(_on_garden_harvest_requested)
 	if _garden_view != null and not _garden_view.visitor_observation_requested.is_connected(_on_garden_visitor_observation_requested):
 		_garden_view.visitor_observation_requested.connect(_on_garden_visitor_observation_requested)
+	if _garden_view != null and not _garden_view.event_observation_requested.is_connected(_on_garden_event_observation_requested):
+		_garden_view.event_observation_requested.connect(_on_garden_event_observation_requested)
 	if _garden_view != null and not _garden_view.decoration_purchase_requested.is_connected(_on_garden_decoration_purchase_requested):
 		_garden_view.decoration_purchase_requested.connect(_on_garden_decoration_purchase_requested)
 
@@ -138,6 +140,10 @@ func _on_app_session_resumed() -> void:
 		return
 
 	_garden_view.refresh_from_session()
+	var return_summary: GardenReturnSummary = _garden_view.get_last_return_summary()
+	if return_summary != null and return_summary.has_meaningful_changes():
+		_garden_view.show_return_summary(return_summary)
+
 
 
 func _on_garden_planting_requested(definition_id: String) -> void:
@@ -211,6 +217,27 @@ func _on_garden_visitor_observation_requested() -> void:
 			_garden_view.refresh_from_session()
 
 
+func _on_garden_event_observation_requested() -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_event_result(EventSelectionResult.invalid_input())
+		return
+
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+	):
+		if _garden_view != null:
+			_garden_view.show_event_result(EventSelectionResult.invalid_input())
+		return
+
+	var result: EventSelectionResult = app.evaluate_event_now()
+	if _garden_view != null:
+		_garden_view.show_event_result(result)
+
+
 func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
 	var app: AppRoot = _get_effective_app_root()
 	if app == null:
@@ -232,6 +259,7 @@ func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
 		_garden_view.show_decoration_purchase_result(result)
 		if result != null and result.is_purchased():
 			_garden_view.refresh_from_session()
+
 
 
 func _determine_blocked_reason(app: AppRoot) -> String:

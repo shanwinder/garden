@@ -88,6 +88,9 @@ func run_tests() -> void:
 	_test_visitor_content_bootstrap_and_evaluate_visitor_now()
 	_test_try_observe_visitor_and_checkpoint_and_v1_migration()
 	_test_decoration_content_bootstrap_and_purchase_checkpoint()
+	_test_event_content_bootstrap_and_evaluate_event_now()
+	_test_evaluate_progression_now_readiness_and_delegation()
+	_test_evaluate_return_from_now_readiness_and_delegation()
 
 
 func _test_instantiation() -> void:
@@ -1850,7 +1853,6 @@ func _test_visitor_content_bootstrap_and_evaluate_visitor_now() -> void:
 	root_ok.free()
 	_cleanup_test_files()
 
-
 func _test_try_observe_visitor_and_checkpoint_and_v1_migration() -> void:
 	describe("AppRoot migrates V1 save on startup and checkpoints visitor observation into V2 save")
 	_cleanup_test_files()
@@ -1972,6 +1974,190 @@ func _test_decoration_content_bootstrap_and_purchase_checkpoint() -> void:
 	var eval_res: VisitorSelectionResult = root_ok.evaluate_visitor_now()
 	assert_true(eval_res.is_selected(), "Visitor selected when basil + clay_jar present")
 	assert_eq(eval_res.get_selected_visitor_id(), "visitor.frog", "visitor.frog selected via clay_jar water trait")
+
+	root_ok.free()
+	_cleanup_test_files()
+
+class FailingEventContentLoader extends EventContentLoader:
+	func load_production_definitions() -> EventContentLoadResult:
+		return EventContentLoadResult.create_failed(
+			"res://content/events/missing.tres",
+			"Simulated event load failure"
+		)
+
+
+func _test_event_content_bootstrap_and_evaluate_event_now() -> void:
+	describe("AppRoot bootstraps 5 production events, blocks on event load failure, and evaluates ambient events")
+	_cleanup_test_files()
+
+	# 1. Failing event loader blocks bootstrap with LOAD_FAILED
+	var repo_fail: LocalSaveRepository = _create_test_repo()
+	var root_fail: AppRoot = AppRoot.new(
+		repo_fail,
+		null,
+		FakeGameClock.new(21600, 0),
+		FakeRandomSource.new([], []),
+		null,
+		null,
+		FailingEventContentLoader.new()
+	)
+	root_fail.bootstrap_session()
+	assert_eq(
+		root_fail.get_content_bootstrap_status(),
+		AppRoot.ContentBootstrapStatus.LOAD_FAILED,
+		"Event loader failure must result in LOAD_FAILED"
+	)
+	assert_false(root_fail.has_active_session(), "Session must not be active when event loader fails")
+	assert_true(root_fail.get_event_content_load_result() != null, "Event load result recorded")
+	assert_false(root_fail.get_event_content_load_result().is_loaded(), "Event load result is failed")
+	var fail_eval: EventSelectionResult = root_fail.evaluate_event_now()
+	assert_eq(
+		fail_eval.get_status(),
+		EventSelectionResult.INVALID_INPUT,
+		"evaluate_event_now returns INVALID_INPUT when session is blocked"
+	)
+	root_fail.free()
+
+	# 2. Successful bootstrap loads all 5 production events and evaluates event
+	var repo_ok: LocalSaveRepository = _create_test_repo()
+	var clock_ok: FakeGameClock = FakeGameClock.new(21600, 0) # 21600s -> morning + clear
+	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.25], [1, 2, 3, 4])
+	var root_ok: AppRoot = AppRoot.new(repo_ok, null, clock_ok, rng_ok)
+	root_ok.bootstrap_session()
+
+	assert_true(root_ok.has_content_catalog(), "Catalog exists")
+	assert_eq(root_ok.get_content_catalog().get_event_count(), 5, "All 5 production events in catalog")
+	assert_eq(
+		root_ok.get_content_catalog().get_all_event_ids(),
+		AppRoot.EXPECTED_PRODUCTION_EVENT_IDS,
+		"Expected 5 production event IDs"
+	)
+
+	# Empty garden -> NO_ELIGIBLE_EVENTS
+	var empty_eval: EventSelectionResult = root_ok.evaluate_event_now()
+	assert_eq(
+		empty_eval.get_status(),
+		EventSelectionResult.NO_ELIGIBLE_EVENTS,
+		"Empty garden has no eligible events"
+	)
+
+	# Plant jasmine ("flower") at morning + clear -> event.morning_butterflies
+	root_ok.try_plant_and_checkpoint("plant.jasmine")
+	var eval_res: EventSelectionResult = root_ok.evaluate_event_now()
+	assert_true(eval_res.is_selected(), "Event selected after planting jasmine at morning clear")
+	assert_eq(eval_res.get_selected_event_id(), "event.morning_butterflies", "event.morning_butterflies selected")
+
+	root_ok.free()
+	_cleanup_test_files()
+
+func _test_evaluate_progression_now_readiness_and_delegation() -> void:
+	describe("AppRoot evaluate_progression_now enforces readiness preconditions and delegates to GameSession")
+	_cleanup_test_files()
+
+	# 1. Unbootstrapped AppRoot returns null without sampling clock
+	var repo_unboot: LocalSaveRepository = _create_test_repo()
+	var clock_unboot: FakeGameClock = FakeGameClock.new(1000, 0)
+	var root_unboot: AppRoot = AppRoot.new(repo_unboot, null, clock_unboot, FakeRandomSource.new([], []))
+	assert_true(
+		root_unboot.evaluate_progression_now() == null,
+		"evaluate_progression_now returns null when AppRoot is not bootstrapped"
+	)
+	root_unboot.free()
+
+	# 2. Blocked AppRoot returns null
+	var repo_blocked: LocalSaveRepository = _create_test_repo()
+	var root_blocked: AppRoot = AppRoot.new(
+		repo_blocked,
+		null,
+		FakeGameClock.new(1000, 0),
+		FakeRandomSource.new([], []),
+		null,
+		null,
+		FailingEventContentLoader.new()
+	)
+	root_blocked.bootstrap_session()
+	assert_true(
+		root_blocked.evaluate_progression_now() == null,
+		"evaluate_progression_now returns null when session is blocked"
+	)
+	root_blocked.free()
+
+	# 3. Ready AppRoot returns valid GardenProgressionSummary
+	var repo_ok: LocalSaveRepository = _create_test_repo()
+	var clock_ok: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4, 5, 6, 7, 8])
+	var root_ok: AppRoot = AppRoot.new(repo_ok, null, clock_ok, rng_ok)
+	root_ok.bootstrap_session()
+
+	var sum_empty: GardenProgressionSummary = root_ok.evaluate_progression_now()
+	assert_true(sum_empty != null and sum_empty.is_valid(), "Ready AppRoot returns valid summary")
+	assert_eq(sum_empty.get_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Empty stage is starting_garden")
+	assert_eq(sum_empty.get_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Empty guidance is plant_first")
+
+	root_ok.try_plant_and_checkpoint("plant.jasmine")
+	var sum_planted: GardenProgressionSummary = root_ok.evaluate_progression_now()
+	assert_eq(sum_planted.get_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Planted jasmine advances to growing_garden")
+	assert_eq(sum_planted.get_establishment_score(), 14, "1 plant (3) + 2 traits (6) + 1 discovery (5) = 14")
+	assert_eq(sum_planted.get_guidance_id(), GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR, "Guidance is observe_visitor")
+
+	root_ok.free()
+	_cleanup_test_files()
+
+
+func _test_evaluate_return_from_now_readiness_and_delegation() -> void:
+	describe("AppRoot evaluate_return_from_now enforces readiness preconditions and delegates to GameSession")
+	_cleanup_test_files()
+
+	# 1. Unbootstrapped AppRoot returns null
+	var repo_unboot: LocalSaveRepository = _create_test_repo()
+	var clock_unboot: FakeGameClock = FakeGameClock.new(1000, 0)
+	var root_unboot: AppRoot = AppRoot.new(repo_unboot, null, clock_unboot, FakeRandomSource.new([], []))
+	assert_true(
+		root_unboot.evaluate_return_from_now(500) == null,
+		"evaluate_return_from_now returns null when AppRoot is not bootstrapped"
+	)
+	root_unboot.free()
+
+	# 2. Blocked AppRoot returns null
+	var repo_blocked: LocalSaveRepository = _create_test_repo()
+	var root_blocked: AppRoot = AppRoot.new(
+		repo_blocked,
+		null,
+		FakeGameClock.new(1000, 0),
+		FakeRandomSource.new([], []),
+		null,
+		null,
+		FailingEventContentLoader.new()
+	)
+	root_blocked.bootstrap_session()
+	assert_true(
+		root_blocked.evaluate_return_from_now(500) == null,
+		"evaluate_return_from_now returns null when session is blocked"
+	)
+	root_blocked.free()
+
+	# 3. Ready AppRoot with negative previous_utc_seconds returns null
+	var repo_ok: LocalSaveRepository = _create_test_repo()
+	var clock_ok: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4, 5, 6, 7, 8])
+	var root_ok: AppRoot = AppRoot.new(repo_ok, null, clock_ok, rng_ok)
+	root_ok.bootstrap_session()
+
+	assert_true(
+		root_ok.evaluate_return_from_now(-1) == null,
+		"evaluate_return_from_now returns null when previous_utc_seconds < 0"
+	)
+
+	# 4. Plant holy_basil at t=1000, advance clock to t=1600, evaluate return from 1000
+	root_ok.try_plant_and_checkpoint("plant.holy_basil")
+	clock_ok.set_utc_seconds(1600)
+	var ret_sum: GardenReturnSummary = root_ok.evaluate_return_from_now(1000)
+	assert_true(ret_sum != null and ret_sum.is_valid(), "Ready AppRoot returns valid GardenReturnSummary")
+	assert_eq(ret_sum.get_elapsed_seconds(), 600, "Elapsed is 600s")
+	assert_eq(ret_sum.get_advanced_plant_count(), 1, "1 plant advanced")
+	assert_eq(ret_sum.get_newly_matured_plant_count(), 1, "1 plant newly matured")
+	assert_eq(ret_sum.get_ready_to_harvest_count(), 1, "1 plant ready to harvest")
+	assert_true(ret_sum.has_meaningful_changes(), "Summary has meaningful changes")
 
 	root_ok.free()
 	_cleanup_test_files()

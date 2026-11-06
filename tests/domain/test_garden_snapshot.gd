@@ -13,6 +13,7 @@ func run_tests() -> void:
 	_test_trait_and_plant_queries()
 	_test_defensive_encapsulation_and_sanitization()
 	_test_decoration_queries()
+	_test_time_period_and_weather_state_queries()
 
 
 func _test_type_contract_and_empty_defaults() -> void:
@@ -138,3 +139,18 @@ func _test_decoration_queries() -> void:
 		["decoration.clay_jar", "decoration.small_pond"],
 		"Present decoration definition IDs sorted in ascending order"
 	)
+
+
+func _test_time_period_and_weather_state_queries() -> void:
+	describe("GardenSnapshot stores canonical time_period and weather_state and falls back safely on invalid values")
+	var default_snap: GardenSnapshot = GardenSnapshot.new()
+	assert_eq(default_snap.get_time_period(), "day", "Default time_period is 'day'")
+	assert_eq(default_snap.get_weather_state(), "clear", "Default weather_state is 'clear'")
+
+	var night_rain_snap: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0, {}, 0, "night", "rain")
+	assert_eq(night_rain_snap.get_time_period(), "night", "Explicit time_period 'night' stored")
+	assert_eq(night_rain_snap.get_weather_state(), "rain", "Explicit weather_state 'rain' stored")
+
+	var invalid_ctx_snap: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0, {}, 0, "afternoon", "storm")
+	assert_eq(invalid_ctx_snap.get_time_period(), "day", "Invalid time_period falls back to 'day'")
+	assert_eq(invalid_ctx_snap.get_weather_state(), "clear", "Invalid weather_state falls back to 'clear'")

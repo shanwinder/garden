@@ -13,6 +13,7 @@ func run_tests() -> void:
 	_test_trait_accumulation_and_plant_counts()
 	_test_maturity_count_across_time_and_clock_rollback()
 	_test_decoration_trait_contribution_and_frog_eligibility()
+	_test_time_period_and_weather_state_populated_from_timestamp()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -127,3 +128,29 @@ func _test_decoration_trait_contribution_and_frog_eligibility() -> void:
 	assert_eq(snap_after.get_trait_count("water"), 2, "water count = 2 from clay_jar + small_pond")
 	assert_eq(snap_after.get_trait_count("shelter"), 1, "shelter count = 1 from small_pond")
 	assert_true(VisitorEligibility.is_eligible(frog_def, snap_after), "visitor.frog is now eligible with water trait")
+
+
+func _test_time_period_and_weather_state_populated_from_timestamp() -> void:
+	describe("GardenSnapshotBuilder populates time_period and weather_state deterministically from now_utc_seconds")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var state: GameState = GameState.new()
+
+	# t = 14400 -> hour 4 (night), window 2 (rain)
+	var snap_night_rain: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 14400)
+	assert_eq(snap_night_rain.get_time_period(), "night", "14400s yields night period")
+	assert_eq(snap_night_rain.get_weather_state(), "rain", "14400s yields rain weather")
+
+	# t = 21600 -> hour 6 (morning), window 3 (clear)
+	var snap_morning_clear: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 21600)
+	assert_eq(snap_morning_clear.get_time_period(), "morning", "21600s yields morning period")
+	assert_eq(snap_morning_clear.get_weather_state(), "clear", "21600s yields clear weather")
+
+	# t = 43200 -> hour 12 (day), window 6 (cloudy)
+	var snap_day_cloudy: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 43200)
+	assert_eq(snap_day_cloudy.get_time_period(), "day", "43200s yields day period")
+	assert_eq(snap_day_cloudy.get_weather_state(), "cloudy", "43200s yields cloudy weather")
+
+	# t = 64800 -> hour 18 (evening), window 9 (cloudy)
+	var snap_evening_cloudy: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, 64800)
+	assert_eq(snap_evening_cloudy.get_time_period(), "evening", "64800s yields evening period")
+	assert_eq(snap_evening_cloudy.get_weather_state(), "cloudy", "64800s yields cloudy weather")

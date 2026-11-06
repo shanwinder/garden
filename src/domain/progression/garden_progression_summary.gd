@@ -1,0 +1,94 @@
+## garden_progression_summary.gd
+## Immutable domain value object representing the derived establishment stage,
+## score, next-stage progress, and gentle guidance for a garden snapshot.
+##
+## Architectural rules:
+## - Belongs to the domain progression layer (src/domain/progression/).
+## - Pure domain value object: extends RefCounted (not Node, Resource, Autoload, singleton, or manager).
+## - Immutable after construction: read-only getters, no public setters.
+## - Independent of SceneTree, GameClock, RandomSource, ContentCatalog, and filesystem.
+class_name GardenProgressionSummary
+extends RefCounted
+
+var _stage_id: String
+var _stage_index: int
+var _establishment_score: int
+var _next_stage_id: String
+var _next_stage_threshold: int
+var _points_to_next_stage: int
+var _guidance_id: String
+
+
+func _init(
+	stage_id: String,
+	stage_index: int,
+	establishment_score: int,
+	next_stage_id: String,
+	next_stage_threshold: int,
+	points_to_next_stage: int,
+	guidance_id: String
+) -> void:
+	_stage_id = stage_id
+	_stage_index = stage_index
+	_establishment_score = maxi(0, establishment_score)
+	_next_stage_id = next_stage_id
+	_next_stage_threshold = maxi(0, next_stage_threshold)
+	_points_to_next_stage = maxi(0, points_to_next_stage)
+	_guidance_id = guidance_id
+
+
+## Returns the canonical garden progression stage ID.
+func get_stage_id() -> String:
+	return _stage_id
+
+
+## Returns the zero-based progression stage index (0..4).
+func get_stage_index() -> int:
+	return _stage_index
+
+
+## Returns the non-negative establishment score derived from garden state.
+func get_establishment_score() -> int:
+	return _establishment_score
+
+
+## Returns the canonical ID of the next progression stage, or "" if at max stage.
+func get_next_stage_id() -> String:
+	return _next_stage_id
+
+
+## Returns the score threshold of the next progression stage, or 0 if at max stage.
+func get_next_stage_threshold() -> int:
+	return _next_stage_threshold
+
+
+## Returns the remaining establishment points needed to reach the next stage, or 0 if at max stage.
+func get_points_to_next_stage() -> int:
+	return _points_to_next_stage
+
+
+## Returns true if the garden has reached the highest establishment stage ("happy_garden_home").
+func is_max_stage() -> bool:
+	return _next_stage_id.is_empty()
+
+
+## Returns the canonical gentle guidance ID ("What could we do today? / วันนี้ทำอะไรดี").
+func get_guidance_id() -> String:
+	return _guidance_id
+
+
+## Returns true if all fields satisfy domain invariants.
+func is_valid() -> bool:
+	if not GardenProgressionStage.is_valid_stage(_stage_id):
+		return false
+	if _stage_index != GardenProgressionStage.stage_index(_stage_id):
+		return false
+	if _establishment_score < 0:
+		return false
+	if not _next_stage_id.is_empty() and not GardenProgressionStage.is_valid_stage(_next_stage_id):
+		return false
+	if _next_stage_threshold < 0 or _points_to_next_stage < 0:
+		return false
+	if not GardenProgressionStage.is_valid_guidance_id(_guidance_id):
+		return false
+	return true

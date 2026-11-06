@@ -38,6 +38,18 @@ static func is_eligible(visitor: VisitorDefinition, snapshot: GardenSnapshot) ->
 		if snapshot.get_plant_count_for_definition(required_plant_id) < 1:
 			return false
 
+	for required_decor_id: String in visitor.required_decoration_ids:
+		if snapshot.get_decoration_count_for_definition(required_decor_id) < 1:
+			return false
+
+	if not visitor.allowed_time_periods.is_empty():
+		if not visitor.allowed_time_periods.has(snapshot.get_time_period()):
+			return false
+
+	if not visitor.allowed_weather_states.is_empty():
+		if not visitor.allowed_weather_states.has(snapshot.get_weather_state()):
+			return false
+
 	return true
 
 

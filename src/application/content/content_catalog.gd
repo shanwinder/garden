@@ -30,6 +30,8 @@ var _visitors_by_id: Dictionary = {}
 var _sorted_visitor_ids: Array[String] = []
 var _decorations_by_id: Dictionary = {}
 var _sorted_decoration_ids: Array[String] = []
+var _events_by_id: Dictionary = {}
+var _sorted_event_ids: Array[String] = []
 
 
 ## Private constructor. Use [method try_create] to instantiate.
@@ -39,7 +41,9 @@ func _init(
 	visitors_by_id: Dictionary = {},
 	sorted_visitor_ids: Array[String] = [],
 	decorations_by_id: Dictionary = {},
-	sorted_decoration_ids: Array[String] = []
+	sorted_decoration_ids: Array[String] = [],
+	events_by_id: Dictionary = {},
+	sorted_event_ids: Array[String] = []
 ) -> void:
 	_plants_by_id = plants_by_id
 	_sorted_plant_ids = sorted_plant_ids
@@ -47,23 +51,27 @@ func _init(
 	_sorted_visitor_ids = sorted_visitor_ids
 	_decorations_by_id = decorations_by_id
 	_sorted_decoration_ids = sorted_decoration_ids
+	_events_by_id = events_by_id
+	_sorted_event_ids = sorted_event_ids
 
 
 ## Validates and constructs a ContentCatalog from the supplied [param plant_definitions],
-## optional [param visitor_definitions], and optional [param decoration_definitions].
+## optional [param visitor_definitions], optional [param decoration_definitions], and
+## optional [param event_definitions].
 ##
 ## All-or-nothing validation rules:
 ## - Returns null if any entry in [param plant_definitions], [param visitor_definitions],
-##   or [param decoration_definitions] is null.
+##   [param decoration_definitions], or [param event_definitions] is null.
 ## - Returns null if any entry has is_valid() == false.
-## - Returns null if there are duplicate definition IDs within plants, visitors, or decorations.
+## - Returns null if there are duplicate definition IDs within plants, visitors, decorations, or events.
 ## - Returns a valid ContentCatalog if inputs are empty or all entries are valid and unique.
 ##
 ## Does not mutate caller's Arrays. Preserves exact Resource references.
 static func try_create(
 	plant_definitions: Array[PlantDefinition],
 	visitor_definitions: Array[VisitorDefinition] = [],
-	decoration_definitions: Array[DecorationDefinition] = []
+	decoration_definitions: Array[DecorationDefinition] = [],
+	event_definitions: Array[EventDefinition] = []
 ) -> ContentCatalog:
 	var plants_map: Dictionary = {}
 	var plant_ids: Array[String] = []
@@ -116,9 +124,27 @@ static func try_create(
 		decorations_map[decoration_id] = decoration_def
 		decoration_ids.append(decoration_id)
 
+	var events_map: Dictionary = {}
+	var event_ids: Array[String] = []
+
+	for event_def: EventDefinition in event_definitions:
+		if event_def == null:
+			return null
+
+		if not event_def.is_valid():
+			return null
+
+		var event_id: String = event_def.id
+		if events_map.has(event_id):
+			return null
+
+		events_map[event_id] = event_def
+		event_ids.append(event_id)
+
 	plant_ids.sort()
 	visitor_ids.sort()
 	decoration_ids.sort()
+	event_ids.sort()
 
 	return ContentCatalog.new(
 		plants_map,
@@ -126,7 +152,9 @@ static func try_create(
 		visitors_map,
 		visitor_ids,
 		decorations_map,
-		decoration_ids
+		decoration_ids,
+		events_map,
+		event_ids
 	)
 
 
@@ -230,3 +258,37 @@ func get_all_decorations() -> Array[DecorationDefinition]:
 ## Mutating the returned Array does not mutate the catalog.
 func get_all_decoration_ids() -> Array[String]:
 	return _sorted_decoration_ids.duplicate()
+
+
+## Returns true if the catalog contains an event definition with the exact [param definition_id].
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func has_event(definition_id: String) -> bool:
+	return _events_by_id.has(definition_id)
+
+
+## Returns the exact EventDefinition reference for [param definition_id], or null if not found.
+## Pure query: side-effect free, no ID normalization, no push_error on miss.
+func get_event(definition_id: String) -> EventDefinition:
+	return _events_by_id.get(definition_id, null)
+
+
+## Returns the total number of event definitions in the catalog.
+func get_event_count() -> int:
+	return _sorted_event_ids.size()
+
+
+## Returns a new Array containing all EventDefinition references in deterministic ascending ID order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_events() -> Array[EventDefinition]:
+	var result: Array[EventDefinition] = []
+	result.resize(_sorted_event_ids.size())
+	for i: int in range(_sorted_event_ids.size()):
+		var def_id: String = _sorted_event_ids[i]
+		result[i] = _events_by_id[def_id]
+	return result
+
+
+## Returns a new Array containing all event definition IDs in deterministic ascending order.
+## Mutating the returned Array does not mutate the catalog.
+func get_all_event_ids() -> Array[String]:
+	return _sorted_event_ids.duplicate()

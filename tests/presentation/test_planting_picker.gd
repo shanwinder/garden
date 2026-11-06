@@ -58,6 +58,7 @@ func run_tests() -> void:
 	_test_p_no_save_clock_rng_access()
 	_test_q_touch_controls_enabled_only_when_ready()
 	_test_r_no_scene_load_errors()
+	_test_s_rich_metadata_and_garden_context()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -389,3 +390,69 @@ func _test_r_no_scene_load_errors() -> void:
 	instance._ready()
 	assert_false(instance.is_confirmation_active(), "Confirmation overlay hidden by default")
 	instance.free()
+
+
+func _test_s_rich_metadata_and_garden_context() -> void:
+	describe("S. PlantingPicker displays growth duration, reward, traits, and planted count from GardenSnapshot")
+	var picker: PlantingPicker = _instantiate_picker()
+	var p_res: PlantContentLoadResult = PlantContentLoader.new().load_production_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(p_res.get_definitions())
+	picker.bind_catalog(catalog)
+
+	assert_eq(picker.get_planted_count_for_id("plant.jasmine"), 0, "Before snapshot context: planted count is 0")
+	var jasmine_text_before: String = picker.get_plant_option_text_for_id("plant.jasmine")
+	assert_true(jasmine_text_before.contains("มะลิ"), "Jasmine option contains Thai name")
+	assert_true(jasmine_text_before.contains("โตเต็มที่ 3600 วินาที"), "Jasmine option contains mature duration")
+	assert_true(jasmine_text_before.contains("รางวัล +25 เหรียญ"), "Jasmine option contains harvest reward")
+	assert_true(jasmine_text_before.contains("ดอกไม้"), "Jasmine option contains flower trait")
+
+	var snapshot: GardenSnapshot = GardenSnapshot.new(
+		{"dense_vegetation": 2, "flower": 2},
+		{"plant.jasmine": 2},
+		2,
+		1
+	)
+	var journal: JournalState = JournalState.new()
+	journal.try_record_sighting("plant.jasmine", 1000)
+	picker.update_garden_context(snapshot, journal)
+	assert_eq(picker.get_planted_count_for_id("plant.jasmine"), 2, "After snapshot context: jasmine planted count is 2")
+	assert_eq(picker.get_planted_count_for_id("plant.banana"), 0, "Unplanted banana count is 0")
+	assert_true(picker.is_plant_discovered("plant.jasmine"), "Jasmine is marked discovered in picker")
+	assert_false(picker.is_plant_discovered("plant.banana"), "Banana is not yet discovered in picker")
+	assert_eq(
+		picker.get_undiscovered_plant_ids(),
+		["plant.banana", "plant.chili", "plant.holy_basil", "plant.marigold"],
+		"Undiscovered plant IDs returned in deterministic catalog order"
+	)
+	assert_eq(
+		picker.get_discovered_plant_ids(),
+		["plant.jasmine"],
+		"Discovered plant IDs returned in deterministic catalog order"
+	)
+	assert_eq(
+		picker.get_plant_traits_for_id("plant.jasmine"),
+		["dense_vegetation", "flower"],
+		"Plant traits query returns jasmine traits"
+	)
+	assert_true(
+		picker.get_plant_option_text_for_id("plant.jasmine").contains("ปลูกแล้ว 2 ต้น"),
+		"Jasmine button text updated in-place with planted count"
+	)
+	assert_true(
+		picker.get_plant_option_text_for_id("plant.jasmine").contains("[ค้นพบแล้ว]"),
+		"Discovered jasmine button shows [ค้นพบแล้ว] badge"
+	)
+	assert_true(
+		picker.get_plant_option_text_for_id("plant.banana").contains("[พันธุ์ใหม่]"),
+		"Undiscovered banana button shows [พันธุ์ใหม่] badge"
+	)
+	picker.select_plant_definition("plant.jasmine")
+	assert_true(
+		picker.get_confirm_prompt_text().contains("โตเต็มที่ 3600 วินาที | รางวัล +25 เหรียญ"),
+		"Confirmation prompt includes mature duration and harvest reward"
+	)
+	assert_true(
+		picker.get_confirm_prompt_text().contains("คุณสมบัติ: พุ่มไม้หนาแน่น, ดอกไม้"),
+		"Confirmation prompt includes environmental traits summary"
+	)
+	picker.free()

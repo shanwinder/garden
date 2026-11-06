@@ -51,6 +51,9 @@ func run_tests() -> void:
 	_test_snapshot_and_visitor_evaluation_delegation()
 	_test_record_discovery_delegation()
 	_test_try_purchase_decoration_delegation()
+	_test_evaluate_event_delegation()
+	_test_evaluate_progression_delegation()
+	_test_evaluate_return_delegation()
 
 
 
@@ -602,3 +605,90 @@ func _test_try_purchase_decoration_delegation() -> void:
 	assert_eq(r_bench.get_price_spent(), 25, "Spent 25")
 	assert_eq(session.get_currency(), 10, "Balance is 10")
 	assert_eq(session.get_state().get_decorations().get_count(), 2, "2 decorations placed")
+
+
+func _test_evaluate_event_delegation() -> void:
+	describe("GameSession evaluate_event_at and evaluate_event_now delegate to EventSelectionService")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var decors: Array[DecorationDefinition] = DecorationContentLoader.new().load_production_definitions().get_definitions()
+	var events: Array[EventDefinition] = EventContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors, decors, events)
+
+	var session: GameSession = GameSession.new()
+	session.try_register_plant(catalog, "jasmine-1", "plant.jasmine", 1000)
+
+	# t = 21600 -> morning + clear -> event.morning_butterflies
+	var rng_at: FakeRandomSource = FakeRandomSource.new([0.1], [])
+	var res_at: EventSelectionResult = session.evaluate_event_at(catalog, rng_at, 21600)
+	assert_true(res_at.is_selected(), "evaluate_event_at selects morning butterflies")
+	assert_eq(res_at.get_selected_event_id(), "event.morning_butterflies", "Selected event.morning_butterflies")
+
+	var clock: FakeGameClock = FakeGameClock.new(21600, 0)
+	var rng_now: FakeRandomSource = FakeRandomSource.new([0.9], [])
+	var res_now: EventSelectionResult = session.evaluate_event_now(catalog, clock, rng_now)
+	assert_true(res_now.is_selected(), "evaluate_event_now selects morning butterflies")
+	assert_eq(res_now.get_selected_event_id(), "event.morning_butterflies", "Selected event.morning_butterflies")
+
+
+func _test_evaluate_progression_delegation() -> void:
+	describe("GameSession evaluate_progression_at and evaluate_progression_now delegate to GardenProgressionStage")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var decors: Array[DecorationDefinition] = DecorationContentLoader.new().load_production_definitions().get_definitions()
+	var events: Array[EventDefinition] = EventContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors, decors, events)
+
+	var session: GameSession = GameSession.new()
+
+	# Empty garden -> starting_garden (0 pts), guidance.plant_first
+	var sum_empty: GardenProgressionSummary = session.evaluate_progression_at(catalog, 1000)
+	assert_true(sum_empty != null and sum_empty.is_valid(), "Empty session progression summary is valid")
+	assert_eq(sum_empty.get_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Empty stage is starting_garden")
+	assert_eq(sum_empty.get_establishment_score(), 0, "Empty establishment score is 0")
+	assert_eq(sum_empty.get_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Empty guidance is plant_first")
+
+	# Plant jasmine ("flower", "dense_vegetation") -> try_register_plant records discovery automatically:
+	# score = 3 (plant) + 6 (2 traits) + 5 (1 journal discovery) = 14 -> growing_garden
+	session.try_register_plant(catalog, "jasmine-1", "plant.jasmine", 1000)
+	var clock: FakeGameClock = FakeGameClock.new(4600, 0) # +3600s -> jasmine is MATURE (+2 pts -> score 16)
+	var sum_now: GardenProgressionSummary = session.evaluate_progression_now(catalog, clock)
+	assert_true(sum_now != null and sum_now.is_valid(), "evaluate_progression_now returns valid summary")
+	assert_eq(sum_now.get_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Stage is growing_garden")
+	assert_eq(sum_now.get_establishment_score(), 16, "Score is 16 (1 plant=3, 1 mature=2, 2 traits=6, 1 journal=5)")
+	assert_eq(
+		sum_now.get_guidance_id(),
+		GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR,
+		"Guidance suggests observing eligible visitors before any visitor is discovered"
+	)
+
+
+func _test_evaluate_return_delegation() -> void:
+	describe("GameSession evaluate_return_between and evaluate_return_from_now delegate to GardenReturnEvaluator")
+	var plants: Array[PlantDefinition] = PlantContentLoader.new().load_production_definitions().get_definitions()
+	var visitors: Array[VisitorDefinition] = VisitorContentLoader.new().load_production_definitions().get_definitions()
+	var decors: Array[DecorationDefinition] = DecorationContentLoader.new().load_production_definitions().get_definitions()
+	var events: Array[EventDefinition] = EventContentLoader.new().load_production_definitions().get_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(plants, visitors, decors, events)
+
+	var session: GameSession = GameSession.new()
+	session.try_register_plant(catalog, "basil-1", "plant.holy_basil", 1000)
+
+	# Between t=1000 (PLANTED) and t=1600 (MATURE)
+	var sum_between: GardenReturnSummary = session.evaluate_return_between(catalog, 1000, 1600)
+	assert_true(sum_between != null and sum_between.is_valid(), "evaluate_return_between returns valid summary")
+	assert_eq(sum_between.get_elapsed_seconds(), 600, "Elapsed is 600s")
+	assert_eq(sum_between.get_advanced_plant_ids(), ["basil-1"], "basil-1 advanced")
+	assert_eq(sum_between.get_newly_matured_plant_ids(), ["basil-1"], "basil-1 newly matured")
+	assert_eq(sum_between.get_ready_to_harvest_count(), 1, "1 plant ready to harvest")
+	assert_true(sum_between.has_meaningful_changes(), "Has meaningful changes")
+
+	# From now with FakeGameClock at t=14400 (rain, night -> morning at 21600)
+	var clock: FakeGameClock = FakeGameClock.new(21600, 0)
+	var sum_now: GardenReturnSummary = session.evaluate_return_from_now(catalog, clock, 1000)
+	assert_true(sum_now != null and sum_now.is_valid(), "evaluate_return_from_now returns valid summary")
+	assert_eq(sum_now.get_current_utc_seconds(), 21600, "current_utc_seconds is 21600")
+	assert_eq(sum_now.get_previous_time_period(), GardenTimePeriod.NIGHT, "Previous period is night")
+	assert_eq(sum_now.get_current_time_period(), GardenTimePeriod.MORNING, "Current period is morning")
+	assert_true(sum_now.has_time_period_changed(), "Time period changed")
+	assert_eq(session.get_state().get_journal().get_count(), 1, "No offline visitor discovery added")

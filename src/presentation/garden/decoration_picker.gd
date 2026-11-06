@@ -45,9 +45,13 @@ const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
 }
 
 var _catalog: ContentCatalog = null
+var _snapshot: GardenSnapshot = null
+var _available_currency: int = -1
+var _has_currency_context: bool = false
 var _pending_definition_id: String = ""
 var _is_dispatching_confirmation: bool = false
 var _is_enabled: bool = true
+var _option_texts_by_id: Dictionary = {}
 
 var _close_button: Button = null
 var _decoration_list_container: Container = null
@@ -105,13 +109,9 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 
 	var decoration_ids: Array[String] = _catalog.get_all_decoration_ids()
 	for def_id: String in decoration_ids:
-		var def: DecorationDefinition = _catalog.get_decoration(def_id)
-		var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
-		var price_val: int = def.price if def != null else 0
-		var traits_summary: String = _format_traits_summary(def)
-
 		var btn: Button = Button.new()
-		btn.text = "%s (%s) — %d เหรียญ | %s" % [thai_name, def_id, price_val, traits_summary]
+		btn.text = _format_decoration_button_text(def_id)
+		_option_texts_by_id[def_id] = btn.text
 		btn.custom_minimum_size = Vector2(0, 72)
 		btn.focus_mode = Control.FOCUS_ALL
 		btn.add_theme_font_size_override("font_size", 21)
@@ -120,6 +120,43 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 		_decoration_buttons.append(btn)
 		if _decoration_list_container != null:
 			_decoration_list_container.add_child(btn)
+
+
+## Updates optional read-only shop context (available currency and GardenSnapshot) and refreshes labels in-place.
+func update_shop_context(available_currency: int, snapshot: GardenSnapshot = null) -> void:
+	_available_currency = available_currency
+	_has_currency_context = available_currency >= 0
+	_snapshot = snapshot
+	_refresh_button_labels()
+
+
+func _refresh_button_labels() -> void:
+	_option_texts_by_id.clear()
+	if _catalog == null:
+		return
+	var decoration_ids: Array[String] = _catalog.get_all_decoration_ids()
+	for idx: int in range(mini(decoration_ids.size(), _decoration_buttons.size())):
+		var def_id: String = decoration_ids[idx]
+		var formatted: String = _format_decoration_button_text(def_id)
+		_option_texts_by_id[def_id] = formatted
+		var btn: Button = _decoration_buttons[idx]
+		if is_instance_valid(btn):
+			btn.text = formatted
+
+
+func _format_decoration_button_text(def_id: String) -> String:
+	var def: DecorationDefinition = _catalog.get_decoration(def_id) if _catalog != null else null
+	var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
+	var price_val: int = def.price if def != null else 0
+	var traits_summary: String = _format_traits_summary(def)
+	var text: String = "%s (%s) — %d เหรียญ | %s" % [thai_name, def_id, price_val, traits_summary]
+	if _snapshot != null:
+		var placed_count: int = _snapshot.get_decoration_count_for_definition(def_id)
+		text += " | วางแล้ว %d ชิ้น" % placed_count
+		text += " [จัดวางแล้ว]" if placed_count > 0 else " [ของตกแต่งใหม่]"
+	if _has_currency_context and _available_currency < price_val:
+		text += " [เหรียญไม่พอ]"
+	return text
 
 
 func _format_traits_summary(def: DecorationDefinition) -> String:
@@ -133,6 +170,7 @@ func _format_traits_summary(def: DecorationDefinition) -> String:
 
 func _clear_decoration_buttons() -> void:
 	_decoration_buttons.clear()
+	_option_texts_by_id.clear()
 	if _decoration_list_container == null:
 		return
 	for child: Node in _decoration_list_container.get_children():
@@ -157,8 +195,18 @@ func select_decoration_definition(definition_id: String) -> void:
 	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
 	var price_val: int = def.price if def != null else 0
 	var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+	var traits_summary: String = _format_traits_summary(def)
 	if _confirm_prompt_label != null:
-		_confirm_prompt_label.text = "ซื้อและวาง%s (%d เหรียญ) ลงในสวนหรือไม่?" % [thai_name, price_val]
+		if _has_currency_context:
+			_confirm_prompt_label.text = (
+				"ซื้อและวาง%s (%d เหรียญ | เหรียญที่มี: %d เหรียญ | คุณสมบัติ: %s) ลงในสวนหรือไม่?"
+				% [thai_name, price_val, _available_currency, traits_summary]
+			)
+		else:
+			_confirm_prompt_label.text = (
+				"ซื้อและวาง%s (%d เหรียญ | คุณสมบัติ: %s) ลงในสวนหรือไม่?"
+				% [thai_name, price_val, traits_summary]
+			)
 
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = true
@@ -272,3 +320,74 @@ func get_available_decoration_ids() -> Array[String]:
 ## Pure query for testing: returns decoration buttons array.
 func get_decoration_buttons() -> Array[Button]:
 	return _decoration_buttons.duplicate()
+
+
+## Pure query for testing: returns bound available currency, or -1 if no currency context has been provided.
+func get_available_currency() -> int:
+	return _available_currency if _has_currency_context else -1
+
+
+## Pure query for testing: returns placed count for [param definition_id] from the bound GardenSnapshot, or 0.
+func get_placed_count_for_id(definition_id: String) -> int:
+	return _snapshot.get_decoration_count_for_definition(definition_id) if _snapshot != null else 0
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the catalog and is affordable under the bound currency context (or true if no currency context is set).
+func can_afford_decoration(definition_id: String) -> bool:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return false
+	if not _has_currency_context:
+		return true
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def != null and _available_currency >= def.price
+
+
+## Pure query for testing: returns formatted option button text for [param definition_id].
+func get_decoration_option_text_for_id(definition_id: String) -> String:
+	return _option_texts_by_id.get(definition_id, "")
+
+
+## Pure query for testing: returns a defensive copy of environmental traits for [param definition_id] in the bound catalog, or [].
+func get_decoration_traits_for_id(definition_id: String) -> Array[String]:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return []
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def.environmental_traits.duplicate() if def != null else []
+
+
+## Pure query for testing: returns true if [param definition_id] is currently placed in the bound GardenSnapshot.
+func is_decoration_placed(definition_id: String) -> bool:
+	return _snapshot != null and _snapshot.get_decoration_count_for_definition(definition_id) > 0
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations currently placed in the bound GardenSnapshot.
+func get_placed_decoration_ids() -> Array[String]:
+	if _catalog == null or _snapshot == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if _snapshot.get_decoration_count_for_definition(def_id) > 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations not yet placed in the bound GardenSnapshot.
+func get_unplaced_decoration_ids() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if _snapshot == null or _snapshot.get_decoration_count_for_definition(def_id) <= 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations affordable under the current currency context.
+func get_affordable_decoration_ids() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if can_afford_decoration(def_id):
+			result.append(def_id)
+	return result

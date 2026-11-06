@@ -23,6 +23,8 @@ var _mature_plant_count: int = 0
 var _decoration_counts_by_id: Dictionary = {}
 var _sorted_decoration_ids: Array[String] = []
 var _total_decoration_count: int = 0
+var _time_period: String = GardenTimePeriod.DAY
+var _weather_state: String = GardenWeather.CLEAR
 
 
 func _init(
@@ -31,7 +33,9 @@ func _init(
 	total_plant_count: int = 0,
 	mature_plant_count: int = 0,
 	decoration_counts_by_id: Dictionary = {},
-	total_decoration_count: int = 0
+	total_decoration_count: int = 0,
+	time_period: String = GardenTimePeriod.DAY,
+	weather_state: String = GardenWeather.CLEAR
 ) -> void:
 	_trait_counts = {}
 	_sorted_active_traits = []
@@ -76,6 +80,8 @@ func _init(
 	_sorted_decoration_ids.sort()
 
 	_total_decoration_count = maxi(0, total_decoration_count)
+	_time_period = time_period if GardenTimePeriod.is_valid(time_period) else GardenTimePeriod.DAY
+	_weather_state = weather_state if GardenWeather.is_valid(weather_state) else GardenWeather.CLEAR
 
 
 ## Returns the total count for [param trait_id], or 0 if absent or unknown.
@@ -139,3 +145,13 @@ func get_total_decoration_count() -> int:
 ## Returns true if the garden contains zero plants and zero decorations.
 func is_empty_garden() -> bool:
 	return _total_plant_count == 0 and _total_decoration_count == 0
+
+
+## Returns the active canonical time-of-day period in the snapshot ("morning", "day", "evening", "night").
+func get_time_period() -> String:
+	return _time_period
+
+
+## Returns the active canonical weather state in the snapshot ("clear", "cloudy", "rain").
+func get_weather_state() -> String:
+	return _weather_state

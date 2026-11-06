@@ -29,6 +29,8 @@ var _definition_id: String = ""
 var _display_name: String = ""
 var _planted_at: int = 0
 var _stage: PlantGrowth.Stage = PlantGrowth.Stage.INVALID
+var _harvest_reward: int = 0
+var _seconds_until_mature: int = -1
 var _is_selected: bool = false
 
 var _name_label: Label = null
@@ -68,13 +70,17 @@ func bind_plant_data(
 	runtime_instance_id: String,
 	definition_id: String,
 	stage: PlantGrowth.Stage,
-	planted_at: int
+	planted_at: int,
+	harvest_reward: int = 0,
+	seconds_until_mature: int = -1
 ) -> void:
 	_runtime_instance_id = runtime_instance_id
 	_definition_id = definition_id
 	_display_name = PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
 	_stage = stage
 	_planted_at = planted_at
+	_harvest_reward = maxi(0, harvest_reward)
+	_seconds_until_mature = seconds_until_mature
 	_render()
 
 
@@ -101,6 +107,33 @@ func get_planted_at() -> int:
 ## Pure query for the derived growth stage.
 func get_stage() -> PlantGrowth.Stage:
 	return _stage
+
+
+## Pure query for the bound harvest reward (0 if not set).
+func get_harvest_reward() -> int:
+	return _harvest_reward
+
+
+## Pure query for the bound remaining seconds until MATURE (-1 if not set).
+func get_seconds_until_mature() -> int:
+	return _seconds_until_mature
+
+
+## Pure query returning true if this plant view is at MATURE stage with a positive harvest reward.
+func is_ready_to_harvest() -> bool:
+	return _stage == PlantGrowth.Stage.MATURE and _harvest_reward > 0
+
+
+## Pure query for the rendered stage label text.
+func get_stage_label_text() -> String:
+	_resolve_nodes()
+	return _stage_label.text if _stage_label != null else ""
+
+
+## Pure query for the rendered stage badge text.
+func get_stage_badge_text() -> String:
+	_resolve_nodes()
+	return _stage_badge.text if _stage_badge != null else ""
 
 
 ## Pure query for the selection state.
@@ -135,16 +168,36 @@ func _render() -> void:
 	match _stage:
 		PlantGrowth.Stage.PLANTED:
 			_stage_label.text = "เพาะเมล็ด"
-			_stage_badge.text = "[เมล็ด]"
+			_stage_badge.text = (
+				"[เมล็ด • อีก %ds]" % _seconds_until_mature
+				if _seconds_until_mature > 0
+				else "[เมล็ด]"
+			)
 		PlantGrowth.Stage.SPROUT:
 			_stage_label.text = "ต้นกล้า"
-			_stage_badge.text = "[ต้นกล้า]"
+			_stage_badge.text = (
+				"[ต้นกล้า • อีก %ds]" % _seconds_until_mature
+				if _seconds_until_mature > 0
+				else "[ต้นกล้า]"
+			)
 		PlantGrowth.Stage.GROWING:
 			_stage_label.text = "กำลังโต"
-			_stage_badge.text = "[กำลังโต]"
+			_stage_badge.text = (
+				"[กำลังโต • อีก %ds]" % _seconds_until_mature
+				if _seconds_until_mature > 0
+				else "[กำลังโต]"
+			)
 		PlantGrowth.Stage.MATURE:
-			_stage_label.text = "โตเต็มที่"
-			_stage_badge.text = "[โตเต็มที่]"
+			_stage_label.text = (
+				"โตเต็มที่ (+%d เหรียญ)" % _harvest_reward
+				if _harvest_reward > 0
+				else "โตเต็มที่"
+			)
+			_stage_badge.text = (
+				"[พร้อมเก็บ +%d]" % _harvest_reward
+				if _harvest_reward > 0
+				else "[โตเต็มที่]"
+			)
 		_:
 			_stage_label.text = "ไม่ทราบสถานะ"
 			_stage_badge.text = "[ข้อมูลไม่สมบูรณ์]"

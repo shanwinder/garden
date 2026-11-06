@@ -456,11 +456,11 @@ Do not create an embedded mini-language or allow arbitrary executable scripts in
 
 Event requirements should use a finite, typed set of requirement kinds that can be validated and tested.
 
-#### Implementation Status (Milestones 6 and 11)
+#### Implementation Status (Milestones 6, 11, 13, and 14)
 
-- **Plant & Visitor definition loading**: `PlantContentLoader` (`src/infrastructure/content/plant_content_loader.gd`) loads the five authored MVP plant `.tres` resources (`plant.banana`, `plant.chili`, `plant.holy_basil`, `plant.jasmine`, `plant.marigold`), and `VisitorContentLoader` (`src/infrastructure/content/visitor_content_loader.gd`) loads the five authored MVP visitor `.tres` resources (`visitor.bird`, `visitor.butterfly`, `visitor.cat`, `visitor.firefly`, `visitor.frog`).
-- **Validated catalog**: `ContentCatalog.try_create(plant_definitions, visitor_definitions = [])` (`src/application/content/content_catalog.gd`) validates every `PlantDefinition` and `VisitorDefinition` in an all-or-nothing pass, enforces unique canonical IDs, and provides deterministic ascending-order enumeration (`get_all_plants()`, `get_all_plant_ids()`, `get_all_visitors()`, `get_all_visitor_ids()`).
-- **Startup completeness check**: `AppRoot.bootstrap_session()` (`src/application/app_root.gd`) verifies that all five `EXPECTED_PRODUCTION_PLANT_IDS` and all five `EXPECTED_PRODUCTION_VISITOR_IDS` are present in the built `ContentCatalog` before marking content `READY`.
+- **Plant, Visitor, Decoration & Event definition loading**: `PlantContentLoader` (`src/infrastructure/content/plant_content_loader.gd`) loads the five authored MVP plant `.tres` resources (`plant.banana`, `plant.chili`, `plant.holy_basil`, `plant.jasmine`, `plant.marigold`), `VisitorContentLoader` (`src/infrastructure/content/visitor_content_loader.gd`) loads the five authored MVP visitor `.tres` resources (`visitor.bird`, `visitor.butterfly`, `visitor.cat`, `visitor.firefly`, `visitor.frog`), `DecorationContentLoader` (`src/infrastructure/content/decoration_content_loader.gd`) loads the eight authored MVP decoration `.tres` resources, and `EventContentLoader` (`src/infrastructure/content/event_content_loader.gd`) loads the five authored MVP ambient/special event `.tres` resources (`event.bird_shade_song`, `event.cat_sleeping_bench`, `event.firefly_night_glow`, `event.frog_rain_chorus`, `event.morning_butterflies`).
+- **Validated catalog**: `ContentCatalog.try_create(plant_definitions, visitor_definitions = [], decoration_definitions = [], event_definitions = [])` (`src/application/content/content_catalog.gd`) validates every `PlantDefinition`, `VisitorDefinition`, `DecorationDefinition`, and `EventDefinition` in an all-or-nothing pass, enforces unique canonical IDs, and provides deterministic ascending-order enumeration (`get_all_plants()`, `get_all_plant_ids()`, `get_all_visitors()`, `get_all_visitor_ids()`, `get_all_decorations()`, `get_all_decoration_ids()`, `get_all_events()`, `get_all_event_ids()`).
+- **Startup completeness check**: `AppRoot.bootstrap_session()` (`src/application/app_root.gd`) verifies that all `EXPECTED_PRODUCTION_PLANT_IDS` (5), `EXPECTED_PRODUCTION_VISITOR_IDS` (5), `EXPECTED_PRODUCTION_DECORATION_IDS` (8), and `EXPECTED_PRODUCTION_EVENT_IDS` (5) are present in the built `ContentCatalog` before marking content `READY`.
 
 ---
 
@@ -501,11 +501,12 @@ Visitors/events should generally query this derived state rather than searching 
 
 Do not encode core eligibility as `get_tree().get_nodes_in_group(...)` checks inside visitor presentation scripts.
 
-#### Implementation Status (Milestone 11)
+#### Implementation Status (Milestones 11, 13, and 14)
 
 - **Canonical trait vocabulary**: `EnvironmentalTrait` (`src/domain/environment/environmental_trait.gd`) defines the nine canonical traits (`dense_vegetation`, `flower`, `food`, `fruit`, `light`, `perch`, `shade`, `shelter`, `water`) and validates trait lists for membership and uniqueness.
-- **Authored plant traits**: `PlantDefinition` (`src/domain/plants/plant_definition.gd`) includes `@export var environmental_traits: Array[String] = []` (validated via `EnvironmentalTrait.is_valid_trait_list(...)`), and the five authored plant `.tres` resources define their provisional trait contributions (`plant.banana`: `["fruit", "perch", "shade", "shelter"]`; `plant.chili`: `["food", "fruit"]`; `plant.holy_basil`: `["dense_vegetation", "food"]`; `plant.jasmine`: `["dense_vegetation", "flower"]`; `plant.marigold`: `["flower"]`).
-- **Immutable derived snapshot**: `GardenSnapshot` (`src/domain/environment/garden_snapshot.gd`) and `GardenSnapshotBuilder` (`src/application/environment/garden_snapshot_builder.gd`) derive active environmental trait counts, per-definition plant counts, total plant count, and mature plant count at an explicit `now_utc_seconds` timestamp without querying the scene tree.
+- **Authored plant & decoration traits**: `PlantDefinition` (`src/domain/plants/plant_definition.gd`) and `DecorationDefinition` (`src/domain/decorations/decoration_definition.gd`) include `@export var environmental_traits: Array[String] = []` (validated via `EnvironmentalTrait.is_valid_trait_list(...)`).
+- **Time-of-day & weather context**: `GardenTimePeriod` (`src/domain/environment/garden_time_period.gd`) defines the four canonical time periods (`morning`, `day`, `evening`, `night`) and derives the active period deterministically from UTC timestamps. `GardenWeather` (`src/domain/environment/garden_weather.gd`) defines the three canonical MVP weather states (`clear`, `cloudy`, `rain`) and derives the active weather state in $O(1)$ time from UTC timestamps.
+- **Immutable derived snapshot**: `GardenSnapshot` (`src/domain/environment/garden_snapshot.gd`) and `GardenSnapshotBuilder` (`src/application/environment/garden_snapshot_builder.gd`) derive active environmental trait counts (summed across plants and placed decorations), per-definition plant and decoration counts, total and mature plant counts, total decoration count, `time_period`, and `weather_state` at an explicit `now_utc_seconds` timestamp without querying the scene tree.
 
 ---
 
@@ -688,12 +689,14 @@ Presentation decides **how it looks and animates**.
 
 A cat animation script must not become the place where eligibility, economy, journal state, and cooldown logic are all implemented.
 
-#### Implementation Status (Milestone 11)
+#### Implementation Status (Milestones 11 and 14)
 
-- **Typed visitor definitions**: `VisitorDefinition` (`src/domain/visitors/visitor_definition.gd`) defines `id` (`visitor.` namespace), `weight` (`> 0.0`), `required_trait_counts`, `required_plant_ids`, `min_total_plants`, and `min_mature_plants`, validated via pure `is_valid()`.
-- **Pure deterministic eligibility**: `VisitorEligibility` (`src/domain/visitors/visitor_eligibility.gd`) evaluates `is_eligible(visitor, snapshot)` and `filter_eligible_visitors(visitors, snapshot)` purely from `VisitorDefinition` and `GardenSnapshot` with zero randomness or scene queries.
-- **Deterministic weighted selection**: `VisitorSelectionService` (`src/application/visitors/visitor_selection_service.gd`) builds a `GardenSnapshot`, filters eligible visitors in deterministic ascending ID order, and selects one candidate via `RandomSource.choose_weighted_index(weights)`, returning a typed `VisitorSelectionResult` (`SELECTED`, `NO_ELIGIBLE_VISITORS`, `INVALID_INPUT`, or `SELECTION_FAILED`). When no visitors are eligible, zero random numbers are consumed.
-- **Ephemeral visitor state (Save V1 preserved)**: Per Section 17, active visitor observations in Milestone 11 are ephemeral and do not alter `GameStateCodec` V1.
+- **Typed visitor & event definitions**:
+  - `VisitorDefinition` (`src/domain/visitors/visitor_definition.gd`) defines `id` (`visitor.` namespace), `weight` (`> 0.0`), `required_trait_counts`, `required_plant_ids`, `required_decoration_ids`, `allowed_time_periods`, `allowed_weather_states`, `min_total_plants`, and `min_mature_plants`, validated via pure `is_valid()`.
+  - `EventDefinition` (`src/domain/events/event_definition.gd`) defines `id` (`event.` namespace), `weight` (`> 0.0`), `required_trait_counts`, `required_plant_ids`, `required_decoration_ids`, `allowed_time_periods`, `allowed_weather_states`, `min_total_plants`, `min_mature_plants`, and `min_total_decorations`, validated via pure `is_valid()`. The five authored MVP `.tres` events in `content/events/` implement all five rows of the MVP Interaction Matrix (`GAME_DESIGN.md` Section 24).
+- **Pure deterministic eligibility**: `VisitorEligibility` (`src/domain/visitors/visitor_eligibility.gd`) and `EventEligibility` (`src/domain/events/event_eligibility.gd`) evaluate `is_eligible(...)` and `filter_eligible_visitors(...)` / `filter_eligible_events(...)` purely against `GardenSnapshot` with zero randomness or scene queries.
+- **Deterministic weighted selection**: `VisitorSelectionService` (`src/application/visitors/visitor_selection_service.gd`) and `EventSelectionService` (`src/application/events/event_selection_service.gd`) build a `GardenSnapshot`, filter eligible definitions in deterministic ascending ID order, and select one candidate via `RandomSource.choose_weighted_index(weights)`, returning `VisitorSelectionResult` / `EventSelectionResult`. When no candidates are eligible, zero random numbers are consumed.
+- **Ephemeral active visitor/event state**: Per Section 17, active visitor observations and ambient events are ephemeral runtime state; persistent discoveries are recorded in `JournalState` (Save Schema V3 preserved).
 
 ---
 
@@ -735,6 +738,13 @@ Weather transitions should be orchestrated centrally, not by multiple scene node
 Loading after a long absence should calculate a valid current state efficiently. It must not simulate thousands of tiny frame/timer updates.
 
 The exact weather schedule and probabilities are tuning data and remain outside architecture.
+
+#### Implementation Status (Milestones 14 and 18)
+
+- **Deterministic $O(1)$ weather schedule**: `GardenWeather` (`src/domain/environment/garden_weather.gd`) implements the three canonical MVP weather states (`clear`, `cloudy`, `rain`) using 2-hour windows (`WEATHER_WINDOW_SECONDS = 7200`) and a 5-step deterministic cycle (`["clear", "cloudy", "rain", "clear", "cloudy"]`) coprime with the 12 daily windows so every time-of-day period experiences all three weather states across days.
+- **Timestamp-derived without step simulation**: `GardenWeather.weather_for_utc_seconds(now_utc_seconds)` derives the active weather state in $O(1)$ time from the injected `GameClock` timestamp (clamping negative timestamps to `0`) without requiring background timers or simulating intermediate ticks after long offline absences.
+- **Schedule transition forecast queries (Milestone 18)**: `GardenWeather.next_weather_for_utc_seconds(now_utc_seconds)` and `GardenWeather.seconds_until_next_weather(now_utc_seconds)` (along with `GardenTimePeriod.next_period_for_period(period_id)`, `GardenTimePeriod.next_period_for_utc_seconds(now_utc_seconds, utc_offset_seconds)`, and `GardenTimePeriod.seconds_until_next_period(now_utc_seconds, utc_offset_seconds)`) compute the next transition state and remaining seconds in $O(1)$ time from the single refresh timestamp.
+- **Atmospheric presentation**: `GardenView` (`src/presentation/garden/garden_view.gd` and `scenes/garden/garden_view.tscn`) renders the active time period (`ยามเช้า`, `กลางวัน`, `ยามเย็น`, `ยามค่ำคืน`), weather state (`ท้องฟ้าแจ่มใส`, `มีเมฆมาก`, `ฝนตก`), and active ambient events in `AtmosphereLabel`, exposes next time/weather transition forecasts, and applies a calm time-of-day and weather color tint to `Background` (`ColorRect`) during centralized refreshes.
 
 ---
 
@@ -812,7 +822,7 @@ Do not copy full localized names/descriptions into save data.
 
 First-time discovery should be idempotent: seeing the same visitor twice must not accidentally award first-discovery rewards twice.
 
-#### Implementation Status (Milestone 12)
+#### Implementation Status (Milestones 12, 15, 17, 20, 21, 22, and 23)
 
 - **Immutable discovery value object**: `DiscoveryRecord` (`src/domain/journal/discovery_record.gd`) stores `_definition_id` (validated canonical `StableContentId` in `"plant."` or `"visitor."` namespaces), `_first_seen_at` (`>= 0`), and `_times_seen` (`>= 1`). Its `with_additional_sighting(seen_at_utc)` returns a new `DiscoveryRecord` that preserves `_first_seen_at` (idempotent first discovery) and increments `_times_seen` by 1 while guarding against 64-bit integer overflow.
 - **Authoritative journal state slice**: `JournalState` (`src/domain/state/journal_state.gd`) is owned by `GameState` (`state.get_journal()`), providing deterministic ascending ID queries (`get_all_records()`, `get_discovered_ids()`), persistence reconstruction (`try_put_record(record)`), and idempotent sighting recording (`try_record_sighting(definition_id, seen_at_utc)`).
@@ -820,7 +830,11 @@ First-time discovery should be idempotent: seeing the same visitor twice must no
   - `PlantRegistrationService.try_register_plant(...)` automatically records a plant sighting (`journal.try_record_sighting(definition_id, planted_at)`) when a plant is registered into `GameState`.
   - `JournalDiscoveryService` (`src/application/journal/journal_discovery_service.gd`) validates `definition_id` against `ContentCatalog` (`has_plant` / `has_visitor`) and records the sighting in `JournalState`, returning a typed `JournalDiscoveryResult` (`FIRST_DISCOVERY`, `REPEAT_SIGHTING`, `INVALID_INPUT`, `UNKNOWN_DEFINITION_ID`, or `STATE_UPDATE_REJECTED`).
 - **Visitor observation checkpoint**: `VisitorObservationPersistenceCoordinator` (`src/application/visitors/visitor_observation_persistence_coordinator.gd`) samples `GameClock.utc_now_seconds()` once, evaluates visitor selection at that timestamp, records the selected visitor discovery in `JournalState`, and immediately checkpoints `GameState` via `LocalSaveRepository.save(state)`, returning `VisitorObservationCheckpointResult` (`OBSERVED_SAVED`, `OBSERVED_SAVE_FAILED`, `NO_ELIGIBLE_VISITORS`, `OBSERVATION_REJECTED`, or `NOT_READY`).
-- **Journal presentation (`สมุดบ้านสวน`)**: `JournalPanel` (`src/presentation/garden/journal_panel.gd` and `scenes/garden/journal_panel.tscn`) binds read-only to `JournalState` and `ContentCatalog`, displaying overall discovery progress (`ค้นพบแล้ว X / 10 รายการ (พืช A/5, ผู้มาเยือน B/5)`), localized names, `first_seen_at`, and `times_seen` for discovered entries, and `[???]` mystery placeholders with habitat clues for undiscovered entries.
+- **Journal presentation (`สมุดบ้านสวน`, Milestones 12, 17, 21, 22, and 23)**: `JournalPanel` (`src/presentation/garden/journal_panel.gd` and `scenes/garden/journal_panel.tscn`) binds read-only to `JournalState`, `ContentCatalog`, and optional `DecorationCollectionState` / `GardenSnapshot`, displaying overall discovery progress (`ค้นพบแล้ว X / 10 รายการ (พืช A/5, ผู้มาเยือน B/5)`), localized names, `first_seen_at`, `times_seen`, live planted counts (`กำลังปลูกในสวน: X ต้น`), and live visitor habitat eligibility (`มีโอกาสพบในขณะนี้` / `ยังไม่ตรงเงื่อนไขในขณะนี้`) for discovered entries, `[???]` mystery placeholders with environmental trait, habitat, and readiness clues (`สภาพแวดล้อมพร้อมแล้ว ลองสำรวจผู้มาเยือนในสวน`) for undiscovered entries, placed vs unplaced decoration catalog entries (`หมวดของตกแต่งสวน`), active vs mystery ambient event entries (`หมวดเหตุการณ์พิเศษในสวน`) with condition clues, and category/live-status queries (`get_discovered_plant_entry_count()`, `get_discovered_visitor_entry_count()`, `get_placed_count_for_decoration_id(...)`, `is_event_active_in_journal(...)`).
+- **Garden Progression & Optional Gentle Guidance (Milestones 15 and 20)**:
+  - `GardenProgressionStage` (`src/domain/progression/garden_progression_stage.gd`) and `GardenProgressionSummary` (`src/domain/progression/garden_progression_summary.gd`) implement pure deterministic progression evaluation across the five canonical stages from `GAME_DESIGN.md` Section 18 (`starting_garden`, `growing_garden`, `shady_garden`, `living_garden`, `happy_garden_home`) and the six low-pressure optional guidance prompts from `GAME_DESIGN.md` Section 20 (`guidance.plant_first`, `guidance.observe_visitor`, `guidance.place_decoration`, `guidance.create_water_habitat`, `guidance.discover_more`, `guidance.enjoy_garden`).
+  - Progression is derived purely from `GardenSnapshot` and `JournalState` (with `GameSession.evaluate_progression_at(...)`, `GameSession.evaluate_progression_now(...)`, and `AppRoot.evaluate_progression_now()`), requiring zero save-schema changes (Save Schema V3 preserved).
+  - In Milestone 20, `GardenView` (`src/presentation/garden/garden_view.gd`) surfaces the next-stage establishment progress (`อีก X แต้มสู่<ชื่อระดับถัดไป>` or `สูงสุดแล้ว` at `happy_garden_home`) in `ProgressionLabel` and exposes `get_next_progression_stage_id()` and `get_points_to_next_progression_stage()`.
 
 ---
 
@@ -1120,9 +1134,9 @@ Do not apply offline progression independently in multiple places such as:
 
 That pattern causes double counting. One coordinator/application operation owns the transition.
 
-#### Implementation Status (Milestones 5 and 9)
+#### Implementation Status (Milestones 5, 9, and 16)
 
-This section remains the **LOCKED** target architecture. Milestones 5 and 9 implement the pause persistence checkpoint and centralized resume presentation refresh:
+This section remains the **LOCKED** target architecture. Milestones 5, 9, and 16 implement the pause persistence checkpoint, centralized resume presentation refresh, and away-time return summary UX:
 
 - **Currently implemented**:
   - Startup load and bootstrap (`AppRoot.bootstrap_session()`);
@@ -1131,11 +1145,11 @@ This section remains the **LOCKED** target architecture. Milestones 5 and 9 impl
   - Typed resume transition gating (`LifecycleCoordinator.on_application_resumed(game_session)` returning `ResumeOutcome.RESUMED`, `SKIPPED_NO_ACTIVE_SESSION`, or `IGNORED_NOT_PAUSED`, with `get_last_resume_outcome()`);
   - Corruption-safe null-session behavior (`SKIPPED_NO_ACTIVE_SESSION`);
   - Narrow application resume signal (`AppRoot.session_resumed`) emitted only on a genuine `PAUSED` -> `RESUMED` transition when both an active `GameSession` and `ContentCatalog` are ready;
-  - Centralized presentation resume refresh (`MainScreen._on_app_session_resumed()` -> `GardenView.refresh_from_session()`), which samples `GameClock.utc_now_seconds()` once, recomputes plant growth stages via `PlantGrowth.stage_for_state_at(...)` (with negative elapsed times clamped to 0), preserves ephemeral plant selection, and performs zero disk reads or writes on resume.
+  - Centralized presentation resume refresh (`MainScreen._on_app_session_resumed()` -> `GardenView.refresh_from_session()`), which samples `GameClock.utc_now_seconds()` once, recomputes plant growth stages via `PlantGrowth.stage_for_state_at(...)` (with negative elapsed times clamped to 0), evaluates the away-time `GardenReturnSummary` against the previous refresh timestamp without additional clock reads, preserves ephemeral plant selection, displays calm Thai return feedback (`GardenView.show_return_summary(...)`) when `return_summary.has_meaningful_changes()` is true, and performs zero disk reads or writes on resume.
 
 - **Still NOT implemented**:
   - Persisted lifecycle/session timestamp (`saved_at_utc`);
-  - Stateful domain mutations on resume (such as accumulated repeat-harvest cycles or weather/time-context advancement);
+  - Stateful domain mutations on resume (such as accumulated repeat-harvest cycles);
   - Presentation and audio pause policies.
 
 ---
@@ -1158,6 +1172,15 @@ produce ready = now >= next_ready_at
 If a future system accumulates repeated production, calculate the number of completed cycles mathematically rather than running one loop per elapsed second.
 
 Visitors that were never actually observed during offline time must not automatically count as player discoveries unless game design explicitly changes this rule.
+
+#### Implementation Status (Milestones 7, 9, 16, and 18)
+
+- **Timestamp-derived plant growth & remaining-time queries**: `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc_seconds)` computes plant growth stages (`PLANTED`, `SPROUT`, `GROWING`, `MATURE`) directly from `now_utc_seconds - planted_at`, clamping negative elapsed intervals (`now_utc_seconds < planted_at`) to `0` so clock rollbacks never crash or corrupt state. In Milestone 18, `PlantGrowth.seconds_until_next_stage_for_elapsed(...)`, `PlantGrowth.seconds_until_mature_for_elapsed(...)`, `PlantGrowth.seconds_until_next_stage_at(...)`, and `PlantGrowth.seconds_until_mature_at(...)` compute remaining seconds to the next stage and to maturity in $O(1)$ time (`0` when `MATURE`, `-1` on invalid inputs), displayed in `GardenView`'s plant inspection details panel without per-frame timers.
+- **Deterministic away-time return evaluation (Milestone 16)**:
+  - `GardenReturnSummary` (`src/domain/progression/garden_return_summary.gd`) is an immutable domain value object capturing `_previous_utc_seconds`, `_current_utc_seconds`, clamped `_elapsed_seconds`, `_clock_rolled_back`, ascending `_advanced_plant_ids`, ascending `_newly_matured_plant_ids`, `_ready_to_harvest_count`, and previous/current `GardenTimePeriod` and `GardenWeather` states.
+  - `GardenReturnEvaluator` (`src/application/progression/garden_return_evaluator.gd`), exposed via `GameSession.evaluate_return_between(...)`, `GameSession.evaluate_return_from_now(...)`, and `AppRoot.evaluate_return_from_now(previous_utc_seconds)`, computes `GardenReturnSummary` in a single pass with zero `GameState` mutations, zero disk writes, and zero RNG draws.
+  - Clock rollbacks (`current_utc_seconds < previous_utc_seconds`) are explicitly flagged (`was_clock_rolled_back() == true`), clamp `elapsed_seconds` to `0`, and report zero advanced or newly matured plants.
+  - In strict compliance with `GAME_DESIGN.md` Section 19, offline return evaluation never automatically records unobserved visitors in `JournalState`.
 
 ---
 
@@ -1207,17 +1230,19 @@ Visitor scenes should not own:
 - global eligibility calculation;
 - unrelated progression.
 
-#### Implementation Status (Milestones 8, 9, 10, 11, 12, and 13)
+#### Implementation Status (Milestones 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 21, 22, and 23)
 
-Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, in Milestone 11 with environmental trait summary and visitor observation controls, in Milestone 12 with the Garden Journal HUD row and modal `JournalPanel`, and in Milestone 13 with the Decoration HUD row and modal `DecorationPicker`):
+Milestone 8 establishes the initial portrait garden presentation hierarchy (extended in Milestone 10 with HUD currency display and selection harvest controls, in Milestone 11 with environmental trait summary and visitor observation controls, in Milestone 12 with the Garden Journal HUD row and modal `JournalPanel`, in Milestone 13 with the Decoration HUD row and modal `DecorationPicker`, in Milestone 14 with `AtmosphereLabel` and time/weather background tinting, in Milestone 15 with `ProgressionLabel` displaying garden stage and optional gentle guidance, in Milestone 17 with `ObserveEventButton` and expanded `JournalPanel` decoration/event sections, in Milestone 19 with rich catalog metadata, planted/placed counts, and read-only currency context in `PlantingPicker`, `DecorationPicker`, and the plant inspection panel, in Milestone 21 with harvest reward / maturity countdown badges in `PlantView` cards and plant trait clues / live planted counts in `JournalPanel`, in Milestone 22 with discovery badges `[พันธุ์ใหม่]` / `[ค้นพบแล้ว]` and confirmation details in `PlantingPicker`, confirmation trait summaries in `DecorationPicker`, and live visitor habitat eligibility status in `JournalPanel`, and in Milestone 23 with placement discovery badges `[ของตกแต่งใหม่]` / `[จัดวางแล้ว]` and affordability/placement queries in `DecorationPicker`, environmental trait summaries in `PlantingPicker`'s confirmation prompt, and selected-plant / pending-harvest queries in `GardenView`):
 
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
 └── GardenView (res://scenes/garden/garden_view.tscn — GardenView)
     ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
     ├── CurrencyLabel (Authoritative Coin HUD display)
+    ├── ProgressionLabel (Derived GardenProgressionStage & Optional Gentle Guidance HUD)
+    ├── AtmosphereLabel (Derived Time-of-Day, Weather, and Active Ambient Events HUD)
     ├── EnvironmentLabel (Derived GardenSnapshot trait summary)
-    ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton)
+    ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton + ObserveEventButton)
     ├── JournalRow (JournalStatusLabel + JournalButton)
     ├── DecorationRow (DecorationStatusLabel + DecorateButton)
     ├── FeedbackArea (FeedbackLabel)
@@ -1275,6 +1300,7 @@ For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot r
   - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
   - `GardenView` enables `HarvestButton` only when the selected plant's derived stage is `PlantGrowth.Stage.MATURE` and `definition.harvest_reward > 0`, emitting `harvest_requested(runtime_instance_id)` to `MainScreen` to execute `AppRoot.try_harvest_and_checkpoint(runtime_instance_id)`, render `HarvestCheckpointResult` feedback, and trigger `refresh_from_session()` when `result.is_harvested()` is true.
   - `GardenView` enables `ObserveVisitorButton` only when at least one visitor is eligible in the current `GardenSnapshot`, emitting `visitor_observation_requested()` to `MainScreen` to execute `AppRoot.try_observe_visitor_and_checkpoint()`, display visitor observation and journal discovery feedback via `GardenView.show_visitor_observation_result(result)`, and trigger `refresh_from_session()` when `result.is_observed()` is true.
+  - `GardenView` enables `ObserveEventButton` only when at least one ambient/special event is eligible in the current `GardenSnapshot`, emitting `event_observation_requested()` to `MainScreen` to execute `AppRoot.evaluate_event_now()` and display calm Thai ambient event feedback via `GardenView.show_event_result(result)` with zero disk writes (Save Schema V3 preserved).
   - `AppRoot` emits `session_resumed()` only when `LifecycleCoordinator.on_application_resumed(game_session)` reports `ResumeOutcome.RESUMED` and both `GameSession` and `ContentCatalog` are ready; `MainScreen` listens to `session_resumed` and calls `GardenView.refresh_from_session()` once per genuine pause-to-resume transition.
 
 ---

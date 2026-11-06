@@ -40,6 +40,8 @@ func run_tests() -> void:
 	_test_state_at_extreme_integers()
 	_test_state_at_alternate_definition()
 	_test_state_at_purity_and_idempotence()
+	_test_remaining_seconds_for_elapsed_boundaries_and_validation()
+	_test_remaining_seconds_at_state_rollback_and_extremes()
 
 
 func _create_valid_definition(
@@ -535,3 +537,74 @@ func _test_state_at_purity_and_idempotence() -> void:
 	assert_eq(def.sprout_after_seconds, 60, "sprout_after_seconds must remain unchanged")
 	assert_eq(def.growing_after_seconds, 300, "growing_after_seconds must remain unchanged")
 	assert_eq(def.mature_after_seconds, 900, "mature_after_seconds must remain unchanged")
+
+
+func _test_remaining_seconds_for_elapsed_boundaries_and_validation() -> void:
+	describe("seconds_until_next_stage_for_elapsed and seconds_until_mature_for_elapsed compute exact remaining seconds")
+	var def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+
+	# Invalid definitions return -1
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(null, 0), -1, "Null definition returns -1")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(null, 0), -1, "Null definition returns -1")
+	var invalid_def: PlantDefinition = PlantDefinition.new()
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(invalid_def, 0), -1, "Invalid definition returns -1")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(invalid_def, 0), -1, "Invalid definition returns -1")
+
+	# Negative elapsed clamps to 0
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, -50), 60, "Negative elapsed clamps to 60s until sprout")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, -50), 900, "Negative elapsed clamps to 900s until mature")
+
+	# PLANTED stage (0..59)
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 0), 60, "At 0s: 60s until sprout")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 0), 900, "At 0s: 900s until mature")
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 59), 1, "At 59s: 1s until sprout")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 59), 841, "At 59s: 841s until mature")
+
+	# SPROUT stage (60..299)
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 60), 240, "At 60s: 240s until growing")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 60), 840, "At 60s: 840s until mature")
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 299), 1, "At 299s: 1s until growing")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 299), 601, "At 299s: 601s until mature")
+
+	# GROWING stage (300..899)
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 300), 600, "At 300s: 600s until mature")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 300), 600, "At 300s: 600s until mature")
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 899), 1, "At 899s: 1s until mature")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 899), 1, "At 899s: 1s until mature")
+
+	# MATURE stage (>= 900)
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 900), 0, "At 900s: 0s remaining")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 900), 0, "At 900s: 0s remaining")
+	assert_eq(PlantGrowth.seconds_until_next_stage_for_elapsed(def, 5000), 0, "At 5000s: 0s remaining")
+	assert_eq(PlantGrowth.seconds_until_mature_for_elapsed(def, 5000), 0, "At 5000s: 0s remaining")
+
+
+func _test_remaining_seconds_at_state_rollback_and_extremes() -> void:
+	describe("seconds_until_next_stage_at and seconds_until_mature_at handle validation, clock rollback, and boundaries")
+	var def: PlantDefinition = _create_valid_definition("plant.holy_basil", 60, 300, 900)
+	var state: PlantState = _create_valid_state("plant-rem-001", "plant.holy_basil", 1000)
+	var chili_def: PlantDefinition = _create_valid_definition("plant.chili", 120, 480, 1200)
+
+	# Validation
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(null, def, 1000), -1, "Null state returns -1")
+	assert_eq(PlantGrowth.seconds_until_mature_at(null, def, 1000), -1, "Null state returns -1")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, null, 1000), -1, "Null def returns -1")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, null, 1000), -1, "Null def returns -1")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, chili_def, 1000), -1, "Mismatched ID returns -1")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, chili_def, 1000), -1, "Mismatched ID returns -1")
+
+	# Clock rollback clamps to planted_at (elapsed = 0)
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, 500), 60, "Rollback to 500s clamps to 60s")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, 500), 900, "Rollback to 500s clamps to 900s")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, -9223372036854775807 - 1), 60, "INT_MIN clamps to 60s")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, -9223372036854775807 - 1), 900, "INT_MIN clamps to 900s")
+
+	# Normal progression across stages
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, 1020), 40, "t=1020 -> 40s to SPROUT")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, 1020), 880, "t=1020 -> 880s to MATURE")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, 1100), 200, "t=1100 -> 200s to GROWING")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, 1100), 800, "t=1100 -> 800s to MATURE")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, 1400), 500, "t=1400 -> 500s to MATURE")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, 1400), 500, "t=1400 -> 500s to MATURE")
+	assert_eq(PlantGrowth.seconds_until_next_stage_at(state, def, 1900), 0, "t=1900 -> 0s (MATURE)")
+	assert_eq(PlantGrowth.seconds_until_mature_at(state, def, 1900), 0, "t=1900 -> 0s (MATURE)")

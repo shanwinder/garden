@@ -94,6 +94,9 @@ func run_tests() -> void:
 	_test_harvest_and_economy_loop_across_restart_and_second_cycle()
 	_test_reactive_garden_traits_and_visitor_loop()
 	_test_decoration_shop_water_trait_and_frog_discovery_loop()
+	_test_weather_time_of_day_and_ambient_events_matrix_loop()
+	_test_garden_progression_and_gentle_guidance_e2e_loop()
+	_test_offline_return_summary_and_resume_feedback_e2e_loop()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
@@ -271,6 +274,7 @@ func _test_full_player_loop_across_restart_and_offline_growth() -> void:
 	main_b.free()
 	app_b.free()
 	_cleanup_test_files()
+
 
 
 func _test_in_process_pause_resume_offline_growth_and_clock_rollback_safety() -> void:
@@ -625,6 +629,289 @@ func _test_decoration_shop_water_trait_and_frog_discovery_loop() -> void:
 	_cleanup_test_files()
 
 
+func _test_weather_time_of_day_and_ambient_events_matrix_loop() -> void:
+	describe("E2E: All 5 MVP Interaction Matrix ambient events emerge across time-of-day, weather, plants, and decorations")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	# Start at t = 21600 -> hour 6 (morning), window 3 (clear)
+	var clock: FakeGameClock = FakeGameClock.new(21600, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new(
+		[0.1, 0.2, 0.45, 0.8, 0.5],
+		[
+			1, 2, 3, 4,
+			5, 6, 7, 8,
+			9, 10, 11, 12,
+			13, 14, 15, 16,
+			17, 18, 19, 20,
+			21, 22, 23, 24,
+		]
+	)
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# Row 1: Jasmine + Morning (t = 21600, morning + clear) -> event.morning_butterflies
+	assert_false(view.is_observe_event_button_enabled(), "ObserveEventButton initially disabled on empty garden")
+	view.get_plant_button().pressed.emit()
+	view.get_planting_picker().select_plant_definition("plant.jasmine")
+	view.get_planting_picker().confirm_planting()
+	assert_eq(view.get_eligible_event_ids(), ["event.morning_butterflies"], "Row 1: Morning butterflies active")
+	assert_true(view.get_atmosphere_text().contains("ฝูงผีเสื้อยามเช้า"), "Row 1 HUD text")
+	assert_true(view.is_observe_event_button_enabled(), "ObserveEventButton enabled on Row 1")
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(view.get_current_event_id(), "event.morning_butterflies", "Row 1 observed via ObserveEventButton")
+	assert_true(view.get_feedback_text().contains("ฝูงผีเสื้อโบยบินวนเวียนตอมดอกไม้"), "Row 1 feedback text")
+	assert_eq(view.get_journal_panel().get_active_event_entry_count(), 1, "Row 1: 1 active event in JournalPanel")
+
+	# Row 2: Banana + Daytime (t = 43200, hour 12 = day, window 6 = cloudy) -> event.bird_shade_song + morning_butterflies
+	view.get_plant_button().pressed.emit()
+	view.get_planting_picker().select_plant_definition("plant.banana")
+	view.get_planting_picker().confirm_planting()
+	clock.set_utc_seconds(43200)
+	view.refresh_from_session()
+	assert_eq(
+		view.get_eligible_event_ids(),
+		["event.bird_shade_song", "event.morning_butterflies"],
+		"Row 2: Bird shade song and morning butterflies active at day"
+	)
+	assert_true(view.get_atmosphere_text().contains("นกร้องเพลงใต้ร่มไม้"), "Row 2 HUD text")
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(view.get_current_event_id(), "event.bird_shade_song", "Row 2 observed via ObserveEventButton")
+	assert_true(view.get_feedback_text().contains("นกกระจอกส่งเสียงร้องสดใส"), "Row 2 feedback text")
+	assert_eq(view.get_journal_panel().get_active_event_entry_count(), 2, "Row 2: 2 active events in JournalPanel")
+
+	# Row 3: Bench + Evening (t = 64800, hour 18 = evening, window 9 = cloudy) -> event.cat_sleeping_bench unlocked
+	app.game_session.grant_currency(200)
+	view.refresh_from_session()
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.bench")
+	view.get_decoration_picker().confirm_purchase()
+	clock.set_utc_seconds(64800)
+	view.refresh_from_session()
+	assert_true(
+		view.get_eligible_event_ids().has("event.cat_sleeping_bench"),
+		"Row 3: Cat sleeping on bench active at evening"
+	)
+	assert_true(view.get_atmosphere_text().contains("แมวนอนหลับบนม้านั่ง"), "Row 3 HUD text")
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(view.get_current_event_id(), "event.cat_sleeping_bench", "Row 3 observed via ObserveEventButton")
+	assert_true(view.get_feedback_text().contains("แมวข้างบ้านขดตัวนอนหลับ"), "Row 3 feedback text")
+	assert_eq(view.get_journal_panel().get_placed_decoration_entry_count(), 1, "Row 3: 1 placed decoration in JournalPanel")
+
+	# Row 4: Garden Lamp + Night (t = 72000, hour 20 = night, window 10 = clear) -> event.firefly_night_glow
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.garden_lamp")
+	view.get_decoration_picker().confirm_purchase()
+	clock.set_utc_seconds(72000)
+	view.refresh_from_session()
+	assert_true(
+		view.get_eligible_event_ids().has("event.firefly_night_glow"),
+		"Row 4: Firefly night glow active at night clear"
+	)
+	assert_true(view.get_atmosphere_text().contains("หิ่งห้อยเรืองแสงยามค่ำ"), "Row 4 HUD text")
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(view.get_current_event_id(), "event.firefly_night_glow", "Row 4 observed via ObserveEventButton")
+	assert_true(view.get_feedback_text().contains("แสงหิ่งห้อยส่องประกายระยิบระยับ"), "Row 4 feedback text")
+	assert_eq(view.get_journal_panel().get_placed_decoration_entry_count(), 2, "Row 4: 2 placed decorations in JournalPanel")
+
+	# Row 5: Small Pond + Rain (t = 14400, hour 4 = night, window 2 = rain) -> event.frog_rain_chorus
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.small_pond")
+	view.get_decoration_picker().confirm_purchase()
+	clock.set_utc_seconds(14400)
+	view.refresh_from_session()
+	assert_eq(view.get_eligible_event_ids(), ["event.frog_rain_chorus"], "Row 5: Frog rain chorus active during rain")
+	assert_true(view.get_atmosphere_text().contains("กบร้องเพลงกลางสายฝน"), "Row 5 HUD text")
+	var saves_before_ev5: int = repo.save_call_count
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(repo.save_call_count, saves_before_ev5, "Observing event via ObserveEventButton performs zero disk writes")
+	assert_eq(view.get_current_event_id(), "event.frog_rain_chorus", "Row 5 observed via ObserveEventButton")
+	assert_true(view.get_feedback_text().contains("กบในสวนส่งเสียงร้องรับสายฝน"), "Row 5 feedback text")
+	assert_eq(view.get_journal_panel().get_placed_decoration_entry_count(), 3, "Row 5: 3 placed decorations in JournalPanel")
+	assert_eq(view.get_journal_panel().get_active_event_entry_count(), 1, "Row 5: 1 active event in JournalPanel")
+
+	main_screen.free()
+	app.free()
+	_cleanup_test_files()
+
+
+func _test_garden_progression_and_gentle_guidance_e2e_loop() -> void:
+	describe("E2E: Full progression across all 5 canonical garden stages and 6 gentle guidance states with restart")
+	_cleanup_test_files()
+
+	var integers: Array[int] = []
+	for i: int in range(1, 64):
+		integers.append(i)
+	var repo_a: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_a: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng_a: FakeRandomSource = FakeRandomSource.new([0.05], integers)
+	var app_a: AppRoot = AppRoot.new(repo_a, PlantContentLoader.new(), clock_a, rng_a)
+	app_a.bootstrap_session()
+	app_a.game_session.grant_currency(300)
+
+	var main_a: MainScreen = _instantiate_bound_main_screen(app_a)
+	var view_a: GardenView = main_a.get_garden_view()
+
+	# Stage 1: Starting Garden (0 pts), guidance.plant_first
+	assert_eq(view_a.get_current_progression_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Stage 1: starting_garden")
+	assert_eq(view_a.get_current_establishment_score(), 0, "Stage 1 score is 0")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Guidance 1: plant_first")
+	assert_true(view_a.get_progression_text().contains("สวนเริ่มต้น (0 แต้ม, อีก 10 แต้มสู่สวนกำลังเติบโต)"), "Stage 1 HUD label")
+
+	# Stage 2: Growing Garden (14 pts) after planting jasmine, guidance.observe_visitor
+	view_a.open_planting_picker()
+	view_a.get_planting_picker().select_plant_definition("plant.jasmine")
+	view_a.get_planting_picker().confirm_planting()
+	assert_eq(view_a.get_current_progression_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Stage 2: growing_garden")
+	assert_eq(view_a.get_current_establishment_score(), 14, "Stage 2 score is 14")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR, "Guidance 2: observe_visitor")
+	assert_true(view_a.get_progression_text().contains("สวนกำลังเติบโต (14 แต้ม, อีก 11 แต้มสู่สวนร่มรื่น)"), "Stage 2 HUD label")
+
+	# Guidance 3: Observe butterfly (+5 pts -> 19 pts) -> guidance.place_decoration
+	view_a.get_observe_visitor_button().pressed.emit()
+	assert_eq(view_a.get_current_establishment_score(), 19, "Score is 19 after visitor observation")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_PLACE_DECORATION, "Guidance 3: place_decoration")
+
+	# Stage 3: Shady Garden (29 pts) after placing bench (+4 decor, +6 for shade & shelter), guidance.create_water_habitat
+	view_a.get_decorate_button().pressed.emit()
+	view_a.get_decoration_picker().select_decoration_definition("decoration.bench")
+	view_a.get_decoration_picker().confirm_purchase()
+	assert_eq(view_a.get_current_progression_stage_id(), GardenProgressionStage.STAGE_SHADY_GARDEN, "Stage 3: shady_garden")
+	assert_eq(view_a.get_current_establishment_score(), 29, "Stage 3 score is 29")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_CREATE_WATER_HABITAT, "Guidance 4: create_water_habitat")
+	assert_true(view_a.get_progression_text().contains("สวนร่มรื่น (29 แต้ม, อีก 16 แต้มสู่สวนมีชีวิต)"), "Stage 3 HUD label")
+
+	# Stage 4: Living Garden (47 pts) after planting holy_basil (+3 plant, +5 discovery, +3 food trait) + placing clay_jar (+4 decor, +3 water trait), guidance.discover_more
+	view_a.open_planting_picker()
+	view_a.get_planting_picker().select_plant_definition("plant.holy_basil")
+	view_a.get_planting_picker().confirm_planting()
+	view_a.get_decorate_button().pressed.emit()
+	view_a.get_decoration_picker().select_decoration_definition("decoration.clay_jar")
+	view_a.get_decoration_picker().confirm_purchase()
+	assert_eq(view_a.get_current_progression_stage_id(), GardenProgressionStage.STAGE_LIVING_GARDEN, "Stage 4: living_garden")
+	assert_eq(view_a.get_current_establishment_score(), 47, "Stage 4 score is 47")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_DISCOVER_MORE, "Guidance 5: discover_more")
+	assert_true(view_a.get_progression_text().contains("สวนมีชีวิต (47 แต้ม, อีก 23 แต้มสู่บ้านสวนแสนสุข)"), "Stage 4 HUD label")
+
+	# Stage 5: Happy Garden Home (107 pts >= 70) after planting banana, chili, marigold (+9 plants, +15 discoveries, +6 fruit & perch traits),
+	# advancing clock by +21600s so all 5 plants mature (+10), and recording remaining 4 visitors (+20)
+	for pid: String in ["plant.banana", "plant.chili", "plant.marigold"]:
+		view_a.open_planting_picker()
+		view_a.get_planting_picker().select_plant_definition(pid)
+		view_a.get_planting_picker().confirm_planting()
+	clock_a.set_utc_seconds(22600)
+	for vid: String in ["visitor.bird", "visitor.cat", "visitor.firefly", "visitor.frog"]:
+		app_a.game_session.record_discovery_at(app_a.get_content_catalog(), vid, 22600)
+	app_a._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	view_a.refresh_from_session()
+
+	assert_eq(view_a.get_current_progression_stage_id(), GardenProgressionStage.STAGE_HAPPY_GARDEN_HOME, "Stage 5: happy_garden_home")
+	assert_eq(view_a.get_current_establishment_score(), 107, "Stage 5 score is 107")
+	assert_eq(view_a.get_next_progression_stage_id(), "", "Stage 5 next stage is empty")
+	assert_eq(view_a.get_points_to_next_progression_stage(), 0, "Stage 5 points to next stage is 0")
+	assert_eq(view_a.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_ENJOY_GARDEN, "Guidance 6: enjoy_garden")
+	assert_eq(
+		view_a.get_progression_text(),
+		"ระดับสวน: บ้านสวนแสนสุข (107 แต้ม, สูงสุดแล้ว) | วันนี้ทำอะไรดี: เพลิดเพลินกับบรรยากาศบ้านสวนแสนสุขตามอัธยาศัย",
+		"Stage 5 HUD label"
+	)
+
+	main_a.free()
+	app_a.free()
+
+	# Restart into Session B at t = 22600 and verify deterministic progression restoration
+	var repo_b: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock_b: FakeGameClock = FakeGameClock.new(22600, 0)
+	var app_b: AppRoot = AppRoot.new(repo_b, PlantContentLoader.new(), clock_b, FakeRandomSource.new([], []))
+	var load_res_b: LocalSaveLoadResult = app_b.bootstrap_session()
+	assert_eq(load_res_b.get_status(), LocalSaveLoadResult.LOADED_PRIMARY, "Session B loaded from PRIMARY")
+
+	var main_b: MainScreen = _instantiate_bound_main_screen(app_b)
+	var view_b: GardenView = main_b.get_garden_view()
+	assert_eq(view_b.get_current_progression_stage_id(), GardenProgressionStage.STAGE_HAPPY_GARDEN_HOME, "Restored stage is happy_garden_home")
+	assert_eq(view_b.get_current_establishment_score(), 107, "Restored score is 107")
+	assert_eq(view_b.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_ENJOY_GARDEN, "Restored guidance is enjoy_garden")
+
+	main_b.free()
+	app_b.free()
+	_cleanup_test_files()
+
+
+func _test_offline_return_summary_and_resume_feedback_e2e_loop() -> void:
+	describe("E2E: Offline return observation summary across pause/resume, plant maturity, weather/time shift, and clock rollback")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0) # night, clear
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# Plant holy_basil (mature=600) and jasmine (sprout=600, growing=1800, mature=3600) at t=1000
+	view.open_planting_picker()
+	view.get_planting_picker().select_plant_definition("plant.holy_basil")
+	view.get_planting_picker().confirm_planting()
+
+	view.open_planting_picker()
+	view.get_planting_picker().select_plant_definition("plant.jasmine")
+	view.get_planting_picker().confirm_planting()
+
+	var saves_after_planting: int = repo.save_call_count
+	assert_eq(saves_after_planting, 2, "2 saves after 2 plantings")
+	assert_eq(app.game_session.get_state().get_journal().get_count(), 2, "2 plant discoveries in journal")
+
+	# 1. Pause at t=1000 (+1 save), return at t=14400 (+13400s -> 3 hours: night + rain; both plants MATURE)
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 3, "Pause checkpoints state once")
+
+	clock.set_utc_seconds(14400)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(repo.save_call_count, 3, "Resume performs zero disk writes")
+
+	var sum1: GardenReturnSummary = view.get_last_return_summary()
+	assert_true(sum1 != null and sum1.is_valid(), "Valid return summary on resume")
+	assert_eq(sum1.get_elapsed_seconds(), 13400, "Elapsed 13400s")
+	assert_eq(sum1.get_advanced_plant_count(), 2, "Both plants advanced")
+	assert_eq(sum1.get_newly_matured_plant_count(), 2, "Both plants newly matured")
+	assert_eq(sum1.get_ready_to_harvest_count(), 2, "2 plants ready to harvest")
+	assert_false(sum1.has_time_period_changed(), "Still night at t=14400")
+	assert_true(sum1.has_weather_changed(), "Weather changed clear -> rain")
+	assert_true(view.is_feedback_visible(), "Return feedback displayed")
+	assert_eq(
+		view.get_feedback_text(),
+		"ต้นไม้ในสวนเติบโตขึ้นระหว่างที่คุณไม่อยู่ (เติบโต 2 ต้น, พร้อมเก็บเกี่ยว 2 ต้น)",
+		"Return feedback shows 2 newly matured plants and ready count"
+	)
+	# Verify no unobserved visitor discoveries were added during away time (GAME_DESIGN.md Section 19)
+	assert_eq(
+		app.game_session.get_state().get_journal().get_count(),
+		2,
+		"Offline return never automatically records unobserved visitors in JournalState"
+	)
+
+	# 2. Pause at t=14400 (+1 save), return at t=21600 (morning, clear; plants already mature -> atmosphere-only change)
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	assert_eq(repo.save_call_count, 4, "Second pause checkpoints state once")
+	clock.set_utc_seconds(21600)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(repo.save_call_count, 4, "Second resume performs zero disk writes")
+	assert_eq(
+		view.get_feedback_text(),
+		"บรรยากาศในสวนเปลี่ยนไประหว่างที่คุณไม่อยู่ (ยามเช้า, ท้องฟ้าแจ่มใส)",
+		"Return feedback shows atmosphere shift when plants were already mature"
+	)
+
+	main_screen.free()
+	app.free()
+	_cleanup_test_files()
+
+
 func _test_save_failure_recovered_by_lifecycle_pause_and_restart() -> void:
 	describe("E2E: REGISTERED_SAVE_FAILED in UI -> recovered on APPLICATION_PAUSED -> survives restart")
 	_cleanup_test_files()
@@ -683,6 +970,7 @@ func _test_save_failure_recovered_by_lifecycle_pause_and_restart() -> void:
 	main_b.free()
 	app_b.free()
 	_cleanup_test_files()
+
 
 
 func _test_backup_recovery_renders_in_presentation() -> void:

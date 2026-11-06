@@ -107,6 +107,11 @@ func run_tests() -> void:
 	_test_integration_harvest_button_grants_coins_resets_plant_and_saves()
 	_test_environment_and_visitor_hud_and_observation()
 	_test_decoration_hud_picker_and_purchase_flow()
+	_test_atmosphere_hud_weather_time_events_and_background_tint()
+	_test_progression_and_gentle_guidance_hud()
+	_test_return_summary_and_resume_feedback()
+	_test_ambient_event_observation_button_and_feedback()
+	_test_selected_plant_growth_countdown_and_atmosphere_forecast()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -1567,3 +1572,410 @@ func _test_decoration_hud_picker_and_purchase_flow() -> void:
 	main_node.free()
 	app.free()
 	_cleanup_presentation_test_files()
+
+
+func _test_atmosphere_hud_weather_time_events_and_background_tint() -> void:
+	describe("GardenView displays Thai time period, weather state, active ambient events, and background tint")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	# t = 21600 -> hour 6 (morning), window 3 (clear)
+	var clock: FakeGameClock = FakeGameClock.new(21600, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [1, 2, 3, 4, 5, 6, 7, 8])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# 1. Empty garden at morning + clear: calm (สงบเงียบ), morning background tint
+	assert_eq(gview.get_current_time_period(), "morning", "Time period is morning at 21600s")
+	assert_eq(gview.get_current_weather_state(), "clear", "Weather state is clear at 21600s")
+	assert_eq(gview.get_eligible_event_ids().size(), 0, "No eligible events on empty garden")
+	assert_eq(
+		gview.get_atmosphere_text(),
+		"บรรยากาศสวน: ยามเช้า | สภาพอากาศ: ท้องฟ้าแจ่มใส | เหตุการณ์ในสวน: สงบเงียบ",
+		"Empty garden atmosphere text at morning clear"
+	)
+	var morning_clear_color: Color = gview.get_background_color()
+
+	# 2. Plant Jasmine ("flower") -> triggers event.morning_butterflies (ฝูงผีเสื้อยามเช้า)
+	gview.get_planting_picker().open_picker()
+	gview.get_planting_picker().select_plant_definition("plant.jasmine")
+	gview.get_planting_picker().confirm_planting()
+
+	assert_eq(gview.get_eligible_event_ids(), ["event.morning_butterflies"], "Morning butterflies active")
+	assert_eq(
+		gview.get_atmosphere_text(),
+		"บรรยากาศสวน: ยามเช้า | สภาพอากาศ: ท้องฟ้าแจ่มใส | เหตุการณ์ในสวน: ฝูงผีเสื้อยามเช้า",
+		"Atmosphere HUD shows morning butterflies"
+	)
+
+	# 3. Advance clock to t = 14400 (hour 4 = night, window 2 = rain) -> background tint changes, morning butterflies inactive
+	clock.set_utc_seconds(14400)
+	gview.refresh_from_session()
+	assert_eq(gview.get_current_time_period(), "night", "Time period is night at 14400s")
+	assert_eq(gview.get_current_weather_state(), "rain", "Weather state is rain at 14400s")
+	assert_eq(gview.get_eligible_event_ids().size(), 0, "Morning butterflies inactive at night rain")
+	assert_eq(
+		gview.get_atmosphere_text(),
+		"บรรยากาศสวน: ยามค่ำคืน | สภาพอากาศ: ฝนตก | เหตุการณ์ในสวน: สงบเงียบ",
+		"Atmosphere HUD updates to night rain calm"
+	)
+	var night_rain_color: Color = gview.get_background_color()
+	assert_ne(morning_clear_color, night_rain_color, "Background tint shifts between morning clear and night rain")
+
+	# 4. Blocked state hides AtmosphereLabel and resets background color
+	gview.show_blocked_startup("ทดสอบบล็อก")
+	assert_eq(gview.get_current_time_period(), "", "Blocked state clears snapshot time period")
+	assert_eq(gview.get_current_weather_state(), "", "Blocked state clears snapshot weather state")
+	assert_eq(gview.get_eligible_event_ids().size(), 0, "Blocked state clears eligible events")
+	assert_eq(gview.get_background_color(), GardenView.DEFAULT_BACKGROUND_COLOR, "Blocked state resets background color")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_progression_and_gentle_guidance_hud() -> void:
+	describe("GardenView displays progression stage, establishment score, and optional gentle guidance without extra clock sampling")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: CallCountingClock = CallCountingClock.new(2000)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# 1. Empty garden -> starting_garden (0 pts), guidance.plant_first
+	assert_eq(gview.get_current_progression_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Initial stage is starting_garden")
+	assert_eq(gview.get_current_establishment_score(), 0, "Initial score is 0")
+	assert_eq(gview.get_next_progression_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Next stage is growing_garden")
+	assert_eq(gview.get_points_to_next_progression_stage(), 10, "10 points needed for growing_garden")
+	assert_eq(gview.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Initial guidance is plant_first")
+	assert_eq(
+		gview.get_progression_text(),
+		"ระดับสวน: สวนเริ่มต้น (0 แต้ม, อีก 10 แต้มสู่สวนกำลังเติบโต) | วันนี้ทำอะไรดี: ลองปลูกต้นไม้ต้นแรกในสวน",
+		"Empty garden progression HUD text"
+	)
+
+	# Verify refresh_from_session still samples clock only once even with progression evaluation
+	var calls_before: int = clock.utc_call_count
+	gview.refresh_from_session()
+	assert_eq(clock.utc_call_count, calls_before + 1, "Refresh samples clock once including progression evaluation")
+
+	# 2. Plant jasmine -> growing_garden (14 pts), guidance.observe_visitor
+	gview.get_planting_picker().open_picker()
+	gview.get_planting_picker().select_plant_definition("plant.jasmine")
+	gview.get_planting_picker().confirm_planting()
+
+	assert_eq(gview.get_current_progression_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Stage updates to growing_garden")
+	assert_eq(gview.get_current_establishment_score(), 14, "Score updates to 14")
+	assert_eq(gview.get_next_progression_stage_id(), GardenProgressionStage.STAGE_SHADY_GARDEN, "Next stage is shady_garden")
+	assert_eq(gview.get_points_to_next_progression_stage(), 11, "11 points needed for shady_garden")
+	assert_eq(gview.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR, "Guidance updates to observe_visitor")
+	assert_eq(
+		gview.get_progression_text(),
+		"ระดับสวน: สวนกำลังเติบโต (14 แต้ม, อีก 11 แต้มสู่สวนร่มรื่น) | วันนี้ทำอะไรดี: ลองสำรวจผู้มาเยือนที่แวะมาในสวน",
+		"Growing garden progression HUD text"
+	)
+
+	# 3. Observe visitor -> discovers butterfly (+5 pts -> 19 pts), guidance.place_decoration
+	gview.get_observe_visitor_button().pressed.emit()
+	assert_eq(gview.get_current_establishment_score(), 19, "Score updates to 19 after visitor discovery")
+	assert_eq(gview.get_points_to_next_progression_stage(), 6, "6 points needed for shady_garden")
+	assert_eq(gview.get_current_guidance_id(), GardenProgressionStage.GUIDANCE_PLACE_DECORATION, "Guidance updates to place_decoration")
+	assert_eq(
+		gview.get_progression_text(),
+		"ระดับสวน: สวนกำลังเติบโต (19 แต้ม, อีก 6 แต้มสู่สวนร่มรื่น) | วันนี้ทำอะไรดี: ลองเก็บเกี่ยวเหรียญและวางของตกแต่งชิ้นแรก",
+		"Progression HUD suggests placing decoration"
+	)
+
+	# 4. Blocked state clears progression summary and hides ProgressionLabel
+	gview.show_blocked_startup("ทดสอบบล็อก")
+	assert_eq(gview.get_current_progression_stage_id(), "", "Blocked state clears progression stage ID")
+	assert_eq(gview.get_current_establishment_score(), 0, "Blocked state clears establishment score")
+	assert_eq(gview.get_next_progression_stage_id(), "", "Blocked state clears next progression stage ID")
+	assert_eq(gview.get_points_to_next_progression_stage(), 0, "Blocked state clears points to next stage")
+	assert_eq(gview.get_current_guidance_id(), "", "Blocked state clears guidance ID")
+	assert_true(gview.get_last_progression_summary() == null, "Blocked state clears progression summary")
+	assert_false(gview.get_progression_label().visible, "ProgressionLabel hidden when startup is blocked")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_return_summary_and_resume_feedback() -> void:
+	describe("GardenView tracks away-time GardenReturnSummary on refresh and MainScreen shows calm return feedback on resume")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: CallCountingClock = CallCountingClock.new(1000) # night, clear
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# First refresh after bind_garden records baseline timestamp without a return summary
+	assert_true(gview.has_refresh_timestamp(), "Baseline refresh timestamp recorded")
+	assert_eq(gview.get_last_refresh_utc_seconds(), 1000, "Baseline timestamp is 1000")
+	assert_true(gview.get_last_return_summary() == null, "Initial refresh has no prior timestamp for return summary")
+
+	# Plant holy_basil at t = 1000 (sprout=60, growing=180, mature=600 in production catalog)
+	gview.get_planting_picker().open_picker()
+	gview.get_planting_picker().select_plant_definition("plant.holy_basil")
+	gview.get_planting_picker().confirm_planting()
+
+	# Simulate pause -> advance +180s (t = 1180 -> GROWING) -> resume
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	clock.set_utc_seconds(1180)
+	var clock_calls_before_resume_1: int = clock.utc_call_count
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	assert_eq(clock.utc_call_count, clock_calls_before_resume_1 + 1, "Resume still samples clock exactly once")
+
+	var sum1: GardenReturnSummary = gview.get_last_return_summary()
+	assert_true(sum1 != null and sum1.is_valid(), "Return summary computed on resume")
+	assert_eq(sum1.get_elapsed_seconds(), 180, "Elapsed 180s")
+	assert_eq(sum1.get_advanced_plant_count(), 1, "1 plant advanced to GROWING")
+	assert_eq(sum1.get_newly_matured_plant_count(), 0, "0 newly matured")
+	assert_true(sum1.has_meaningful_changes(), "Plant growth is a meaningful change")
+	assert_true(gview.is_feedback_visible(), "Feedback visible on resume with meaningful changes")
+	assert_eq(
+		gview.get_feedback_text(),
+		"ต้นไม้ในสวนเติบโตขึ้นระหว่างที่คุณไม่อยู่ (1 ต้น)",
+		"Return feedback reports 1 plant grew"
+	)
+
+	# Simulate pause -> advance to t = 21600 (morning, clear; basil MATURE) -> resume
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	clock.set_utc_seconds(21600)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	var sum2: GardenReturnSummary = gview.get_last_return_summary()
+	assert_true(sum2 != null and sum2.is_valid(), "Return summary 2 valid")
+	assert_eq(sum2.get_newly_matured_plant_count(), 1, "1 plant newly matured")
+	assert_eq(sum2.get_ready_to_harvest_count(), 1, "1 plant ready to harvest")
+	assert_true(sum2.has_time_period_changed(), "Time period changed night -> morning")
+	assert_eq(
+		gview.get_feedback_text(),
+		"ต้นไม้ในสวนเติบโตขึ้นระหว่างที่คุณไม่อยู่ (เติบโต 1 ต้น, พร้อมเก็บเกี่ยว 1 ต้น)",
+		"Return feedback reports newly matured plant and ready count"
+	)
+
+	# Simulate pause -> advance to t = 43200 (day, cloudy; basil already MATURE so atmosphere-only change) -> resume
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	clock.set_utc_seconds(43200)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	var sum3: GardenReturnSummary = gview.get_last_return_summary()
+	assert_true(sum3 != null and sum3.is_valid(), "Return summary 3 valid")
+	assert_false(sum3.has_plant_growth_changes(), "No new plant stage changes at t=43200")
+	assert_true(sum3.has_atmosphere_changes(), "Atmosphere changed morning/clear -> day/cloudy")
+	assert_eq(
+		gview.get_feedback_text(),
+		"บรรยากาศในสวนเปลี่ยนไประหว่างที่คุณไม่อยู่ (กลางวัน, มีเมฆมาก)",
+		"Return feedback reports atmosphere-only change"
+	)
+
+	# Simulate pause -> clock rollback to t = 20000 -> resume (must not overwrite feedback or report false growth)
+	var prev_feedback: String = gview.get_feedback_text()
+	app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	clock.set_utc_seconds(20000)
+	app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+
+	var sum_rb: GardenReturnSummary = gview.get_last_return_summary()
+	assert_true(sum_rb != null and sum_rb.was_clock_rolled_back(), "Clock rollback detected")
+	assert_false(sum_rb.has_meaningful_changes(), "Clock rollback suppresses meaningful changes")
+	assert_eq(gview.get_feedback_text(), prev_feedback, "No false return feedback shown on clock rollback")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_ambient_event_observation_button_and_feedback() -> void:
+	describe("ObserveEventButton enables only when ambient events are eligible, dispatches evaluate_event_now with zero disk writes, and updates JournalPanel")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	# t = 21600 -> hour 6 (morning), window 3 (clear)
+	var clock: FakeGameClock = FakeGameClock.new(21600, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1, 0.8], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var gview: GardenView = main_node.get_garden_view()
+
+	# 1. Empty garden: ObserveEventButton exists and is disabled
+	assert_true(gview.get_observe_event_button() != null, "ObserveEventButton exists")
+	assert_false(gview.is_observe_event_button_enabled(), "ObserveEventButton disabled on empty garden")
+	assert_eq(gview.get_current_event_id(), "", "No active event ID initially")
+	assert_eq(gview.get_journal_panel().get_total_decoration_entry_count(), 8, "JournalPanel has 8 decorations")
+	assert_eq(gview.get_journal_panel().get_total_event_entry_count(), 5, "JournalPanel has 5 ambient events")
+	assert_eq(gview.get_journal_panel().get_active_event_entry_count(), 0, "JournalPanel has 0 active events on empty garden")
+
+	# 2. Plant Jasmine -> morning_butterflies becomes eligible, ObserveEventButton enabled, JournalPanel updates
+	gview.get_planting_picker().open_picker()
+	gview.get_planting_picker().select_plant_definition("plant.jasmine")
+	gview.get_planting_picker().confirm_planting()
+
+	assert_true(gview.is_observe_event_button_enabled(), "ObserveEventButton enabled when morning_butterflies eligible")
+	assert_eq(gview.get_journal_panel().get_active_event_entry_count(), 1, "JournalPanel shows 1 active event")
+	assert_true(
+		gview.get_journal_panel().get_entry_text_for_id("event.morning_butterflies").contains("[เกิดขึ้นได้ในสวน]"),
+		"JournalPanel marks morning_butterflies as active"
+	)
+
+	# 3. Press ObserveEventButton -> selects event.morning_butterflies, shows Thai flavor description, zero disk writes
+	var saves_before_event: int = repo.save_call_count
+	gview.get_observe_event_button().pressed.emit()
+	assert_eq(repo.save_call_count, saves_before_event, "Observing ambient event performs zero disk writes")
+	assert_eq(gview.get_current_event_id(), "event.morning_butterflies", "Current event ID set to morning_butterflies")
+	assert_true(
+		gview.get_last_event_selection_result() != null and gview.get_last_event_selection_result().is_selected(),
+		"Last EventSelectionResult is SELECTED"
+	)
+	assert_true(
+		gview.get_feedback_text().contains("ชมเหตุการณ์ในสวน: ฝูงผีเสื้อยามเช้า (event.morning_butterflies)"),
+		"Feedback displays event title and ID"
+	)
+	assert_true(
+		gview.get_feedback_text().contains("ฝูงผีเสื้อโบยบินวนเวียนตอมดอกไม้ในแสงแดดอ่อน"),
+		"Feedback displays event flavor description"
+	)
+
+	# 4. Shift time to t = 14400 (night, rain) -> morning_butterflies no longer eligible, button disabled, current_event_id cleared
+	clock.set_utc_seconds(14400)
+	gview.refresh_from_session()
+	assert_false(gview.is_observe_event_button_enabled(), "ObserveEventButton disabled when no events eligible at night rain")
+	assert_eq(gview.get_current_event_id(), "", "Current event ID cleared when no longer eligible")
+	assert_eq(gview.get_journal_panel().get_active_event_entry_count(), 0, "JournalPanel active event count returns to 0")
+
+	# 5. Direct show_event_result for NO_ELIGIBLE_EVENTS and INVALID_INPUT
+	gview.show_event_result(EventSelectionResult.no_eligible_events(gview.get_last_garden_snapshot()))
+	assert_eq(gview.get_feedback_text(), "ยังไม่มีเหตุการณ์พิเศษที่เกิดขึ้นในสวนขณะนี้", "NO_ELIGIBLE_EVENTS feedback")
+	gview.show_event_result(EventSelectionResult.invalid_input())
+	assert_eq(gview.get_feedback_text(), "ระบบยังไม่พร้อมสำหรับการชมเหตุการณ์ในสวน", "INVALID_INPUT feedback")
+
+	# 6. Blocked state disables ObserveEventButton
+	gview.show_blocked_startup("ทดสอบบล็อก")
+	assert_false(gview.is_observe_event_button_enabled(), "ObserveEventButton disabled when blocked")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()
+
+
+func _test_selected_plant_growth_countdown_and_atmosphere_forecast() -> void:
+	describe("GardenView computes deterministic plant growth countdowns and atmosphere transition forecasts from a single clock sample")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	# Basil in test catalog: sprout=60, growing=180, mature=300
+	state.get_plants().try_add_plant(PlantState.new("basil-cd", "plant.holy_basil", 21600))
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	catalog.get_plant("plant.holy_basil").environmental_traits = ["dense_vegetation", "food"]
+	var clock: CallCountingClock = CallCountingClock.new(21610) # elapsed = 10s (PLANTED); morning (21600..39599), window 3 (21600..28799)
+
+	view.bind_garden(session, catalog, clock)
+
+	# 1. Before selection: plant countdown queries return -1, atmosphere forecast is populated
+	assert_eq(view.get_selected_plant_definition_id(), "", "No plant selected -> empty definition ID")
+	assert_eq(view.get_selected_plant_stage(), PlantGrowth.Stage.INVALID, "No plant selected -> INVALID stage")
+	assert_eq(view.get_selected_plant_seconds_until_next_stage(), -1, "No plant selected -> -1s until next stage")
+	assert_eq(view.get_selected_plant_seconds_until_mature(), -1, "No plant selected -> -1s until mature")
+	assert_eq(view.get_selected_plant_traits(), [], "No plant selected -> empty traits")
+	assert_eq(view.get_ready_to_harvest_plant_ids(), [], "No mature plants -> empty ready IDs")
+	assert_eq(view.get_total_pending_harvest_reward(), 0, "No mature plants -> 0 pending harvest reward")
+	assert_eq(view.get_planting_picker().get_planted_count_for_id("plant.holy_basil"), 1, "PlantingPicker receives basil planted count = 1")
+	assert_false(view.get_planting_picker().is_plant_discovered("plant.holy_basil"), "Basil added directly to PlantCollectionState without journal sighting is undiscovered")
+	state.get_journal().try_record_sighting("plant.holy_basil", 21600)
+	view.refresh_from_session()
+	assert_true(view.get_planting_picker().is_plant_discovered("plant.holy_basil"), "PlantingPicker reflects journal discovery after refresh")
+	assert_false(view.get_planting_picker().is_plant_discovered("plant.jasmine"), "Unplanted jasmine remains undiscovered in PlantingPicker")
+	assert_eq(view.get_decoration_picker().get_available_currency(), 0, "DecorationPicker receives initial currency = 0")
+	assert_eq(view.get_next_time_period(), "day", "At 21610s (morning): next time period is day")
+	assert_eq(view.get_seconds_until_next_time_period(), 17990, "At 21610s: 17990s until day (39600s)")
+	assert_eq(view.get_next_weather_state(), "cloudy", "At 21610s (window 3 clear): next weather is cloudy")
+	assert_eq(view.get_seconds_until_next_weather_state(), 7190, "At 21610s: 7190s until next weather window (28800s)")
+
+	# 2. Select basil-cd at t = 21610 (elapsed = 10s, PLANTED)
+	var pv_planted: PlantView = view.get_plant_view_by_id("basil-cd")
+	assert_eq(pv_planted.get_harvest_reward(), 5, "PlantView receives harvest_reward = 5")
+	assert_eq(pv_planted.get_seconds_until_mature(), 290, "PlantView receives seconds_until_mature = 290")
+	assert_false(pv_planted.is_ready_to_harvest(), "PlantView not ready to harvest at PLANTED")
+	assert_eq(pv_planted.get_stage_badge_text(), "[เมล็ด • อีก 290s]", "PlantView badge shows remaining seconds at PLANTED")
+	assert_eq(view.get_ready_to_harvest_plant_count(), 0, "0 plants ready to harvest at PLANTED")
+	pv_planted.simulate_selection_input()
+	assert_eq(view.get_selected_plant_definition_id(), "plant.holy_basil", "Selected basil exposes definition ID")
+	assert_eq(view.get_selected_plant_stage(), PlantGrowth.Stage.PLANTED, "Selected basil stage is PLANTED")
+	assert_eq(view.get_selected_plant_seconds_until_next_stage(), 50, "At 10s elapsed: 50s until SPROUT (60s)")
+	assert_eq(view.get_selected_plant_seconds_until_mature(), 290, "At 10s elapsed: 290s until MATURE (300s)")
+	assert_eq(view.get_selected_plant_traits(), ["dense_vegetation", "food"], "Selected basil exposes traits")
+	assert_true(view.get_detail_name_text().contains("พุ่มไม้หนาแน่น"), "DetailNameLabel shows trait display name")
+	assert_true(
+		view.get_detail_stage_text().contains("โตเต็มที่ในอีก 290 วินาที (ระยะถัดไปในอีก 50 วินาที)"),
+		"DetailStageLabel shows remaining seconds to mature and next stage"
+	)
+
+	# 3. Advance clock to t = 21700 (elapsed = 100s, SPROUT) and refresh (samples clock once)
+	clock.set_utc_seconds(21700)
+	var calls_before: int = clock.utc_call_count
+	view.refresh_from_session()
+	assert_eq(clock.utc_call_count, calls_before + 1, "Refresh samples clock once")
+	assert_eq(view.get_selected_plant_seconds_until_next_stage(), 80, "At 100s elapsed: 80s until GROWING (180s)")
+	assert_eq(view.get_selected_plant_seconds_until_mature(), 200, "At 100s elapsed: 200s until MATURE (300s)")
+	assert_eq(view.get_plant_view_by_id("basil-cd").get_stage_badge_text(), "[ต้นกล้า • อีก 200s]", "PlantView badge updates to SPROUT countdown")
+	assert_true(
+		view.get_detail_stage_text().contains("โตเต็มที่ในอีก 200 วินาที (ระยะถัดไปในอีก 80 วินาที)"),
+		"DetailStageLabel updates remaining seconds on refresh"
+	)
+
+	# 4. Advance clock to t = 21900 (elapsed = 300s, MATURE) and refresh
+	clock.set_utc_seconds(21900)
+	view.refresh_from_session()
+	assert_eq(view.get_selected_plant_stage(), PlantGrowth.Stage.MATURE, "Selected basil stage updates to MATURE")
+	assert_eq(view.get_selected_plant_seconds_until_next_stage(), 0, "At MATURE: 0s until next stage")
+	assert_eq(view.get_selected_plant_seconds_until_mature(), 0, "At MATURE: 0s until mature")
+	var pv_mature: PlantView = view.get_plant_view_by_id("basil-cd")
+	assert_true(pv_mature.is_ready_to_harvest(), "PlantView is_ready_to_harvest() is true at MATURE")
+	assert_eq(pv_mature.get_stage_label_text(), "โตเต็มที่ (+5 เหรียญ)", "PlantView stage label shows harvest reward at MATURE")
+	assert_eq(pv_mature.get_stage_badge_text(), "[พร้อมเก็บ +5]", "PlantView stage badge shows ready to harvest at MATURE")
+	assert_eq(view.get_ready_to_harvest_plant_count(), 1, "1 plant ready to harvest at MATURE")
+	assert_eq(view.get_ready_to_harvest_plant_ids(), ["basil-cd"], "Ready to harvest plant IDs returns [basil-cd]")
+	assert_eq(view.get_total_pending_harvest_reward(), 5, "Total pending harvest reward is 5 coins")
+	assert_true(
+		view.get_detail_stage_text().contains("พร้อมเก็บเกี่ยวแล้ว"),
+		"DetailStageLabel shows ready to harvest at MATURE"
+	)
+
+	# 5. Blocked state resets countdowns and atmosphere forecasts
+	view.show_blocked_startup("ทดสอบบล็อก")
+	assert_eq(view.get_selected_plant_definition_id(), "", "Blocked clears selected plant definition ID")
+	assert_eq(view.get_selected_plant_stage(), PlantGrowth.Stage.INVALID, "Blocked resets selected plant stage to INVALID")
+	assert_eq(view.get_ready_to_harvest_plant_count(), 0, "Blocked resets ready to harvest count to 0")
+	assert_eq(view.get_ready_to_harvest_plant_ids(), [], "Blocked clears ready to harvest plant IDs")
+	assert_eq(view.get_total_pending_harvest_reward(), 0, "Blocked resets total pending harvest reward to 0")
+	assert_eq(view.get_selected_plant_seconds_until_next_stage(), -1, "Blocked resets next stage countdown")
+	assert_eq(view.get_selected_plant_seconds_until_mature(), -1, "Blocked resets mature countdown")
+	assert_eq(view.get_next_time_period(), "", "Blocked clears next time period")
+	assert_eq(view.get_seconds_until_next_time_period(), 0, "Blocked resets time period countdown")
+	assert_eq(view.get_next_weather_state(), "", "Blocked clears next weather state")
+	assert_eq(view.get_seconds_until_next_weather_state(), 0, "Blocked resets weather countdown")
+
+	view.free()

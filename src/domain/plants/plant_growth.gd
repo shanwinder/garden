@@ -78,3 +78,108 @@ static func stage_for_state_at(
 		elapsed = now_utc_seconds - planted_at
 
 	return stage_for_elapsed_seconds(definition, elapsed)
+
+
+## Returns the remaining seconds until [param definition] advances to its next growth stage
+## at [param elapsed_seconds].
+## Pure query: side-effect free, deterministic, O(1) execution time.
+## Returns -1 if [param definition] is null or invalid.
+## Returns 0 if the plant is already at [constant Stage.MATURE].
+## Clamps negative [param elapsed_seconds] safely to 0.
+static func seconds_until_next_stage_for_elapsed(
+	definition: PlantDefinition,
+	elapsed_seconds: int
+) -> int:
+	if definition == null or not definition.is_valid():
+		return -1
+
+	var elapsed: int = elapsed_seconds
+	if elapsed < 0:
+		elapsed = 0
+
+	if elapsed < definition.sprout_after_seconds:
+		return definition.sprout_after_seconds - elapsed
+	elif elapsed < definition.growing_after_seconds:
+		return definition.growing_after_seconds - elapsed
+	elif elapsed < definition.mature_after_seconds:
+		return definition.mature_after_seconds - elapsed
+	else:
+		return 0
+
+
+## Returns the remaining seconds until [param definition] reaches [constant Stage.MATURE]
+## at [param elapsed_seconds].
+## Pure query: side-effect free, deterministic, O(1) execution time.
+## Returns -1 if [param definition] is null or invalid.
+## Returns 0 if the plant is already at [constant Stage.MATURE].
+## Clamps negative [param elapsed_seconds] safely to 0.
+static func seconds_until_mature_for_elapsed(
+	definition: PlantDefinition,
+	elapsed_seconds: int
+) -> int:
+	if definition == null or not definition.is_valid():
+		return -1
+
+	var elapsed: int = elapsed_seconds
+	if elapsed < 0:
+		elapsed = 0
+
+	if elapsed < definition.mature_after_seconds:
+		return definition.mature_after_seconds - elapsed
+	return 0
+
+
+## Returns the remaining seconds until [param state] advances to its next growth stage
+## at the explicit [param now_utc_seconds] timestamp.
+## Pure query: side-effect free, deterministic, O(1) execution time.
+## Returns -1 if [param state] or [param definition] is null, invalid, or their definition IDs mismatch.
+## Returns 0 if the plant is already at [constant Stage.MATURE].
+## If [param now_utc_seconds] <= state.get_planted_at(), elapsed is safely clamped to 0 without subtraction.
+static func seconds_until_next_stage_at(
+	state: PlantState,
+	definition: PlantDefinition,
+	now_utc_seconds: int
+) -> int:
+	if state == null or not state.is_valid():
+		return -1
+
+	if definition == null or not definition.is_valid():
+		return -1
+
+	if state.get_definition_id() != definition.id:
+		return -1
+
+	var planted_at: int = state.get_planted_at()
+	var elapsed: int = 0
+	if now_utc_seconds > planted_at:
+		elapsed = now_utc_seconds - planted_at
+
+	return seconds_until_next_stage_for_elapsed(definition, elapsed)
+
+
+## Returns the remaining seconds until [param state] reaches [constant Stage.MATURE]
+## at the explicit [param now_utc_seconds] timestamp.
+## Pure query: side-effect free, deterministic, O(1) execution time.
+## Returns -1 if [param state] or [param definition] is null, invalid, or their definition IDs mismatch.
+## Returns 0 if the plant is already at [constant Stage.MATURE].
+## If [param now_utc_seconds] <= state.get_planted_at(), elapsed is safely clamped to 0 without subtraction.
+static func seconds_until_mature_at(
+	state: PlantState,
+	definition: PlantDefinition,
+	now_utc_seconds: int
+) -> int:
+	if state == null or not state.is_valid():
+		return -1
+
+	if definition == null or not definition.is_valid():
+		return -1
+
+	if state.get_definition_id() != definition.id:
+		return -1
+
+	var planted_at: int = state.get_planted_at()
+	var elapsed: int = 0
+	if now_utc_seconds > planted_at:
+		elapsed = now_utc_seconds - planted_at
+
+	return seconds_until_mature_for_elapsed(definition, elapsed)

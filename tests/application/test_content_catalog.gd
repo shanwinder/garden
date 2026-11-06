@@ -37,6 +37,7 @@ func run_tests() -> void:
 	_test_visitor_catalog_queries_and_sorting()
 	_test_visitor_catalog_rejection()
 	_test_decoration_catalog_queries_and_rejection()
+	_test_event_catalog_queries_and_rejection()
 
 
 func _create_valid_definition(
@@ -410,4 +411,57 @@ func _test_decoration_catalog_queries_and_rejection() -> void:
 	assert_true(
 		ContentCatalog.try_create([plant_a], [], [dec_jar, dup_jar]) == null,
 		"Duplicate decoration ID rejected"
+	)
+
+
+func _create_valid_event(id: String = "event.morning_butterflies", weight: float = 30.0) -> EventDefinition:
+	var def: EventDefinition = EventDefinition.new()
+	def.id = id
+	def.weight = weight
+	def.required_trait_counts = {"flower": 1}
+	return def
+
+
+func _test_event_catalog_queries_and_rejection() -> void:
+	describe("Event definitions in ContentCatalog support lookup, sorting, defensive copying, and validation")
+	var plant_a: PlantDefinition = _create_valid_definition("plant.jasmine")
+	var ev_morning: EventDefinition = _create_valid_event("event.morning_butterflies", 30.0)
+	var ev_bird: EventDefinition = _create_valid_event("event.bird_shade_song", 25.0)
+	var ev_cat: EventDefinition = _create_valid_event("event.cat_sleeping_bench", 20.0)
+
+	var catalog: ContentCatalog = ContentCatalog.try_create(
+		[plant_a],
+		[],
+		[],
+		[ev_morning, ev_bird, ev_cat]
+	)
+	assert_true(catalog != null, "Catalog with valid events must build")
+	assert_eq(catalog.get_event_count(), 3, "Event count must be 3")
+	assert_true(catalog.has_event("event.bird_shade_song"), "Must have event.bird_shade_song")
+	assert_true(catalog.has_event("event.cat_sleeping_bench"), "Must have event.cat_sleeping_bench")
+	assert_true(catalog.has_event("event.morning_butterflies"), "Must have event.morning_butterflies")
+	assert_false(catalog.has_event("event.unknown"), "Must not have event.unknown")
+	assert_true(catalog.get_event("event.unknown") == null, "Unknown event lookup returns null")
+	assert_true(
+		catalog.get_event("event.morning_butterflies") == ev_morning,
+		"Exact EventDefinition reference preserved"
+	)
+	assert_eq(
+		catalog.get_all_event_ids(),
+		["event.bird_shade_song", "event.cat_sleeping_bench", "event.morning_butterflies"],
+		"Event IDs enumerate in ascending order"
+	)
+
+	var all_events: Array[EventDefinition] = catalog.get_all_events()
+	assert_eq(all_events.size(), 3, "get_all_events returns 3 definitions")
+	all_events.clear()
+	assert_eq(catalog.get_event_count(), 3, "Mutating returned events array does not alter catalog")
+
+	var dup_morning: EventDefinition = _create_valid_event("event.morning_butterflies", 30.0)
+	var invalid_ev: EventDefinition = EventDefinition.new()
+	assert_true(ContentCatalog.try_create([plant_a], [], [], [null]) == null, "Null event rejected")
+	assert_true(ContentCatalog.try_create([plant_a], [], [], [invalid_ev]) == null, "Invalid event rejected")
+	assert_true(
+		ContentCatalog.try_create([plant_a], [], [], [ev_morning, dup_morning]) == null,
+		"Duplicate event ID rejected"
 	)

@@ -13,6 +13,7 @@ func run_tests() -> void:
 	_test_trait_count_eligibility_boundaries()
 	_test_plant_id_and_maturity_requirements()
 	_test_filter_eligible_visitors_order_and_filtering()
+	_test_decoration_time_and_weather_eligibility()
 
 
 func _create_visitor(
@@ -136,3 +137,71 @@ func _test_filter_eligible_visitors_order_and_filtering() -> void:
 	assert_eq(eligible[1].id, "visitor.butterfly", "2nd eligible is visitor.butterfly")
 	assert_eq(eligible[2].id, "visitor.cat", "3rd eligible is visitor.cat")
 	assert_eq(eligible[3].id, "visitor.firefly", "4th eligible is visitor.firefly")
+
+
+func _test_decoration_time_and_weather_eligibility() -> void:
+	describe("VisitorEligibility enforces required_decoration_ids, allowed_time_periods, and allowed_weather_states")
+	var rain_frog: VisitorDefinition = _create_visitor("visitor.frog", {"water": 1}, 0)
+	rain_frog.required_decoration_ids = ["decoration.small_pond"]
+	rain_frog.allowed_time_periods = ["evening", "night"]
+	rain_frog.allowed_weather_states = ["rain"]
+
+	var snap_match: GardenSnapshot = GardenSnapshot.new(
+		{"water": 1},
+		{},
+		0,
+		0,
+		{"decoration.small_pond": 1},
+		1,
+		"night",
+		"rain"
+	)
+	assert_true(
+		VisitorEligibility.is_eligible(rain_frog, snap_match),
+		"Eligible when required decoration, time period, and weather state all match"
+	)
+
+	var snap_wrong_decor: GardenSnapshot = GardenSnapshot.new(
+		{"water": 1},
+		{},
+		0,
+		0,
+		{"decoration.clay_jar": 1},
+		1,
+		"night",
+		"rain"
+	)
+	assert_false(
+		VisitorEligibility.is_eligible(rain_frog, snap_wrong_decor),
+		"Ineligible when required decoration is missing"
+	)
+
+	var snap_wrong_period: GardenSnapshot = GardenSnapshot.new(
+		{"water": 1},
+		{},
+		0,
+		0,
+		{"decoration.small_pond": 1},
+		1,
+		"morning",
+		"rain"
+	)
+	assert_false(
+		VisitorEligibility.is_eligible(rain_frog, snap_wrong_period),
+		"Ineligible when time_period is not in allowed_time_periods"
+	)
+
+	var snap_wrong_weather: GardenSnapshot = GardenSnapshot.new(
+		{"water": 1},
+		{},
+		0,
+		0,
+		{"decoration.small_pond": 1},
+		1,
+		"night",
+		"clear"
+	)
+	assert_false(
+		VisitorEligibility.is_eligible(rain_frog, snap_wrong_weather),
+		"Ineligible when weather_state is not in allowed_weather_states"
+	)

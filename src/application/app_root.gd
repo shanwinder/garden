@@ -86,6 +86,15 @@ const EXPECTED_PRODUCTION_DECORATION_IDS: Array[String] = [
 	"decoration.wooden_fence",
 ]
 
+## Exact five approved production ambient/special event definitions expected in the production catalog.
+const EXPECTED_PRODUCTION_EVENT_IDS: Array[String] = [
+	"event.bird_shade_song",
+	"event.cat_sleeping_bench",
+	"event.firefly_night_glow",
+	"event.frog_rain_chorus",
+	"event.morning_butterflies",
+]
+
 ## The production clock for this application session.
 ## Constructed once at composition time; never replaced at runtime.
 ## Tests that require deterministic time should use FakeGameClock injected
@@ -113,6 +122,10 @@ var visitor_content_loader: VisitorContentLoader
 ## The loader adapter for authored decoration definition resources.
 ## Constructed once at composition time or injected during testing.
 var decoration_content_loader: DecorationContentLoader
+
+## The loader adapter for authored ambient/special event definition resources.
+## Constructed once at composition time or injected during testing.
+var event_content_loader: EventContentLoader
 
 ## The coordinator for mobile pause/resume persistence checkpoints.
 ## Constructed once at composition time using save_repository; never replaced at runtime.
@@ -144,6 +157,9 @@ var _visitor_content_load_result: VisitorContentLoadResult = null
 ## Retains the diagnostic result of the decoration content loader operation.
 var _decoration_content_load_result: DecorationContentLoadResult = null
 
+## Retains the diagnostic result of the event content loader operation.
+var _event_content_load_result: EventContentLoadResult = null
+
 ## Retains the outcome of the startup load operation.
 var _startup_load_result: LocalSaveLoadResult = null
 
@@ -157,7 +173,8 @@ func _init(
 	game_clock_override: GameClock = null,
 	random_source_override: RandomSource = null,
 	visitor_content_loader_override: VisitorContentLoader = null,
-	decoration_content_loader_override: DecorationContentLoader = null
+	decoration_content_loader_override: DecorationContentLoader = null,
+	event_content_loader_override: EventContentLoader = null
 ) -> void:
 	if game_clock_override != null:
 		game_clock = game_clock_override
@@ -185,6 +202,10 @@ func _init(
 		decoration_content_loader = decoration_content_loader_override
 	else:
 		decoration_content_loader = DecorationContentLoader.new()
+	if event_content_loader_override != null:
+		event_content_loader = event_content_loader_override
+	else:
+		event_content_loader = EventContentLoader.new()
 	lifecycle_coordinator = LifecycleCoordinator.new(save_repository)
 	content_catalog = null
 	game_session = null
@@ -193,6 +214,7 @@ func _init(
 	_content_load_result = null
 	_visitor_content_load_result = null
 	_decoration_content_load_result = null
+	_event_content_load_result = null
 	_startup_load_result = null
 	_saved_content_validation_result = null
 
@@ -269,20 +291,31 @@ func bootstrap_session() -> LocalSaveLoadResult:
 		_startup_load_result = null
 		return null
 
+	_event_content_load_result = event_content_loader.load_production_definitions()
+	if not _event_content_load_result.is_loaded():
+		_content_bootstrap_status = ContentBootstrapStatus.LOAD_FAILED
+		content_catalog = null
+		game_session = null
+		_startup_load_result = null
+		return null
+
 	# Step 2: Construct and validate ContentCatalog with completeness guarantee.
 	var definitions: Array[PlantDefinition] = _content_load_result.get_definitions()
 	var visitor_definitions: Array[VisitorDefinition] = _visitor_content_load_result.get_definitions()
 	var decoration_definitions: Array[DecorationDefinition] = _decoration_content_load_result.get_definitions()
+	var event_definitions: Array[EventDefinition] = _event_content_load_result.get_definitions()
 	var catalog: ContentCatalog = ContentCatalog.try_create(
 		definitions,
 		visitor_definitions,
-		decoration_definitions
+		decoration_definitions,
+		event_definitions
 	)
 	if (
 		catalog == null
 		or catalog.get_plant_count() != EXPECTED_PRODUCTION_PLANT_IDS.size()
 		or catalog.get_visitor_count() != EXPECTED_PRODUCTION_VISITOR_IDS.size()
 		or catalog.get_decoration_count() != EXPECTED_PRODUCTION_DECORATION_IDS.size()
+		or catalog.get_event_count() != EXPECTED_PRODUCTION_EVENT_IDS.size()
 	):
 		_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 		content_catalog = null
@@ -308,6 +341,14 @@ func bootstrap_session() -> LocalSaveLoadResult:
 
 	for expected_decoration_id: String in EXPECTED_PRODUCTION_DECORATION_IDS:
 		if not catalog.has_decoration(expected_decoration_id):
+			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
+			content_catalog = null
+			game_session = null
+			_startup_load_result = null
+			return null
+
+	for expected_event_id: String in EXPECTED_PRODUCTION_EVENT_IDS:
+		if not catalog.has_event(expected_event_id):
 			_content_bootstrap_status = ContentBootstrapStatus.INVALID_DEFINITIONS
 			content_catalog = null
 			game_session = null
@@ -386,6 +427,11 @@ func get_decoration_content_load_result() -> DecorationContentLoadResult:
 	return _decoration_content_load_result
 
 
+## Returns the diagnostic EventContentLoadResult, or null if event content loading was not attempted.
+func get_event_content_load_result() -> EventContentLoadResult:
+	return _event_content_load_result
+
+
 ## Returns the result of validating saved plant references against the content catalog,
 ## or null if content loading failed, or if persistence was NO_SAVE, INVALID_DATA, or IO_ERROR.
 func get_saved_content_validation_result() -> PlantSaveContentValidationResult:
@@ -418,6 +464,69 @@ func evaluate_visitor_now() -> VisitorSelectionResult:
 		game_clock,
 		random_source
 	)
+
+
+## Gameplay entry method to evaluate ambient/special event eligibility and select an eligible event.
+##
+## If not ready: returns EventSelectionResult.invalid_input() without sampling clock or consuming RNG.
+func evaluate_event_now() -> EventSelectionResult:
+	if not _is_bootstrapped:
+		return EventSelectionResult.invalid_input()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return EventSelectionResult.invalid_input()
+
+	if content_catalog == null or game_session == null or game_clock == null or random_source == null:
+		return EventSelectionResult.invalid_input()
+
+	return game_session.evaluate_event_now(
+		content_catalog,
+		game_clock,
+		random_source
+	)
+
+
+## Gameplay entry method to evaluate current garden progression stage and gentle guidance.
+##
+## If not ready: returns null without sampling clock.
+func evaluate_progression_now() -> GardenProgressionSummary:
+	if not _is_bootstrapped:
+		return null
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return null
+
+	if content_catalog == null or game_session == null or game_clock == null:
+		return null
+
+	return game_session.evaluate_progression_now(
+		content_catalog,
+		game_clock
+	)
+
+
+## Gameplay entry method to evaluate away/offline progression changes since [param previous_utc_seconds].
+##
+## If not ready or [param previous_utc_seconds] < 0: returns null without sampling clock.
+func evaluate_return_from_now(previous_utc_seconds: int) -> GardenReturnSummary:
+	if not _is_bootstrapped:
+		return null
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return null
+
+	if content_catalog == null or game_session == null or game_clock == null:
+		return null
+
+	if previous_utc_seconds < 0:
+		return null
+
+	return game_session.evaluate_return_from_now(
+		content_catalog,
+		game_clock,
+		previous_utc_seconds
+	)
+
 
 
 ## Gameplay entry method to observe an eligible visitor, record its discovery in the

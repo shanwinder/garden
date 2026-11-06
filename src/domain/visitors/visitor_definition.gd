@@ -24,6 +24,9 @@ const VISITOR_NAMESPACE_PREFIX: String = "visitor."
 @export var weight: float = 0.0
 @export var required_trait_counts: Dictionary = {}
 @export var required_plant_ids: Array[String] = []
+@export var required_decoration_ids: Array[String] = []
+@export var allowed_time_periods: Array[String] = []
+@export var allowed_weather_states: Array[String] = []
 @export var min_total_plants: int = 0
 @export var min_mature_plants: int = 0
 
@@ -44,6 +47,15 @@ func is_valid() -> bool:
 		return false
 
 	if not _is_valid_required_plant_ids(required_plant_ids):
+		return false
+
+	if not _is_valid_required_decoration_ids(required_decoration_ids):
+		return false
+
+	if not GardenTimePeriod.is_valid_period_list(allowed_time_periods):
+		return false
+
+	if not GardenWeather.is_valid_weather_list(allowed_weather_states):
 		return false
 
 	return true
@@ -87,4 +99,19 @@ static func _is_valid_required_plant_ids(plant_ids: Array[String]) -> bool:
 		if seen.has(plant_id):
 			return false
 		seen[plant_id] = true
+	return true
+
+
+static func _is_valid_required_decoration_ids(decoration_ids: Array[String]) -> bool:
+	var seen: Dictionary = {}
+	for decor_id: String in decoration_ids:
+		if decor_id.is_empty():
+			return false
+		if not decor_id.begins_with(DecorationDefinition.DECORATION_NAMESPACE_PREFIX):
+			return false
+		if not StableContentId.is_valid(decor_id):
+			return false
+		if seen.has(decor_id):
+			return false
+		seen[decor_id] = true
 	return true

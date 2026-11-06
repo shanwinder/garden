@@ -18,8 +18,11 @@ static func build_snapshot(
 	catalog: ContentCatalog,
 	now_utc_seconds: int
 ) -> GardenSnapshot:
+	var time_period: String = GardenTimePeriod.period_for_utc_seconds(now_utc_seconds)
+	var weather_state: String = GardenWeather.weather_for_utc_seconds(now_utc_seconds)
+
 	if state == null or catalog == null or state.get_plants() == null:
-		return GardenSnapshot.new()
+		return GardenSnapshot.new({}, {}, 0, 0, {}, 0, time_period, weather_state)
 
 	var trait_counts: Dictionary = {}
 	var plant_counts_by_id: Dictionary = {}
@@ -83,5 +86,7 @@ static func build_snapshot(
 		total_plant_count,
 		mature_plant_count,
 		decoration_counts_by_id,
-		total_decoration_count
+		total_decoration_count,
+		time_period,
+		weather_state
 	)

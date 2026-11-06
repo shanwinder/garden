@@ -158,6 +158,36 @@ func evaluate_visitor_now(
 	)
 
 
+## Application operation to evaluate ambient/special event eligibility and select an event at [param now_utc_seconds].
+## Delegates directly to EventSelectionService; does not mutate GameState.
+func evaluate_event_at(
+	catalog: ContentCatalog,
+	random_source: RandomSource,
+	now_utc_seconds: int
+) -> EventSelectionResult:
+	return EventSelectionService.evaluate_and_select_at(
+		_state,
+		catalog,
+		random_source,
+		now_utc_seconds
+	)
+
+
+## Application operation to sample current UTC timestamp once and select an eligible ambient/special event.
+## Delegates directly to EventSelectionService; does not mutate GameState.
+func evaluate_event_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	random_source: RandomSource
+) -> EventSelectionResult:
+	return EventSelectionService.evaluate_and_select_now(
+		_state,
+		catalog,
+		game_clock,
+		random_source
+	)
+
+
 ## Application operation to record a discovery in the session's JournalState at an explicit UTC timestamp.
 ## Delegates directly to JournalDiscoveryService.
 func record_discovery_at(
@@ -220,4 +250,55 @@ func try_purchase_decoration_now(
 		game_clock,
 		random_source,
 		definition_id
+	)
+
+
+## Pure application query to derive GardenProgressionSummary at [param now_utc_seconds].
+func evaluate_progression_at(
+	catalog: ContentCatalog,
+	now_utc_seconds: int
+) -> GardenProgressionSummary:
+	var snapshot: GardenSnapshot = build_garden_snapshot(catalog, now_utc_seconds)
+	var journal: JournalState = _state.get_journal() if _state != null else null
+	return GardenProgressionStage.evaluate(snapshot, journal)
+
+
+## Application query to sample current UTC timestamp once and derive GardenProgressionSummary.
+func evaluate_progression_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock
+) -> GardenProgressionSummary:
+	if catalog == null or game_clock == null:
+		return GardenProgressionStage.evaluate(null, _state.get_journal() if _state != null else null)
+	var now_utc_seconds: int = game_clock.utc_now_seconds()
+	return evaluate_progression_at(catalog, now_utc_seconds)
+
+
+## Pure application query to evaluate away/offline changes between [param previous_utc_seconds]
+## and [param current_utc_seconds]. Delegates directly to GardenReturnEvaluator.
+func evaluate_return_between(
+	catalog: ContentCatalog,
+	previous_utc_seconds: int,
+	current_utc_seconds: int
+) -> GardenReturnSummary:
+	return GardenReturnEvaluator.evaluate_return_between(
+		_state,
+		catalog,
+		previous_utc_seconds,
+		current_utc_seconds
+	)
+
+
+## Application query to sample current UTC timestamp once and evaluate away/offline changes
+## since [param previous_utc_seconds]. Delegates directly to GardenReturnEvaluator.
+func evaluate_return_from_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	previous_utc_seconds: int
+) -> GardenReturnSummary:
+	return GardenReturnEvaluator.evaluate_return_from_now(
+		_state,
+		catalog,
+		game_clock,
+		previous_utc_seconds
 	)

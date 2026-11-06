@@ -15,6 +15,7 @@ func run_tests() -> void:
 	_test_invalid_weights()
 	_test_invalid_required_trait_counts()
 	_test_invalid_required_plant_ids_and_minimums()
+	_test_decoration_time_and_weather_constraints()
 
 
 func _test_type_contract_and_default_invalid() -> void:
@@ -128,3 +129,33 @@ func _test_invalid_required_plant_ids_and_minimums() -> void:
 	def_dup_plant.weight = 10.0
 	def_dup_plant.required_plant_ids = ["plant.jasmine", "plant.jasmine"]
 	assert_false(def_dup_plant.is_valid(), "Duplicate plant ID in required_plant_ids must be invalid")
+
+
+func _test_decoration_time_and_weather_constraints() -> void:
+	describe("VisitorDefinition validates required_decoration_ids, allowed_time_periods, and allowed_weather_states")
+	var valid_ctx: VisitorDefinition = VisitorDefinition.new()
+	valid_ctx.id = "visitor.frog"
+	valid_ctx.weight = 10.0
+	valid_ctx.required_trait_counts = {"water": 1}
+	valid_ctx.required_decoration_ids = ["decoration.small_pond"]
+	valid_ctx.allowed_time_periods = ["evening", "night"]
+	valid_ctx.allowed_weather_states = ["cloudy", "rain"]
+	assert_true(valid_ctx.is_valid(), "VisitorDefinition with valid decoration, time, and weather constraints is valid")
+
+	var bad_decor: VisitorDefinition = VisitorDefinition.new()
+	bad_decor.id = "visitor.frog"
+	bad_decor.weight = 10.0
+	bad_decor.required_decoration_ids = ["plant.jasmine"]
+	assert_false(bad_decor.is_valid(), "Non-decoration ID in required_decoration_ids must be rejected")
+
+	var bad_period: VisitorDefinition = VisitorDefinition.new()
+	bad_period.id = "visitor.frog"
+	bad_period.weight = 10.0
+	bad_period.allowed_time_periods = ["afternoon"]
+	assert_false(bad_period.is_valid(), "Invalid time period in allowed_time_periods must be rejected")
+
+	var bad_weather: VisitorDefinition = VisitorDefinition.new()
+	bad_weather.id = "visitor.frog"
+	bad_weather.weight = 10.0
+	bad_weather.allowed_weather_states = ["storm"]
+	assert_false(bad_weather.is_valid(), "Invalid weather state in allowed_weather_states must be rejected")
