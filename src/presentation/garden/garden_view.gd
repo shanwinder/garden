@@ -142,6 +142,7 @@ var _refresh_button: Button = null
 var _plant_button: Button = null
 var _currency_label: Label = null
 var _progression_label: Label = null
+var _daily_guidance_label: Label = null
 var _atmosphere_label: Label = null
 var _environment_label: Label = null
 var _visitor_row: Control = null
@@ -197,6 +198,8 @@ func _resolve_nodes() -> void:
 		_currency_label = get_node_or_null("MainMargin/LayoutBox/CurrencyLabel") as Label
 	if _progression_label == null:
 		_progression_label = get_node_or_null("MainMargin/LayoutBox/ProgressionLabel") as Label
+	if _daily_guidance_label == null:
+		_daily_guidance_label = get_node_or_null("MainMargin/LayoutBox/DailyGuidanceLabel") as Label
 	if _atmosphere_label == null:
 		_atmosphere_label = get_node_or_null("MainMargin/LayoutBox/AtmosphereLabel") as Label
 	if _environment_label == null:
@@ -652,6 +655,8 @@ func _show_blocked_visual() -> void:
 		_currency_label.visible = false
 	if _progression_label != null:
 		_progression_label.visible = false
+	if _daily_guidance_label != null:
+		_daily_guidance_label.visible = false
 	if _atmosphere_label != null:
 		_atmosphere_label.visible = false
 	if _environment_label != null:
@@ -702,7 +707,8 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 	if _decoration_picker != null:
 		_decoration_picker.update_shop_context(_session.get_currency(), _last_snapshot)
 
-	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal)
+	var day_number: int = int(now_utc / 86400) if now_utc >= 0 else 0
+	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal, day_number)
 	if _progression_label != null and _last_progression_summary != null:
 		_progression_label.visible = true
 		var stage_id: String = _last_progression_summary.get_stage_id()
@@ -726,6 +732,17 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 				"ระดับสวน: %s (%d แต้ม, อีก %d แต้มสู่%s) | วันนี้ทำอะไรดี: %s"
 				% [stage_name, score, points_remaining, next_stage_name, guidance_text]
 			)
+
+	if _daily_guidance_label != null:
+		if _last_progression_summary != null and _last_progression_summary.has_daily_guidance():
+			_daily_guidance_label.visible = true
+			var daily_items: Array[DailyGuidanceItem] = _last_progression_summary.get_daily_guidance_items()
+			var parts: PackedStringArray = PackedStringArray()
+			for i: int in range(daily_items.size()):
+				parts.append("%d. %s" % [i + 1, daily_items[i].get_display_text()])
+			_daily_guidance_label.text = "กิจกรรมแนะนำวันนี้: %s" % " • ".join(parts)
+		else:
+			_daily_guidance_label.visible = false
 
 	var time_period: String = _last_snapshot.get_time_period()
 	var weather_state: String = _last_snapshot.get_weather_state()
@@ -1494,6 +1511,53 @@ func get_current_guidance_id() -> String:
 ## Pure query for testing: returns the last derived GardenProgressionSummary.
 func get_last_progression_summary() -> GardenProgressionSummary:
 	return _last_progression_summary
+
+
+## Pure query for testing: returns the DailyGuidanceLabel node.
+func get_daily_guidance_label() -> Label:
+	_resolve_nodes()
+	return _daily_guidance_label
+
+
+## Pure query for testing: returns daily guidance HUD summary text.
+func get_daily_guidance_text() -> String:
+	_resolve_nodes()
+	return _daily_guidance_label.text if _daily_guidance_label != null else ""
+
+
+## Pure query for testing: returns true if daily guidance items are present in latest progression summary.
+func has_daily_guidance() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.has_daily_guidance()
+
+
+## Pure query for testing: returns count of daily guidance items.
+func get_daily_guidance_count() -> int:
+	return _last_progression_summary.get_daily_guidance_count() if _last_progression_summary != null else 0
+
+
+## Pure query for testing: returns array of canonical IDs for daily guidance items.
+func get_daily_guidance_ids() -> Array[String]:
+	return _last_progression_summary.get_daily_guidance_ids() if _last_progression_summary != null else []
+
+
+## Pure query for testing: returns array of localized display texts for daily guidance items.
+func get_daily_guidance_display_texts() -> Array[String]:
+	if _last_progression_summary == null:
+		return []
+	var texts: Array[String] = []
+	for item: DailyGuidanceItem in _last_progression_summary.get_daily_guidance_items():
+		texts.append(item.get_display_text())
+	return texts
+
+
+## Pure query for testing: returns typed DailyGuidanceItem at [param index], or null if invalid.
+func get_daily_guidance_item(index: int) -> DailyGuidanceItem:
+	if _last_progression_summary == null:
+		return null
+	var items: Array[DailyGuidanceItem] = _last_progression_summary.get_daily_guidance_items()
+	if index < 0 or index >= items.size():
+		return null
+	return items[index]
 
 
 ## Displays calm, non-intrusive feedback summarizing away/offline changes from a GardenReturnSummary.

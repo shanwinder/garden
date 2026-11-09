@@ -1665,6 +1665,14 @@ func _test_progression_and_gentle_guidance_hud() -> void:
 		"ระดับสวน: สวนเริ่มต้น (0 แต้ม, อีก 10 แต้มสู่สวนกำลังเติบโต) | วันนี้ทำอะไรดี: ลองปลูกต้นไม้ต้นแรกในสวน",
 		"Empty garden progression HUD text"
 	)
+	assert_true(gview.has_daily_guidance(), "Daily guidance is active on valid session")
+	assert_eq(gview.get_daily_guidance_count(), 3, "Daily guidance has 3 suggestions")
+	assert_eq(gview.get_daily_guidance_ids().size(), 3, "get_daily_guidance_ids returns 3 items")
+	assert_eq(gview.get_daily_guidance_display_texts().size(), 3, "get_daily_guidance_display_texts returns 3 items")
+	assert_true(gview.get_daily_guidance_label().visible, "DailyGuidanceLabel visible on active session")
+	assert_true(gview.get_daily_guidance_text().begins_with("กิจกรรมแนะนำวันนี้: "), "Daily guidance text begins with prefix")
+	assert_true(gview.get_daily_guidance_item(0) != null, "Daily guidance item 0 is present")
+	assert_true(gview.get_daily_guidance_item(3) == null, "Daily guidance item index out of bounds is null")
 
 	# Verify refresh_from_session still samples clock only once even with progression evaluation
 	var calls_before: int = clock.utc_call_count
@@ -1707,6 +1715,9 @@ func _test_progression_and_gentle_guidance_hud() -> void:
 	assert_eq(gview.get_current_guidance_id(), "", "Blocked state clears guidance ID")
 	assert_true(gview.get_last_progression_summary() == null, "Blocked state clears progression summary")
 	assert_false(gview.get_progression_label().visible, "ProgressionLabel hidden when startup is blocked")
+	assert_false(gview.has_daily_guidance(), "Blocked state clears daily guidance")
+	assert_eq(gview.get_daily_guidance_count(), 0, "Blocked state has 0 daily guidance")
+	assert_false(gview.get_daily_guidance_label().visible, "DailyGuidanceLabel hidden when startup is blocked")
 
 	main_node.free()
 	app.free()

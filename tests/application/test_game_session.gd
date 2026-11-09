@@ -647,6 +647,8 @@ func _test_evaluate_progression_delegation() -> void:
 	assert_eq(sum_empty.get_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Empty stage is starting_garden")
 	assert_eq(sum_empty.get_establishment_score(), 0, "Empty establishment score is 0")
 	assert_eq(sum_empty.get_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Empty guidance is plant_first")
+	assert_true(sum_empty.has_daily_guidance(), "Empty progression summary has daily guidance")
+	assert_eq(sum_empty.get_daily_guidance_count(), 3, "Empty progression summary has 3 daily guidance suggestions")
 
 	# Plant jasmine ("flower", "dense_vegetation") -> try_register_plant records discovery automatically:
 	# score = 3 (plant) + 6 (2 traits) + 5 (1 journal discovery) = 14 -> growing_garden
@@ -661,6 +663,8 @@ func _test_evaluate_progression_delegation() -> void:
 		GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR,
 		"Guidance suggests observing eligible visitors before any visitor is discovered"
 	)
+	assert_true(sum_now.has_daily_guidance(), "sum_now has daily guidance")
+	assert_eq(sum_now.get_daily_guidance_count(), 3, "sum_now contains 3 daily guidance suggestions")
 
 
 func _test_evaluate_return_delegation() -> void:

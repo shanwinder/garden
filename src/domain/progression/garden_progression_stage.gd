@@ -169,8 +169,12 @@ static func select_guidance(snapshot: GardenSnapshot, journal: JournalState = nu
 	return GUIDANCE_ENJOY_GARDEN
 
 
-## Evaluates [param snapshot] and [param journal] into an immutable GardenProgressionSummary.
-static func evaluate(snapshot: GardenSnapshot, journal: JournalState = null) -> GardenProgressionSummary:
+## Evaluates [param snapshot], [param journal], and optional [param day_number] into an immutable GardenProgressionSummary.
+static func evaluate(
+	snapshot: GardenSnapshot,
+	journal: JournalState = null,
+	day_number: int = 0
+) -> GardenProgressionSummary:
 	var score: int = compute_score(snapshot, journal)
 	var current_stage: String = stage_for_score(score)
 	var current_index: int = stage_index(current_stage)
@@ -178,6 +182,11 @@ static func evaluate(snapshot: GardenSnapshot, journal: JournalState = null) -> 
 	var next_threshold: int = threshold_for_stage(next_stage) if not next_stage.is_empty() else 0
 	var remaining: int = maxi(0, next_threshold - score) if not next_stage.is_empty() else 0
 	var guidance: String = select_guidance(snapshot, journal)
+	var daily_items: Array[DailyGuidanceItem] = DailyGuidanceEvaluator.evaluate_daily_guidance(
+		day_number,
+		snapshot,
+		journal
+	)
 
 	return GardenProgressionSummary.new(
 		current_stage,
@@ -186,5 +195,6 @@ static func evaluate(snapshot: GardenSnapshot, journal: JournalState = null) -> 
 		next_stage,
 		next_threshold,
 		remaining,
-		guidance
+		guidance,
+		daily_items
 	)

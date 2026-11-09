@@ -95,6 +95,14 @@ text = "ระดับสวน: สวนเริ่มต้น (0 แต้
 vertical_alignment = 1
 autowrap_mode = 2
 
+[node name="DailyGuidanceLabel" type="Label" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.96, 0.88, 1)
+theme_override_font_sizes/font_size = 20
+text = "กิจกรรมแนะนำวันนี้: 1. ปลูกพันธุ์ไม้ใหม่ในสวน 1 ต้น • 2. สำรวจสิ่งมีชีวิตผู้มาเยือน 1 ครั้ง • 3. จัดวางของตกแต่งสวน 1 ชิ้น"
+vertical_alignment = 1
+autowrap_mode = 2
+
 [node name="AtmosphereLabel" type="Label" parent="MainMargin/LayoutBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.9, 0.96, 1)

@@ -14,6 +14,7 @@ func run_tests() -> void:
 	_test_stage_for_score_thresholds_and_boundaries()
 	_test_compute_score_and_evaluate_progression()
 	_test_gentle_guidance_selection_progression()
+	_test_summary_daily_guidance_integration()
 	_test_null_inputs_handled_safely()
 
 
@@ -205,6 +206,30 @@ func _test_gentle_guidance_selection_progression() -> void:
 		GardenProgressionStage.GUIDANCE_ENJOY_GARDEN,
 		"Complete journal + water habitat suggests enjoying the garden"
 	)
+
+
+func _test_summary_daily_guidance_integration() -> void:
+	describe("GardenProgressionSummary integrates 3 daily guidance suggestions seamlessly")
+	var snap_empty: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0)
+	var journal: JournalState = JournalState.new()
+	var summary_day_1: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_empty, journal, 1)
+
+	assert_true(summary_day_1.has_daily_guidance(), "Summary has daily guidance")
+	assert_eq(summary_day_1.get_daily_guidance_count(), 3, "Contains exactly 3 suggestions")
+
+	var items: Array[DailyGuidanceItem] = summary_day_1.get_daily_guidance_items()
+	assert_eq(items.size(), 3, "get_daily_guidance_items returns 3 items")
+	for it: DailyGuidanceItem in items:
+		assert_true(it != null and it.is_valid(), "Each item is valid")
+
+	var ids: Array[String] = summary_day_1.get_daily_guidance_ids()
+	assert_eq(ids.size(), 3, "get_daily_guidance_ids returns 3 IDs")
+
+	# Rotating day_number yields varied suggestions
+	var summary_day_2: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_empty, journal, 2)
+	assert_eq(summary_day_2.get_daily_guidance_count(), 3, "Day 2 has 3 items")
+	var ids_day_2: Array[String] = summary_day_2.get_daily_guidance_ids()
+	assert_false(",".join(ids) == ",".join(ids_day_2), "Day 1 and Day 2 daily guidance IDs rotate")
 
 
 func _test_null_inputs_handled_safely() -> void:

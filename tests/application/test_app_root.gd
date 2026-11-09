@@ -2093,12 +2093,16 @@ func _test_evaluate_progression_now_readiness_and_delegation() -> void:
 	assert_true(sum_empty != null and sum_empty.is_valid(), "Ready AppRoot returns valid summary")
 	assert_eq(sum_empty.get_stage_id(), GardenProgressionStage.STAGE_STARTING_GARDEN, "Empty stage is starting_garden")
 	assert_eq(sum_empty.get_guidance_id(), GardenProgressionStage.GUIDANCE_PLANT_FIRST, "Empty guidance is plant_first")
+	assert_true(sum_empty.has_daily_guidance(), "Ready AppRoot summary has daily guidance")
+	assert_eq(sum_empty.get_daily_guidance_count(), 3, "Ready AppRoot has 3 daily guidance suggestions")
 
 	root_ok.try_plant_and_checkpoint("plant.jasmine")
 	var sum_planted: GardenProgressionSummary = root_ok.evaluate_progression_now()
 	assert_eq(sum_planted.get_stage_id(), GardenProgressionStage.STAGE_GROWING_GARDEN, "Planted jasmine advances to growing_garden")
 	assert_eq(sum_planted.get_establishment_score(), 14, "1 plant (3) + 2 traits (6) + 1 discovery (5) = 14")
 	assert_eq(sum_planted.get_guidance_id(), GardenProgressionStage.GUIDANCE_OBSERVE_VISITOR, "Guidance is observe_visitor")
+	assert_true(sum_planted.has_daily_guidance(), "sum_planted has daily guidance")
+	assert_eq(sum_planted.get_daily_guidance_count(), 3, "sum_planted has 3 daily guidance suggestions")
 
 	root_ok.free()
 	_cleanup_test_files()

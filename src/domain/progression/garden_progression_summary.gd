@@ -1,6 +1,6 @@
 ## garden_progression_summary.gd
 ## Immutable domain value object representing the derived establishment stage,
-## score, next-stage progress, and gentle guidance for a garden snapshot.
+## score, next-stage progress, gentle guidance, and daily guidance suggestions for a garden snapshot.
 ##
 ## Architectural rules:
 ## - Belongs to the domain progression layer (src/domain/progression/).
@@ -17,6 +17,7 @@ var _next_stage_id: String
 var _next_stage_threshold: int
 var _points_to_next_stage: int
 var _guidance_id: String
+var _daily_guidance_items: Array[DailyGuidanceItem]
 
 
 func _init(
@@ -26,7 +27,8 @@ func _init(
 	next_stage_id: String,
 	next_stage_threshold: int,
 	points_to_next_stage: int,
-	guidance_id: String
+	guidance_id: String,
+	daily_guidance_items: Array[DailyGuidanceItem] = []
 ) -> void:
 	_stage_id = stage_id
 	_stage_index = stage_index
@@ -35,6 +37,10 @@ func _init(
 	_next_stage_threshold = maxi(0, next_stage_threshold)
 	_points_to_next_stage = maxi(0, points_to_next_stage)
 	_guidance_id = guidance_id
+	_daily_guidance_items = []
+	for item: DailyGuidanceItem in daily_guidance_items:
+		if item != null and item.is_valid():
+			_daily_guidance_items.append(item)
 
 
 ## Returns the canonical garden progression stage ID.
@@ -77,6 +83,29 @@ func get_guidance_id() -> String:
 	return _guidance_id
 
 
+## Returns a duplicated array of the three daily guidance suggestion items.
+func get_daily_guidance_items() -> Array[DailyGuidanceItem]:
+	return _daily_guidance_items.duplicate()
+
+
+## Returns array of canonical IDs for the daily guidance items.
+func get_daily_guidance_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for item: DailyGuidanceItem in _daily_guidance_items:
+		ids.append(item.get_id())
+	return ids
+
+
+## Returns the count of daily guidance suggestion items.
+func get_daily_guidance_count() -> int:
+	return _daily_guidance_items.size()
+
+
+## Returns true if daily guidance suggestions are present.
+func has_daily_guidance() -> bool:
+	return not _daily_guidance_items.is_empty()
+
+
 ## Returns true if all fields satisfy domain invariants.
 func is_valid() -> bool:
 	if not GardenProgressionStage.is_valid_stage(_stage_id):
@@ -91,4 +120,7 @@ func is_valid() -> bool:
 		return false
 	if not GardenProgressionStage.is_valid_guidance_id(_guidance_id):
 		return false
+	for item: DailyGuidanceItem in _daily_guidance_items:
+		if item == null or not item.is_valid():
+			return false
 	return true
