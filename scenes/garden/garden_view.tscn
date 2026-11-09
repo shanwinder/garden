@@ -103,6 +103,14 @@ text = "กิจกรรมแนะนำวันนี้: 1. ปลูก�
 vertical_alignment = 1
 autowrap_mode = 2
 
+[node name="FtueLabel" type="Label" parent="MainMargin/LayoutBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.92, 0.76, 1)
+theme_override_font_sizes/font_size = 20
+text = "ก้าวแรกในสวน: ลองเริ่มด้วยการเลือกปลูกพืชต้นแรกของคุณ"
+vertical_alignment = 1
+autowrap_mode = 2
+
 [node name="AtmosphereLabel" type="Label" parent="MainMargin/LayoutBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.9, 0.96, 1)

@@ -15,6 +15,7 @@ func run_tests() -> void:
 	_test_compute_score_and_evaluate_progression()
 	_test_gentle_guidance_selection_progression()
 	_test_summary_daily_guidance_integration()
+	_test_summary_ftue_step_integration()
 	_test_null_inputs_handled_safely()
 
 
@@ -230,6 +231,33 @@ func _test_summary_daily_guidance_integration() -> void:
 	assert_eq(summary_day_2.get_daily_guidance_count(), 3, "Day 2 has 3 items")
 	var ids_day_2: Array[String] = summary_day_2.get_daily_guidance_ids()
 	assert_false(",".join(ids) == ",".join(ids_day_2), "Day 1 and Day 2 daily guidance IDs rotate")
+
+
+func _test_summary_ftue_step_integration() -> void:
+	describe("GardenProgressionSummary integrates FtueStep sequence seamlessly")
+	var snap_empty: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0)
+	var journal: JournalState = JournalState.new()
+
+	# Empty garden -> STEP_SEE_GARDEN
+	var summary_empty: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_empty, journal, 0, 0)
+	assert_true(summary_empty.has_ftue_step(), "Empty garden has FTUE step")
+	assert_true(summary_empty.is_ftue_active(), "FTUE is active for empty garden")
+	assert_false(summary_empty.is_ftue_completed(), "FTUE not completed yet")
+	assert_eq(summary_empty.get_ftue_step_id(), FtueStep.STEP_SEE_GARDEN, "STEP_SEE_GARDEN attached")
+	assert_eq(summary_empty.get_ftue_step_index(), 0, "Index is 0")
+	assert_false(summary_empty.get_ftue_title().is_empty(), "Title is not empty")
+	assert_false(summary_empty.get_ftue_instruction().is_empty(), "Instruction is not empty")
+
+	# Garden with 3 discoveries -> STEP_COMPLETED
+	journal.try_record_sighting("plant.marigold", 1000)
+	journal.try_record_sighting("visitor.butterfly", 2000)
+	journal.try_record_sighting("plant.banana", 3000)
+	var summary_done: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_empty, journal, 0, 0)
+	assert_true(summary_done.has_ftue_step(), "Completed garden has FTUE step")
+	assert_false(summary_done.is_ftue_active(), "FTUE is not active when completed")
+	assert_true(summary_done.is_ftue_completed(), "FTUE is completed")
+	assert_eq(summary_done.get_ftue_step_id(), FtueStep.STEP_COMPLETED, "STEP_COMPLETED attached")
+	assert_eq(summary_done.get_ftue_step_index(), 6, "Index is 6")
 
 
 func _test_null_inputs_handled_safely() -> void:

@@ -70,6 +70,8 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestEventSelectionService.new(),
 		TestGardenProgressionStage.new(),
 		TestDailyGuidance.new(),
+		TestFtueStep.new(),
+		TestFtueEvaluator.new(),
 		TestGardenReturnSummary.new(),
 		TestGardenReturnEvaluator.new(),
 		TestPlantingPicker.new(),

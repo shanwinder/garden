@@ -143,6 +143,7 @@ var _plant_button: Button = null
 var _currency_label: Label = null
 var _progression_label: Label = null
 var _daily_guidance_label: Label = null
+var _ftue_label: Label = null
 var _atmosphere_label: Label = null
 var _environment_label: Label = null
 var _visitor_row: Control = null
@@ -200,6 +201,8 @@ func _resolve_nodes() -> void:
 		_progression_label = get_node_or_null("MainMargin/LayoutBox/ProgressionLabel") as Label
 	if _daily_guidance_label == null:
 		_daily_guidance_label = get_node_or_null("MainMargin/LayoutBox/DailyGuidanceLabel") as Label
+	if _ftue_label == null:
+		_ftue_label = get_node_or_null("MainMargin/LayoutBox/FtueLabel") as Label
 	if _atmosphere_label == null:
 		_atmosphere_label = get_node_or_null("MainMargin/LayoutBox/AtmosphereLabel") as Label
 	if _environment_label == null:
@@ -657,6 +660,8 @@ func _show_blocked_visual() -> void:
 		_progression_label.visible = false
 	if _daily_guidance_label != null:
 		_daily_guidance_label.visible = false
+	if _ftue_label != null:
+		_ftue_label.visible = false
 	if _atmosphere_label != null:
 		_atmosphere_label.visible = false
 	if _environment_label != null:
@@ -708,7 +713,8 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 		_decoration_picker.update_shop_context(_session.get_currency(), _last_snapshot)
 
 	var day_number: int = int(now_utc / 86400) if now_utc >= 0 else 0
-	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal, day_number)
+	var currency: int = _session.get_currency() if _session != null else 0
+	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal, day_number, currency)
 	if _progression_label != null and _last_progression_summary != null:
 		_progression_label.visible = true
 		var stage_id: String = _last_progression_summary.get_stage_id()
@@ -743,6 +749,14 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 			_daily_guidance_label.text = "กิจกรรมแนะนำวันนี้: %s" % " • ".join(parts)
 		else:
 			_daily_guidance_label.visible = false
+
+	if _ftue_label != null:
+		if _last_progression_summary != null and _last_progression_summary.is_ftue_active():
+			_ftue_label.visible = true
+			var ftue_step: FtueStep = _last_progression_summary.get_ftue_step()
+			_ftue_label.text = "%s: %s" % [ftue_step.get_title(), ftue_step.get_instruction()]
+		else:
+			_ftue_label.visible = false
 
 	var time_period: String = _last_snapshot.get_time_period()
 	var weather_state: String = _last_snapshot.get_weather_state()
@@ -1558,6 +1572,53 @@ func get_daily_guidance_item(index: int) -> DailyGuidanceItem:
 	if index < 0 or index >= items.size():
 		return null
 	return items[index]
+
+
+## Pure query for testing: returns the FtueLabel node.
+func get_ftue_label() -> Label:
+	_resolve_nodes()
+	return _ftue_label
+
+
+## Pure query for testing: returns FTUE HUD banner text.
+func get_ftue_text() -> String:
+	_resolve_nodes()
+	return _ftue_label.text if _ftue_label != null else ""
+
+
+## Pure query for testing: returns true if an FTUE step is attached in latest progression summary.
+func has_ftue_step() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.has_ftue_step()
+
+
+## Pure query for testing: returns true if FTUE sequence is actively guiding the player.
+func is_ftue_active() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.is_ftue_active()
+
+
+## Pure query for testing: returns true if FTUE sequence has reached completion.
+func is_ftue_completed() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.is_ftue_completed()
+
+
+## Pure query for testing: returns canonical FTUE step ID.
+func get_ftue_step_id() -> String:
+	return _last_progression_summary.get_ftue_step_id() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns zero-based FTUE step index (0..6), or -1 if invalid.
+func get_ftue_step_index() -> int:
+	return _last_progression_summary.get_ftue_step_index() if _last_progression_summary != null else -1
+
+
+## Pure query for testing: returns localized FTUE step title.
+func get_ftue_title() -> String:
+	return _last_progression_summary.get_ftue_title() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns localized FTUE step action instruction.
+func get_ftue_instruction() -> String:
+	return _last_progression_summary.get_ftue_instruction() if _last_progression_summary != null else ""
 
 
 ## Displays calm, non-intrusive feedback summarizing away/offline changes from a GardenReturnSummary.

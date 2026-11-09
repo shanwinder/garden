@@ -18,6 +18,7 @@ var _next_stage_threshold: int
 var _points_to_next_stage: int
 var _guidance_id: String
 var _daily_guidance_items: Array[DailyGuidanceItem]
+var _ftue_step: FtueStep = null
 
 
 func _init(
@@ -28,7 +29,8 @@ func _init(
 	next_stage_threshold: int,
 	points_to_next_stage: int,
 	guidance_id: String,
-	daily_guidance_items: Array[DailyGuidanceItem] = []
+	daily_guidance_items: Array[DailyGuidanceItem] = [],
+	ftue_step: FtueStep = null
 ) -> void:
 	_stage_id = stage_id
 	_stage_index = stage_index
@@ -41,6 +43,10 @@ func _init(
 	for item: DailyGuidanceItem in daily_guidance_items:
 		if item != null and item.is_valid():
 			_daily_guidance_items.append(item)
+	if ftue_step != null and ftue_step.is_valid():
+		_ftue_step = ftue_step
+	else:
+		_ftue_step = null
 
 
 ## Returns the canonical garden progression stage ID.
@@ -106,6 +112,46 @@ func has_daily_guidance() -> bool:
 	return not _daily_guidance_items.is_empty()
 
 
+## Returns the FtueStep value object, or null if not set.
+func get_ftue_step() -> FtueStep:
+	return _ftue_step
+
+
+## Returns true if an FTUE step is attached.
+func has_ftue_step() -> bool:
+	return _ftue_step != null and _ftue_step.is_valid()
+
+
+## Returns the canonical FTUE step ID, or empty string if not attached.
+func get_ftue_step_id() -> String:
+	return _ftue_step.get_step_id() if _ftue_step != null else ""
+
+
+## Returns the zero-based FTUE step index (0..6), or -1 if not attached.
+func get_ftue_step_index() -> int:
+	return _ftue_step.get_step_index() if _ftue_step != null else -1
+
+
+## Returns the localized FTUE title, or empty string if not attached.
+func get_ftue_title() -> String:
+	return _ftue_step.get_title() if _ftue_step != null else ""
+
+
+## Returns the localized FTUE action instruction, or empty string if not attached.
+func get_ftue_instruction() -> String:
+	return _ftue_step.get_instruction() if _ftue_step != null else ""
+
+
+## Returns true if FTUE is active (not completed).
+func is_ftue_active() -> bool:
+	return _ftue_step != null and _ftue_step.is_active()
+
+
+## Returns true if FTUE has reached completion.
+func is_ftue_completed() -> bool:
+	return _ftue_step != null and _ftue_step.is_completed()
+
+
 ## Returns true if all fields satisfy domain invariants.
 func is_valid() -> bool:
 	if not GardenProgressionStage.is_valid_stage(_stage_id):
@@ -123,4 +169,6 @@ func is_valid() -> bool:
 	for item: DailyGuidanceItem in _daily_guidance_items:
 		if item == null or not item.is_valid():
 			return false
+	if _ftue_step != null and not _ftue_step.is_valid():
+		return false
 	return true

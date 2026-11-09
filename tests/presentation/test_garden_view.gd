@@ -1673,6 +1673,13 @@ func _test_progression_and_gentle_guidance_hud() -> void:
 	assert_true(gview.get_daily_guidance_text().begins_with("กิจกรรมแนะนำวันนี้: "), "Daily guidance text begins with prefix")
 	assert_true(gview.get_daily_guidance_item(0) != null, "Daily guidance item 0 is present")
 	assert_true(gview.get_daily_guidance_item(3) == null, "Daily guidance item index out of bounds is null")
+	assert_true(gview.has_ftue_step(), "Empty garden has FTUE step")
+	assert_true(gview.is_ftue_active(), "FTUE is active on empty garden")
+	assert_false(gview.is_ftue_completed(), "FTUE is not completed on empty garden")
+	assert_eq(gview.get_ftue_step_id(), FtueStep.STEP_SEE_GARDEN, "Empty garden has STEP_SEE_GARDEN")
+	assert_eq(gview.get_ftue_step_index(), 0, "Step index is 0")
+	assert_true(gview.get_ftue_label().visible, "FtueLabel is visible on active FTUE")
+	assert_true(gview.get_ftue_text().contains("ก้าวแรกในสวน: สำรวจสวน"), "FtueLabel text contains step title")
 
 	# Verify refresh_from_session still samples clock only once even with progression evaluation
 	var calls_before: int = clock.utc_call_count
@@ -1718,6 +1725,9 @@ func _test_progression_and_gentle_guidance_hud() -> void:
 	assert_false(gview.has_daily_guidance(), "Blocked state clears daily guidance")
 	assert_eq(gview.get_daily_guidance_count(), 0, "Blocked state has 0 daily guidance")
 	assert_false(gview.get_daily_guidance_label().visible, "DailyGuidanceLabel hidden when startup is blocked")
+	assert_false(gview.has_ftue_step(), "Blocked state clears FTUE step")
+	assert_false(gview.is_ftue_active(), "Blocked state resets FTUE active")
+	assert_false(gview.get_ftue_label().visible, "FtueLabel hidden when startup is blocked")
 
 	main_node.free()
 	app.free()

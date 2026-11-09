@@ -261,7 +261,8 @@ func evaluate_progression_at(
 	var snapshot: GardenSnapshot = build_garden_snapshot(catalog, now_utc_seconds)
 	var journal: JournalState = _state.get_journal() if _state != null else null
 	var day_number: int = int(now_utc_seconds / 86400) if now_utc_seconds >= 0 else 0
-	return GardenProgressionStage.evaluate(snapshot, journal, day_number)
+	var currency: int = _state.get_economy().get_currency() if _state != null and _state.get_economy() != null else 0
+	return GardenProgressionStage.evaluate(snapshot, journal, day_number, currency)
 
 
 ## Application query to sample current UTC timestamp once and derive GardenProgressionSummary.
@@ -270,7 +271,8 @@ func evaluate_progression_now(
 	game_clock: GameClock
 ) -> GardenProgressionSummary:
 	if catalog == null or game_clock == null:
-		return GardenProgressionStage.evaluate(null, _state.get_journal() if _state != null else null)
+		var currency: int = _state.get_economy().get_currency() if _state != null and _state.get_economy() != null else 0
+		return GardenProgressionStage.evaluate(null, _state.get_journal() if _state != null else null, 0, currency)
 	var now_utc_seconds: int = game_clock.utc_now_seconds()
 	return evaluate_progression_at(catalog, now_utc_seconds)
 

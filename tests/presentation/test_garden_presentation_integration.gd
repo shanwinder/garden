@@ -96,6 +96,7 @@ func run_tests() -> void:
 	_test_decoration_shop_water_trait_and_frog_discovery_loop()
 	_test_weather_time_of_day_and_ambient_events_matrix_loop()
 	_test_garden_progression_and_gentle_guidance_e2e_loop()
+	_test_first_time_user_experience_ftue_e2e_sequence()
 	_test_offline_return_summary_and_resume_feedback_e2e_loop()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
@@ -837,6 +838,83 @@ func _test_garden_progression_and_gentle_guidance_e2e_loop() -> void:
 
 	main_b.free()
 	app_b.free()
+	_cleanup_test_files()
+
+
+func _test_first_time_user_experience_ftue_e2e_sequence() -> void:
+	describe("E2E: Full 8-step First-Time User Experience (FTUE) sequence per GAME_DESIGN.md §21")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+	var integers: Array[int] = []
+	for i: int in range(1, 64):
+		integers.append(i)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.85], integers)
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# Step 1: See garden (0 plants, 0 decorations, 0 coins) -> STEP_SEE_GARDEN
+	assert_true(view.is_ftue_active(), "FTUE is active on first session")
+	assert_false(view.is_ftue_completed(), "FTUE is not completed on first session")
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_SEE_GARDEN, "Step 1: STEP_SEE_GARDEN")
+	assert_eq(view.get_ftue_step_index(), 0, "Step 1 index is 0")
+	assert_true(view.get_ftue_label().visible, "FtueLabel is visible at Step 1")
+	assert_true(view.get_ftue_text().contains("สำรวจสวน"), "Step 1 title in label")
+
+	# Step 2: Plant something (marigold) -> STEP_WATCH_GROWTH
+	view.open_planting_picker()
+	view.get_planting_picker().select_plant_definition("plant.marigold")
+	view.get_planting_picker().confirm_planting()
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_WATCH_GROWTH, "Step 2: STEP_WATCH_GROWTH after planting")
+	assert_eq(view.get_ftue_step_index(), 1, "Step 2 index is 1")
+	assert_true(view.get_ftue_text().contains("เฝ้ามองการเติบโต"), "Step 2 title in label")
+
+	# Step 3: Advance clock +2700s to maturity -> STEP_HARVEST_PLANT
+	clock.set_utc_seconds(3700)
+	view.refresh_from_session()
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_HARVEST_PLANT, "Step 3: STEP_HARVEST_PLANT when plant matures")
+	assert_eq(view.get_ftue_step_index(), 2, "Step 3 index is 2")
+	assert_true(view.get_ftue_text().contains("เก็บเกี่ยวผลผลิต"), "Step 3 title in label")
+
+	# Step 4: Harvest plant (+20 coins) -> STEP_PLACE_DECORATION
+	var marigold_id: String = view.get_plant_views()[0].get_runtime_instance_id()
+	view.get_plant_view_by_id(marigold_id).simulate_selection_input()
+	view.get_harvest_button().pressed.emit()
+	assert_eq(view.get_currency_text(), "เหรียญ: 20", "20 coins earned from harvest")
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_PLACE_DECORATION, "Step 4: STEP_PLACE_DECORATION when player has coins")
+	assert_eq(view.get_ftue_step_index(), 3, "Step 4 index is 3")
+	assert_true(view.get_ftue_text().contains("จัดวางของตกแต่ง"), "Step 4 title in label")
+
+	# Step 5: Buy clay_jar (-15 coins, adds water trait) -> STEP_OBSERVE_VISITOR
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.clay_jar")
+	view.get_decoration_picker().confirm_purchase()
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_OBSERVE_VISITOR, "Step 5: STEP_OBSERVE_VISITOR when decoration placed")
+	assert_eq(view.get_ftue_step_index(), 4, "Step 5 index is 4")
+	assert_true(view.get_ftue_text().contains("พบผู้มาเยือน"), "Step 5 title in label")
+
+	# Step 6: Observe visitor (roll 0.85 selects visitor.frog) -> STEP_CHECK_JOURNAL
+	view.get_observe_visitor_button().pressed.emit()
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_CHECK_JOURNAL, "Step 6: STEP_CHECK_JOURNAL after visitor recorded")
+	assert_eq(view.get_ftue_step_index(), 5, "Step 6 index is 5")
+	assert_true(view.get_ftue_text().contains("สมุดบ้านสวน"), "Step 6 title in label")
+
+	# Step 7: Plant second plant (holy basil) -> 3 discoveries -> STEP_COMPLETED
+	view.open_planting_picker()
+	view.get_planting_picker().select_plant_definition("plant.holy_basil")
+	view.get_planting_picker().confirm_planting()
+	assert_true(view.is_ftue_completed(), "FTUE completed after established garden")
+	assert_false(view.is_ftue_active(), "FTUE no longer active once completed")
+	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_COMPLETED, "Step 7: STEP_COMPLETED")
+	assert_eq(view.get_ftue_step_index(), 6, "Step 7 index is 6")
+	assert_false(view.get_ftue_label().visible, "FtueLabel is hidden when FTUE is completed")
+
+	main_screen.free()
+	app.free()
 	_cleanup_test_files()
 
 
