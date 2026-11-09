@@ -231,7 +231,7 @@ func bind_journal(
 			_add_entry_label(entry_text, is_active)
 
 	if _summary_label != null:
-		_summary_label.text = (
+		var base_summary: String = (
 			"ค้นพบแล้ว %d / %d รายการ (พืช %d/%d, ผู้มาเยือน %d/%d)"
 			% [
 				_discovered_count,
@@ -242,6 +242,14 @@ func bind_journal(
 				visitors.size(),
 			]
 		)
+		var extra_parts: PackedStringArray = PackedStringArray()
+		if _total_decoration_count > 0:
+			extra_parts.append("ของตกแต่ง %d/%d" % [_placed_decoration_count, _total_decoration_count])
+		if _total_event_count > 0:
+			extra_parts.append("เหตุการณ์ %d/%d" % [_active_event_count, _total_event_count])
+		if not extra_parts.is_empty():
+			base_summary += " | " + " | ".join(extra_parts)
+		_summary_label.text = base_summary
 
 
 func _count_planted_plant(definition_id: String) -> int:
@@ -508,3 +516,854 @@ func is_event_active_in_journal(event_id: String) -> bool:
 		return false
 	var event_def: EventDefinition = _catalog.get_event(event_id)
 	return EventEligibility.is_eligible(event_def, _snapshot)
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of discovered plants in the bound JournalState.
+func get_discovered_plant_ids_in_journal() -> Array[String]:
+	if _catalog == null or _journal == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _journal.has_discovered(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of undiscovered plants in the bound JournalState.
+func get_undiscovered_plant_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _journal == null or not _journal.has_discovered(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of discovered visitors in the bound JournalState.
+func get_discovered_visitor_ids_in_journal() -> Array[String]:
+	if _catalog == null or _journal == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_visitor_ids():
+		if _journal.has_discovered(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of undiscovered visitors in the bound JournalState.
+func get_undiscovered_visitor_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_visitor_ids():
+		if _journal == null or not _journal.has_discovered(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of visitors currently eligible in the bound GardenSnapshot.
+func get_eligible_visitor_ids_in_journal() -> Array[String]:
+	if _catalog == null or _snapshot == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_visitor_ids():
+		if is_visitor_eligible_in_journal(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations currently placed in the bound GardenSnapshot / DecorationCollectionState.
+func get_placed_decoration_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if _count_placed_decoration(def_id) > 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of ambient events currently active/eligible in the bound GardenSnapshot.
+func get_active_event_ids_in_journal() -> Array[String]:
+	if _catalog == null or _snapshot == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_event_ids():
+		if is_event_active_in_journal(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of visitors currently ineligible in the bound GardenSnapshot.
+func get_ineligible_visitor_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_visitor_ids():
+		if _snapshot == null or not is_visitor_eligible_in_journal(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations not yet placed in the bound GardenSnapshot / DecorationCollectionState.
+func get_unplaced_decoration_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if _count_placed_decoration(def_id) <= 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of ambient events currently inactive/ineligible in the bound GardenSnapshot.
+func get_inactive_event_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_event_ids():
+		if _snapshot == null or not is_event_active_in_journal(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns true if [param definition_id] has been discovered in the bound JournalState.
+func is_entry_discovered_in_journal(definition_id: String) -> bool:
+	return _journal != null and _journal.has_discovered(definition_id)
+
+
+## Pure query for testing: returns times_seen for [param definition_id] in the bound JournalState, or 0 if undiscovered.
+func get_times_seen_for_id(definition_id: String) -> int:
+	if _journal == null:
+		return 0
+	var rec: DiscoveryRecord = _journal.get_record(definition_id)
+	return rec.get_times_seen() if rec != null else 0
+
+
+## Pure query for testing: returns first_seen_at UTC timestamp for [param definition_id] in the bound JournalState, or -1 if undiscovered.
+func get_first_seen_at_for_id(definition_id: String) -> int:
+	if _journal == null:
+		return -1
+	var rec: DiscoveryRecord = _journal.get_record(definition_id)
+	return rec.get_first_seen_at() if rec != null else -1
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of plants currently planted in the bound GardenSnapshot.
+func get_currently_planted_plant_ids_in_journal() -> Array[String]:
+	if _catalog == null or _snapshot == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _count_planted_plant(def_id) > 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns count of distinct plant definitions currently planted in the bound GardenSnapshot.
+func get_currently_planted_plant_entry_count() -> int:
+	return get_currently_planted_plant_ids_in_journal().size()
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of plants not currently planted in the bound GardenSnapshot.
+func get_unplanted_plant_ids_in_journal() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _count_planted_plant(def_id) <= 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns total count of undiscovered catalog entries (plants + visitors) in the current binding.
+func get_undiscovered_entry_count() -> int:
+	return maxi(0, _total_catalog_count - _discovered_count)
+
+
+## Pure query for testing: returns count of undiscovered plant entries in the current binding.
+func get_undiscovered_plant_entry_count() -> int:
+	return get_undiscovered_plant_ids_in_journal().size()
+
+
+## Pure query for testing: returns count of undiscovered visitor entries in the current binding.
+func get_undiscovered_visitor_entry_count() -> int:
+	return get_undiscovered_visitor_ids_in_journal().size()
+
+
+## Pure query for testing: returns total sum of times_seen across all discovered catalog plants and visitors in the bound JournalState.
+func get_total_sighting_count_in_journal() -> int:
+	return get_total_plant_sighting_count_in_journal() + get_total_visitor_sighting_count_in_journal()
+
+
+## Pure query for testing: returns total sum of times_seen across all discovered catalog plants in the bound JournalState.
+func get_total_plant_sighting_count_in_journal() -> int:
+	if _catalog == null or _journal == null:
+		return 0
+	var total: int = 0
+	for pid: String in _catalog.get_all_plant_ids():
+		total += get_times_seen_for_id(pid)
+	return total
+
+
+## Pure query for testing: returns total sum of times_seen across all discovered catalog visitors in the bound JournalState.
+func get_total_visitor_sighting_count_in_journal() -> int:
+	if _catalog == null or _journal == null:
+		return 0
+	var total: int = 0
+	for vid: String in _catalog.get_all_visitor_ids():
+		total += get_times_seen_for_id(vid)
+	return total
+
+
+## Pure query for testing: returns count of catalog visitors currently ineligible in the bound GardenSnapshot.
+func get_ineligible_visitor_entry_count() -> int:
+	return get_ineligible_visitor_ids_in_journal().size()
+
+
+## Pure query for testing: returns count of distinct decoration definitions not yet placed in the garden.
+func get_unplaced_decoration_entry_count() -> int:
+	return get_unplaced_decoration_ids_in_journal().size()
+
+
+## Pure query for testing: returns count of ambient event definitions currently inactive/ineligible in the bound GardenSnapshot.
+func get_inactive_event_entry_count() -> int:
+	return get_inactive_event_ids_in_journal().size()
+
+
+## Pure query for testing: returns count of distinct plant definitions not currently planted in the bound GardenSnapshot.
+func get_unplanted_plant_entry_count() -> int:
+	return get_unplanted_plant_ids_in_journal().size()
+
+
+## Pure query for testing: returns true if all catalog entries (plants + visitors) have been discovered in the current binding.
+func is_all_entries_discovered_in_journal() -> bool:
+	return _total_catalog_count > 0 and _discovered_count >= _total_catalog_count
+
+
+## Pure query for testing: returns total plant definitions in the bound catalog, or 0 if unbound.
+func get_total_plant_entry_count() -> int:
+	return _catalog.get_plant_count() if _catalog != null else 0
+
+
+## Pure query for testing: returns total visitor definitions in the bound catalog, or 0 if unbound.
+func get_total_visitor_entry_count() -> int:
+	return _catalog.get_visitor_count() if _catalog != null else 0
+
+
+## Pure query for testing: returns true if all catalog plant definitions have been discovered in the current binding.
+func is_all_plants_discovered_in_journal() -> bool:
+	var total_plants: int = get_total_plant_entry_count()
+	return total_plants > 0 and _discovered_plant_count >= total_plants
+
+
+## Pure query for testing: returns true if all catalog visitor definitions have been discovered in the current binding.
+func is_all_visitors_discovered_in_journal() -> bool:
+	var total_visitors: int = get_total_visitor_entry_count()
+	return total_visitors > 0 and _discovered_visitor_count >= total_visitors
+
+
+## Pure query for testing: returns true if all catalog decoration definitions have been placed at least once in the garden.
+func is_all_decorations_placed_in_journal() -> bool:
+	return _total_decoration_count > 0 and _placed_decoration_count >= _total_decoration_count
+
+
+## Pure query for testing: returns true if all catalog ambient event definitions are currently active/eligible in the bound snapshot.
+func is_all_events_active_in_journal() -> bool:
+	return _total_event_count > 0 and _active_event_count >= _total_event_count
+
+
+## Pure query for testing: returns true if at least one catalog entry (plant or visitor) has been discovered in the current binding.
+func has_any_discovered_entries_in_journal() -> bool:
+	return _discovered_count > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant has been discovered in the current binding.
+func has_any_discovered_plants_in_journal() -> bool:
+	return _discovered_plant_count > 0
+
+
+## Pure query for testing: returns true if at least one catalog visitor has been discovered in the current binding.
+func has_any_discovered_visitors_in_journal() -> bool:
+	return _discovered_visitor_count > 0
+
+
+## Pure query for testing: returns true if at least one catalog visitor is currently eligible in the bound GardenSnapshot.
+func has_any_eligible_visitors_in_journal() -> bool:
+	return _eligible_visitor_count > 0
+
+
+## Pure query for testing: returns true if at least one catalog decoration has been placed in the garden.
+func has_any_placed_decorations_in_journal() -> bool:
+	return _placed_decoration_count > 0
+
+
+## Pure query for testing: returns true if at least one catalog ambient event is currently active/eligible in the bound GardenSnapshot.
+func has_any_active_events_in_journal() -> bool:
+	return _active_event_count > 0
+
+
+## Pure query for testing: returns true if all catalog visitor definitions are currently eligible in the bound GardenSnapshot.
+func is_all_visitors_eligible_in_journal() -> bool:
+	var total_visitors: int = get_total_visitor_entry_count()
+	return total_visitors > 0 and _eligible_visitor_count >= total_visitors
+
+
+## Pure query for testing: returns true if at least one catalog entry (plant or visitor) is still undiscovered in the current binding.
+func has_any_undiscovered_entries_in_journal() -> bool:
+	return get_undiscovered_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant is still undiscovered in the current binding.
+func has_any_undiscovered_plants_in_journal() -> bool:
+	return get_undiscovered_plant_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog visitor is still undiscovered in the current binding.
+func has_any_undiscovered_visitors_in_journal() -> bool:
+	return get_undiscovered_visitor_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog visitor is currently ineligible in the bound GardenSnapshot.
+func has_any_ineligible_visitors_in_journal() -> bool:
+	return get_ineligible_visitor_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog decoration has not yet been placed in the garden.
+func has_any_unplaced_decorations_in_journal() -> bool:
+	return get_unplaced_decoration_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog ambient event is currently inactive/ineligible in the bound GardenSnapshot.
+func has_any_inactive_events_in_journal() -> bool:
+	return get_inactive_event_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant is currently planted in the bound GardenSnapshot.
+func has_any_currently_planted_plants_in_journal() -> bool:
+	return get_currently_planted_plant_entry_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant is not currently planted in the bound GardenSnapshot.
+func has_any_unplanted_plants_in_journal() -> bool:
+	return get_unplanted_plant_entry_count() > 0
+
+
+## Pure query for testing: returns true if all catalog plant definitions are currently planted in the bound GardenSnapshot.
+func is_all_planted_species_present_in_journal() -> bool:
+	var total_plants: int = get_total_plant_entry_count()
+	return total_plants > 0 and get_currently_planted_plant_entry_count() >= total_plants
+
+
+## Pure query for testing: returns true if a JournalState is bound to this panel.
+func has_bound_journal() -> bool:
+	return _journal != null
+
+
+## Pure query for testing: returns true if a ContentCatalog is bound to this panel.
+func has_bound_catalog() -> bool:
+	return _catalog != null
+
+
+## Pure query for testing: returns true if a DecorationCollectionState is bound to this panel.
+func has_bound_decorations() -> bool:
+	return _decorations != null
+
+
+## Pure query for testing: returns true if a GardenSnapshot is bound to this panel.
+func has_bound_snapshot() -> bool:
+	return _snapshot != null
+
+
+## Pure query for testing: returns true if [param definition_id] exists as a plant definition in the bound catalog.
+func has_plant_in_journal_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_plant(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] exists as a visitor definition in the bound catalog.
+func has_visitor_in_journal_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_visitor(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] exists as a decoration definition in the bound catalog.
+func has_decoration_in_journal_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_decoration(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] exists as an ambient event definition in the bound catalog.
+func has_event_in_journal_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_event(definition_id)
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all plants in the bound catalog, or [] if unbound.
+func get_all_plant_ids_in_journal() -> Array[String]:
+	return _catalog.get_all_plant_ids() if _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all visitors in the bound catalog, or [] if unbound.
+func get_all_visitor_ids_in_journal() -> Array[String]:
+	return _catalog.get_all_visitor_ids() if _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all decorations in the bound catalog, or [] if unbound.
+func get_all_decoration_ids_in_journal() -> Array[String]:
+	return _catalog.get_all_decoration_ids() if _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all ambient events in the bound catalog, or [] if unbound.
+func get_all_event_ids_in_journal() -> Array[String]:
+	return _catalog.get_all_event_ids() if _catalog != null else []
+
+
+## Pure query for testing: returns total planted plant instances across all catalog plant species in the bound GardenSnapshot, or 0 if unbound.
+func get_total_planted_plant_instance_count_in_journal() -> int:
+	return _snapshot.get_total_plant_count() if _snapshot != null else 0
+
+
+## Pure query for testing: returns total placed decoration instances across all catalog decoration species in the bound GardenSnapshot / DecorationCollectionState, or 0 if unbound.
+func get_total_placed_decoration_instance_count_in_journal() -> int:
+	if _snapshot != null:
+		return _snapshot.get_total_decoration_count()
+	if _decorations != null:
+		return _decorations.get_all_decorations().size()
+	return 0
+
+
+## Pure query for testing: returns true if [param definition_id] is a catalog decoration currently placed in the garden.
+func is_decoration_placed_in_journal(definition_id: String) -> bool:
+	return has_decoration_in_journal_catalog(definition_id) and _count_placed_decoration(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] is a catalog plant currently planted in the bound GardenSnapshot.
+func is_plant_currently_planted_in_journal(definition_id: String) -> bool:
+	return has_plant_in_journal_catalog(definition_id) and _count_planted_plant(definition_id) > 0
+
+
+## Pure query for testing: returns localized Thai display name for a plant [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_plant_display_name_in_journal(definition_id: String) -> String:
+	if not has_plant_in_journal_catalog(definition_id):
+		return ""
+	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai display name for a visitor [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_visitor_display_name_in_journal(definition_id: String) -> String:
+	if not has_visitor_in_journal_catalog(definition_id):
+		return ""
+	return GardenView.PROVISIONAL_VISITOR_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai display name for a decoration [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_decoration_display_name_in_journal(definition_id: String) -> String:
+	if not has_decoration_in_journal_catalog(definition_id):
+		return ""
+	return DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai display name for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_event_display_name_in_journal(definition_id: String) -> String:
+	if not has_event_in_journal_catalog(definition_id):
+		return ""
+	return GardenView.PROVISIONAL_EVENT_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai description for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_event_description_in_journal(definition_id: String) -> String:
+	if not has_event_in_journal_catalog(definition_id):
+		return ""
+	return GardenView.PROVISIONAL_EVENT_DESCRIPTIONS.get(definition_id, "")
+
+
+## Pure query for testing: returns true if the rendered summary label text is non-empty.
+func has_summary_text() -> bool:
+	return not get_summary_text().is_empty()
+
+
+## Pure query for testing: returns total number of displayed entry texts across all sections in the current binding.
+func get_displayed_entry_count() -> int:
+	return _entry_texts_by_id.size()
+
+
+## Pure query for testing: returns true if at least one entry text is displayed in the current binding.
+func has_any_displayed_entries() -> bool:
+	return not _entry_texts_by_id.is_empty()
+
+
+## Pure query for testing: returns localized Thai traits summary string for a plant [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_plant_traits_summary_in_journal(definition_id: String) -> String:
+	if not has_plant_in_journal_catalog(definition_id):
+		return ""
+	return _format_plant_traits(_catalog.get_plant(definition_id))
+
+
+## Pure query for testing: returns localized Thai traits summary string for a decoration [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_decoration_traits_summary_in_journal(definition_id: String) -> String:
+	if not has_decoration_in_journal_catalog(definition_id):
+		return ""
+	return _format_decoration_traits(_catalog.get_decoration(definition_id))
+
+
+## Pure query for testing: returns localized Thai habitat clue string for a visitor [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_visitor_clue_in_journal(definition_id: String) -> String:
+	if not has_visitor_in_journal_catalog(definition_id):
+		return ""
+	return _format_visitor_clue(_catalog.get_visitor(definition_id))
+
+
+## Pure query for testing: returns localized Thai condition clue string for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
+func get_event_clue_in_journal(definition_id: String) -> String:
+	if not has_event_in_journal_catalog(definition_id):
+		return ""
+	return _format_event_clue(_catalog.get_event(definition_id))
+
+
+## Pure query for testing: returns catalog price for a decoration [param definition_id] in the bound catalog, or -1 if not in catalog.
+func get_decoration_price_in_journal(definition_id: String) -> int:
+	if not has_decoration_in_journal_catalog(definition_id):
+		return -1
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def.price if def != null else -1
+
+
+## Pure query for testing: returns catalog harvest_reward for a plant [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_plant_harvest_reward_in_journal(definition_id: String) -> int:
+	if not has_plant_in_journal_catalog(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.harvest_reward) if def != null else 0
+
+
+## Pure query for testing: returns catalog mature_after_seconds for a plant [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_plant_mature_after_seconds_in_journal(definition_id: String) -> int:
+	if not has_plant_in_journal_catalog(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.mature_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns catalog sprout_after_seconds for a plant [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_plant_sprout_after_seconds_in_journal(definition_id: String) -> int:
+	if not has_plant_in_journal_catalog(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.sprout_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns catalog growing_after_seconds for a plant [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_plant_growing_after_seconds_in_journal(definition_id: String) -> int:
+	if not has_plant_in_journal_catalog(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.growing_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns a defensive copy of environmental traits for a plant [param definition_id] in the bound catalog, or [] if not in catalog.
+func get_plant_traits_in_journal(definition_id: String) -> Array[String]:
+	if not has_plant_in_journal_catalog(definition_id):
+		return []
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return def.environmental_traits.duplicate() if def != null else []
+
+
+## Pure query for testing: returns a defensive copy of environmental traits for a decoration [param definition_id] in the bound catalog, or [] if not in catalog.
+func get_decoration_traits_in_journal(definition_id: String) -> Array[String]:
+	if not has_decoration_in_journal_catalog(definition_id):
+		return []
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def.environmental_traits.duplicate() if def != null else []
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of a plant [param definition_id] in the bound catalog, or [] if not in catalog.
+func get_plant_trait_display_names_in_journal(definition_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_plant_traits_in_journal(definition_id):
+		result.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of a decoration [param definition_id] in the bound catalog, or [] if not in catalog.
+func get_decoration_trait_display_names_in_journal(definition_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_decoration_traits_in_journal(definition_id):
+		result.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns true if [param definition_id] is a plant in the bound catalog and exposes [param trait_id].
+func has_plant_trait_in_journal(definition_id: String, trait_id: String) -> bool:
+	if trait_id.is_empty() or not has_plant_in_journal_catalog(definition_id):
+		return false
+	return get_plant_traits_in_journal(definition_id).has(trait_id)
+
+
+## Pure query for testing: returns true if [param definition_id] is a decoration in the bound catalog and exposes [param trait_id].
+func has_decoration_trait_in_journal(definition_id: String, trait_id: String) -> bool:
+	if trait_id.is_empty() or not has_decoration_in_journal_catalog(definition_id):
+		return false
+	return get_decoration_traits_in_journal(definition_id).has(trait_id)
+
+
+## Pure query for testing: returns count of environmental traits for a plant [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_plant_trait_count_in_journal(definition_id: String) -> int:
+	return get_plant_traits_in_journal(definition_id).size()
+
+
+## Pure query for testing: returns count of environmental traits for a decoration [param definition_id] in the bound catalog, or 0 if not in catalog.
+func get_decoration_trait_count_in_journal(definition_id: String) -> int:
+	return get_decoration_traits_in_journal(definition_id).size()
+
+
+## Pure query for testing: returns true if a plant [param definition_id] in the bound catalog exposes at least one environmental trait.
+func has_plant_any_traits_in_journal(definition_id: String) -> bool:
+	return get_plant_trait_count_in_journal(definition_id) > 0
+
+
+## Pure query for testing: returns true if a decoration [param definition_id] in the bound catalog exposes at least one environmental trait.
+func has_decoration_any_traits_in_journal(definition_id: String) -> bool:
+	return get_decoration_trait_count_in_journal(definition_id) > 0
+
+
+## Pure query for testing: returns localized Thai display names for all catalog plants in deterministic catalog order, or [] if unbound.
+func get_all_plant_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_plant_ids_in_journal():
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all catalog visitors in deterministic catalog order, or [] if unbound.
+func get_all_visitor_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_visitor_ids_in_journal():
+		result.append(get_visitor_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all catalog decorations in deterministic catalog order, or [] if unbound.
+func get_all_decoration_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_decoration_ids_in_journal():
+		result.append(get_decoration_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all catalog ambient events in deterministic catalog order, or [] if unbound.
+func get_all_event_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_event_ids_in_journal():
+		result.append(get_event_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for discovered catalog plants in deterministic catalog order, or [] if unbound.
+func get_discovered_plant_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_discovered_plant_ids_in_journal():
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for discovered catalog visitors in deterministic catalog order, or [] if unbound.
+func get_discovered_visitor_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_discovered_visitor_ids_in_journal():
+		result.append(get_visitor_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for placed catalog decorations in deterministic catalog order, or [] if unbound.
+func get_placed_decoration_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_placed_decoration_ids_in_journal():
+		result.append(get_decoration_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for active/eligible catalog ambient events in deterministic catalog order, or [] if unbound.
+func get_active_event_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_active_event_ids_in_journal():
+		result.append(get_event_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for undiscovered catalog plants in deterministic catalog order, or [] if unbound.
+func get_undiscovered_plant_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_undiscovered_plant_ids_in_journal():
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for undiscovered catalog visitors in deterministic catalog order, or [] if unbound.
+func get_undiscovered_visitor_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_undiscovered_visitor_ids_in_journal():
+		result.append(get_visitor_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for currently eligible catalog visitors in deterministic catalog order, or [] if unbound.
+func get_eligible_visitor_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_eligible_visitor_ids_in_journal():
+		result.append(get_visitor_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for currently ineligible catalog visitors in deterministic catalog order, or [] if unbound.
+func get_ineligible_visitor_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_ineligible_visitor_ids_in_journal():
+		result.append(get_visitor_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for unplaced catalog decorations in deterministic catalog order, or [] if unbound.
+func get_unplaced_decoration_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplaced_decoration_ids_in_journal():
+		result.append(get_decoration_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for inactive/ineligible catalog ambient events in deterministic catalog order, or [] if unbound.
+func get_inactive_event_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_inactive_event_ids_in_journal():
+		result.append(get_event_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for currently planted catalog plants in deterministic catalog order, or [] if unbound.
+func get_currently_planted_plant_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_currently_planted_plant_ids_in_journal():
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for unplanted catalog plants in deterministic catalog order, or [] if unbound.
+func get_unplanted_plant_display_names_in_journal() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplanted_plant_ids_in_journal():
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered plant IDs in the bound catalog that expose [param trait_id], or [] if empty/unbound.
+func get_plant_ids_with_trait_in_journal(trait_id: String) -> Array[String]:
+	if trait_id.is_empty() or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if has_plant_trait_in_journal(def_id, trait_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered decoration IDs in the bound catalog that expose [param trait_id], or [] if empty/unbound.
+func get_decoration_ids_with_trait_in_journal(trait_id: String) -> Array[String]:
+	if trait_id.is_empty() or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if has_decoration_trait_in_journal(def_id, trait_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns count of catalog plants in the bound catalog that expose [param trait_id].
+func get_plant_count_with_trait_in_journal(trait_id: String) -> int:
+	return get_plant_ids_with_trait_in_journal(trait_id).size()
+
+
+## Pure query for testing: returns count of catalog decorations in the bound catalog that expose [param trait_id].
+func get_decoration_count_with_trait_in_journal(trait_id: String) -> int:
+	return get_decoration_ids_with_trait_in_journal(trait_id).size()
+
+
+## Pure query for testing: returns true if at least one catalog plant in the bound catalog exposes [param trait_id].
+func has_any_plants_with_trait_in_journal(trait_id: String) -> bool:
+	return get_plant_count_with_trait_in_journal(trait_id) > 0
+
+
+## Pure query for testing: returns true if at least one catalog decoration in the bound catalog exposes [param trait_id].
+func has_any_decorations_with_trait_in_journal(trait_id: String) -> bool:
+	return get_decoration_count_with_trait_in_journal(trait_id) > 0
+
+
+## Pure query for testing: returns localized Thai display names for catalog plants that expose [param trait_id] in deterministic catalog order, or [] if empty/unbound.
+func get_plant_display_names_with_trait_in_journal(trait_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_plant_ids_with_trait_in_journal(trait_id):
+		result.append(get_plant_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for catalog decorations that expose [param trait_id] in deterministic catalog order, or [] if empty/unbound.
+func get_decoration_display_names_with_trait_in_journal(trait_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_decoration_ids_with_trait_in_journal(trait_id):
+		result.append(get_decoration_display_name_in_journal(def_id))
+	return result
+
+
+## Pure query for testing: returns true if a plant [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_plant_display_name_in_journal(definition_id: String) -> bool:
+	return not get_plant_display_name_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a visitor [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_visitor_display_name_in_journal(definition_id: String) -> bool:
+	return not get_visitor_display_name_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a decoration [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_decoration_display_name_in_journal(definition_id: String) -> bool:
+	return not get_decoration_display_name_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if an ambient event [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_event_display_name_in_journal(definition_id: String) -> bool:
+	return not get_event_display_name_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if an ambient event [param definition_id] has a non-empty localized flavor description in the bound catalog.
+func has_event_description_in_journal(definition_id: String) -> bool:
+	return not get_event_description_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a plant [param definition_id] has a non-empty localized environmental traits summary in the bound catalog.
+func has_plant_traits_summary_in_journal(definition_id: String) -> bool:
+	return not get_plant_traits_summary_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a decoration [param definition_id] has a non-empty localized environmental traits summary in the bound catalog.
+func has_decoration_traits_summary_in_journal(definition_id: String) -> bool:
+	return not get_decoration_traits_summary_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a visitor [param definition_id] has a non-empty localized habitat clue in the bound catalog.
+func has_visitor_clue_in_journal(definition_id: String) -> bool:
+	return not get_visitor_clue_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if an ambient event [param definition_id] has a non-empty localized condition clue in the bound catalog.
+func has_event_clue_in_journal(definition_id: String) -> bool:
+	return not get_event_clue_in_journal(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if a decoration [param definition_id] in the bound catalog has a positive price (> 0).
+func has_decoration_positive_price_in_journal(definition_id: String) -> bool:
+	return get_decoration_price_in_journal(definition_id) > 0
+
+
+## Pure query for testing: returns true if a plant [param definition_id] in the bound catalog has a positive harvest_reward (> 0).
+func has_plant_positive_harvest_reward_in_journal(definition_id: String) -> bool:
+	return get_plant_harvest_reward_in_journal(definition_id) > 0
+
+
+## Pure query for testing: returns true if a plant [param definition_id] in the bound catalog has a positive mature_after_seconds duration (> 0).
+func has_plant_positive_mature_duration_in_journal(definition_id: String) -> bool:
+	return get_plant_mature_after_seconds_in_journal(definition_id) > 0

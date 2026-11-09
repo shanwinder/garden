@@ -97,6 +97,12 @@ func _test_partial_and_full_discoveries_render_names_timestamps_and_counts() -> 
 	panel.bind_journal(journal, catalog)
 
 	assert_eq(panel.get_discovered_entry_count(), 2, "2 discovered entries")
+	assert_true(panel.is_entry_discovered_in_journal("plant.holy_basil"), "Basil is discovered in journal")
+	assert_false(panel.is_entry_discovered_in_journal("plant.jasmine"), "Jasmine is not discovered in journal")
+	assert_eq(panel.get_times_seen_for_id("plant.holy_basil"), 2, "Basil times_seen query returns 2")
+	assert_eq(panel.get_first_seen_at_for_id("plant.holy_basil"), 1000, "Basil first_seen_at query returns 1000")
+	assert_eq(panel.get_times_seen_for_id("plant.jasmine"), 0, "Undiscovered jasmine times_seen query returns 0")
+	assert_eq(panel.get_first_seen_at_for_id("plant.jasmine"), -1, "Undiscovered jasmine first_seen_at query returns -1")
 	assert_eq(
 		panel.get_summary_text(),
 		"ค้นพบแล้ว 2 / 10 รายการ (พืช 1/5, ผู้มาเยือน 1/5)",
@@ -230,6 +236,24 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	panel.bind_journal(state.get_journal(), catalog, state.get_decorations(), populated_snapshot)
 
 	assert_eq(panel.get_planted_count_for_plant_id("plant.jasmine"), 1, "Jasmine planted count is 1 in JournalPanel")
+	assert_eq(panel.get_currently_planted_plant_ids_in_journal(), ["plant.jasmine"], "Currently planted plant IDs in journal")
+	assert_eq(panel.get_currently_planted_plant_entry_count(), 1, "1 distinct plant species currently planted in journal")
+	assert_eq(
+		panel.get_unplanted_plant_ids_in_journal(),
+		["plant.banana", "plant.chili", "plant.holy_basil", "plant.marigold"],
+		"Unplanted plant IDs in journal"
+	)
+	assert_eq(panel.get_undiscovered_entry_count(), 9, "9 undiscovered entries out of 10 after discovering jasmine")
+	assert_eq(panel.get_undiscovered_plant_entry_count(), 4, "4 undiscovered plants in journal")
+	assert_eq(panel.get_undiscovered_visitor_entry_count(), 5, "5 undiscovered visitors in journal")
+	assert_eq(panel.get_unplanted_plant_entry_count(), 4, "4 unplanted plant species in journal")
+	assert_eq(panel.get_total_sighting_count_in_journal(), 1, "Total sighting count is 1 after discovering jasmine once")
+	assert_eq(panel.get_total_plant_sighting_count_in_journal(), 1, "Total plant sighting count is 1")
+	assert_eq(panel.get_total_visitor_sighting_count_in_journal(), 0, "Total visitor sighting count is 0")
+	assert_false(panel.is_all_entries_discovered_in_journal(), "Not all entries discovered yet")
+	assert_eq(panel.get_ineligible_visitor_entry_count(), 1, "1 ineligible visitor (bird) in populated_snapshot")
+	assert_eq(panel.get_unplaced_decoration_entry_count(), 6, "6 unplaced decoration species in populated_snapshot")
+	assert_eq(panel.get_inactive_event_entry_count(), 3, "3 inactive events in populated_snapshot")
 	assert_true(
 		panel.get_entry_text_for_id("plant.jasmine").contains("กำลังปลูกในสวน: 1 ต้น"),
 		"Discovered jasmine shows live planted count = 1 when snapshot is bound"
@@ -255,6 +279,310 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	panel.bind_journal(state.get_journal(), catalog, state.get_decorations(), populated_snapshot)
 	assert_eq(panel.get_discovered_plant_entry_count(), 1, "1 discovered plant in journal")
 	assert_eq(panel.get_discovered_visitor_entry_count(), 2, "2 discovered visitors in journal")
+	assert_eq(panel.get_total_plant_entry_count(), 5, "5 total catalog plants in journal")
+	assert_eq(panel.get_total_visitor_entry_count(), 5, "5 total catalog visitors in journal")
+	assert_false(panel.is_all_plants_discovered_in_journal(), "Not all plants discovered (1/5)")
+	assert_false(panel.is_all_visitors_discovered_in_journal(), "Not all visitors discovered (2/5)")
+	assert_false(panel.is_all_decorations_placed_in_journal(), "Not all decorations placed (2/8)")
+	assert_false(panel.is_all_events_active_in_journal(), "Not all events active (2/5)")
+	assert_true(panel.has_any_discovered_entries_in_journal(), "Has discovered entries in journal")
+	assert_true(panel.has_any_discovered_plants_in_journal(), "Has discovered plants in journal")
+	assert_true(panel.has_any_discovered_visitors_in_journal(), "Has discovered visitors in journal")
+	assert_true(panel.has_any_eligible_visitors_in_journal(), "Has eligible visitors in journal")
+	assert_true(panel.has_any_placed_decorations_in_journal(), "Has placed decorations in journal")
+	assert_true(panel.has_any_active_events_in_journal(), "Has active events in journal")
+	assert_false(panel.is_all_visitors_eligible_in_journal(), "Not all visitors eligible in journal (4/5)")
+	assert_true(panel.has_any_undiscovered_entries_in_journal(), "Has undiscovered entries in journal")
+	assert_true(panel.has_any_undiscovered_plants_in_journal(), "Has undiscovered plants in journal (4/5)")
+	assert_true(panel.has_any_undiscovered_visitors_in_journal(), "Has undiscovered visitors in journal (3/5)")
+	assert_true(panel.has_any_ineligible_visitors_in_journal(), "Has ineligible visitors in journal (1/5)")
+	assert_true(panel.has_any_unplaced_decorations_in_journal(), "Has unplaced decorations in journal (6/8)")
+	assert_true(panel.has_any_inactive_events_in_journal(), "Has inactive events in journal (3/5)")
+	assert_true(panel.has_any_currently_planted_plants_in_journal(), "Has currently planted plants in journal (1/5)")
+	assert_true(panel.has_any_unplanted_plants_in_journal(), "Has unplanted plants in journal (4/5)")
+	assert_false(panel.is_all_planted_species_present_in_journal(), "Not all plant species currently planted in journal (1/5)")
+	assert_true(panel.has_bound_journal(), "JournalState is bound to panel")
+	assert_true(panel.has_bound_catalog(), "ContentCatalog is bound to panel")
+	assert_true(panel.has_bound_decorations(), "DecorationCollectionState is bound to panel")
+	assert_true(panel.has_bound_snapshot(), "GardenSnapshot is bound to panel")
+	assert_true(panel.has_plant_in_journal_catalog("plant.jasmine"), "Jasmine exists in journal plant catalog")
+	assert_false(panel.has_plant_in_journal_catalog("plant.unknown"), "Unknown plant does not exist in journal plant catalog")
+	assert_true(panel.has_visitor_in_journal_catalog("visitor.butterfly"), "Butterfly exists in journal visitor catalog")
+	assert_false(panel.has_visitor_in_journal_catalog("visitor.unknown"), "Unknown visitor does not exist in journal visitor catalog")
+	assert_true(panel.has_decoration_in_journal_catalog("decoration.bench"), "Bench exists in journal decoration catalog")
+	assert_false(panel.has_decoration_in_journal_catalog("decoration.unknown"), "Unknown decoration does not exist in journal decoration catalog")
+	assert_true(panel.has_event_in_journal_catalog("event.morning_butterflies"), "Morning butterflies exists in journal event catalog")
+	assert_false(panel.has_event_in_journal_catalog("event.unknown"), "Unknown event does not exist in journal event catalog")
+	assert_eq(
+		panel.get_all_plant_ids_in_journal(),
+		["plant.banana", "plant.chili", "plant.holy_basil", "plant.jasmine", "plant.marigold"],
+		"All plant IDs in journal catalog"
+	)
+	assert_eq(
+		panel.get_all_visitor_ids_in_journal(),
+		["visitor.bird", "visitor.butterfly", "visitor.cat", "visitor.firefly", "visitor.frog"],
+		"All visitor IDs in journal catalog"
+	)
+	assert_eq(panel.get_all_decoration_ids_in_journal().size(), 8, "8 total decoration IDs in journal catalog")
+	assert_eq(panel.get_all_event_ids_in_journal().size(), 5, "5 total event IDs in journal catalog")
+	assert_eq(panel.get_total_planted_plant_instance_count_in_journal(), 1, "1 total planted plant instance in journal")
+	assert_eq(panel.get_total_placed_decoration_instance_count_in_journal(), 3, "3 total placed decoration instances in journal")
+	assert_true(panel.is_decoration_placed_in_journal("decoration.bench"), "Bench is placed in journal")
+	assert_false(panel.is_decoration_placed_in_journal("decoration.small_pond"), "Small pond is not placed in journal")
+	assert_true(panel.is_plant_currently_planted_in_journal("plant.jasmine"), "Jasmine is currently planted in journal")
+	assert_false(panel.is_plant_currently_planted_in_journal("plant.banana"), "Banana is not currently planted in journal")
+	assert_eq(panel.get_plant_display_name_in_journal("plant.jasmine"), "มะลิ", "Plant display name in journal for jasmine")
+	assert_eq(panel.get_plant_display_name_in_journal("plant.unknown"), "", "Unknown plant display name in journal is empty")
+	assert_eq(panel.get_visitor_display_name_in_journal("visitor.butterfly"), "ผีเสื้อบ้านสวน", "Visitor display name in journal for butterfly")
+	assert_eq(panel.get_visitor_display_name_in_journal("visitor.unknown"), "", "Unknown visitor display name in journal is empty")
+	assert_eq(panel.get_decoration_display_name_in_journal("decoration.bench"), "ม้านั่งไม้ในสวน", "Decoration display name in journal for bench")
+	assert_eq(panel.get_decoration_display_name_in_journal("decoration.unknown"), "", "Unknown decoration display name in journal is empty")
+	assert_eq(panel.get_event_display_name_in_journal("event.cat_sleeping_bench"), "แมวนอนหลับบนม้านั่ง", "Event display name in journal for cat_sleeping_bench")
+	assert_eq(panel.get_event_display_name_in_journal("event.unknown"), "", "Unknown event display name in journal is empty")
+	assert_eq(
+		panel.get_event_description_in_journal("event.cat_sleeping_bench"),
+		"แมวข้างบ้านขดตัวนอนหลับอย่างสบายใจอยู่บนม้านั่งไม้",
+		"Event description in journal for cat_sleeping_bench"
+	)
+	assert_eq(panel.get_event_description_in_journal("event.unknown"), "", "Unknown event description in journal is empty")
+	assert_true(panel.has_summary_text(), "Journal panel has non-empty summary text")
+	assert_eq(panel.get_displayed_entry_count(), 23, "23 total displayed entries across plants (5), visitors (5), decorations (8), and events (5)")
+	assert_true(panel.has_any_displayed_entries(), "Journal panel has displayed entries")
+	assert_eq(panel.get_plant_traits_summary_in_journal("plant.jasmine"), "พุ่มไม้หนาแน่น, ดอกไม้", "Plant traits summary in journal for jasmine")
+	assert_eq(panel.get_plant_traits_summary_in_journal("plant.unknown"), "", "Unknown plant traits summary in journal is empty")
+	assert_eq(panel.get_decoration_traits_summary_in_journal("decoration.clay_jar"), "แหล่งน้ำ", "Decoration traits summary in journal for clay_jar")
+	assert_eq(panel.get_decoration_traits_summary_in_journal("decoration.watering_can"), "ตกแต่งสวยงาม", "Decoration traits summary in journal for traitless watering_can")
+	assert_eq(panel.get_decoration_traits_summary_in_journal("decoration.unknown"), "", "Unknown decoration traits summary in journal is empty")
+	assert_true(panel.get_visitor_clue_in_journal("visitor.butterfly").contains("ดอกไม้"), "Visitor clue in journal for butterfly includes ดอกไม้")
+	assert_eq(panel.get_visitor_clue_in_journal("visitor.unknown"), "", "Unknown visitor clue in journal is empty")
+	assert_true(panel.get_event_clue_in_journal("event.cat_sleeping_bench").contains("ม้านั่งไม้ในสวน"), "Event clue in journal for cat_sleeping_bench includes ม้านั่งไม้ในสวน")
+	assert_eq(panel.get_event_clue_in_journal("event.unknown"), "", "Unknown event clue in journal is empty")
+	assert_eq(panel.get_decoration_price_in_journal("decoration.clay_jar"), 15, "Decoration price in journal for clay_jar is 15")
+	assert_eq(panel.get_decoration_price_in_journal("decoration.unknown"), -1, "Unknown decoration price in journal is -1")
+	assert_eq(panel.get_plant_harvest_reward_in_journal("plant.jasmine"), 25, "Plant harvest reward in journal for jasmine is 25")
+	assert_eq(panel.get_plant_harvest_reward_in_journal("plant.unknown"), 0, "Unknown plant harvest reward in journal is 0")
+	assert_eq(panel.get_plant_mature_after_seconds_in_journal("plant.jasmine"), 3600, "Plant mature_after_seconds in journal for jasmine is 3600")
+	assert_eq(panel.get_plant_mature_after_seconds_in_journal("plant.unknown"), 0, "Unknown plant mature_after_seconds in journal is 0")
+	assert_eq(panel.get_plant_sprout_after_seconds_in_journal("plant.jasmine"), 300, "Plant sprout_after_seconds in journal for jasmine is 300")
+	assert_eq(panel.get_plant_sprout_after_seconds_in_journal("plant.unknown"), 0, "Unknown plant sprout_after_seconds in journal is 0")
+	assert_eq(panel.get_plant_growing_after_seconds_in_journal("plant.jasmine"), 1200, "Plant growing_after_seconds in journal for jasmine is 1200")
+	assert_eq(panel.get_plant_growing_after_seconds_in_journal("plant.unknown"), 0, "Unknown plant growing_after_seconds in journal is 0")
+	assert_eq(panel.get_plant_traits_in_journal("plant.jasmine"), ["dense_vegetation", "flower"], "Plant traits in journal for jasmine")
+	assert_eq(panel.get_plant_traits_in_journal("plant.unknown"), [], "Unknown plant traits in journal is []")
+	assert_eq(panel.get_decoration_traits_in_journal("decoration.bench"), ["shade", "shelter"], "Decoration traits in journal for bench")
+	assert_eq(panel.get_decoration_traits_in_journal("decoration.unknown"), [], "Unknown decoration traits in journal is []")
+	assert_eq(
+		panel.get_plant_trait_display_names_in_journal("plant.jasmine"),
+		["พุ่มไม้หนาแน่น", "ดอกไม้"],
+		"Plant trait display names in journal for jasmine"
+	)
+	assert_eq(panel.get_plant_trait_display_names_in_journal("plant.unknown"), [], "Unknown plant trait display names in journal is []")
+	assert_eq(
+		panel.get_decoration_trait_display_names_in_journal("decoration.bench"),
+		["ร่มเงา", "ที่หลบพัก"],
+		"Decoration trait display names in journal for bench"
+	)
+	assert_eq(panel.get_decoration_trait_display_names_in_journal("decoration.unknown"), [], "Unknown decoration trait display names in journal is []")
+	assert_true(panel.has_plant_trait_in_journal("plant.jasmine", "flower"), "Jasmine has flower trait in journal")
+	assert_false(panel.has_plant_trait_in_journal("plant.jasmine", "water"), "Jasmine does not have water trait in journal")
+	assert_true(panel.has_decoration_trait_in_journal("decoration.bench", "shade"), "Bench has shade trait in journal")
+	assert_false(panel.has_decoration_trait_in_journal("decoration.bench", "water"), "Bench does not have water trait in journal")
+	assert_eq(panel.get_plant_trait_count_in_journal("plant.jasmine"), 2, "Plant trait count in journal for jasmine is 2")
+	assert_eq(panel.get_plant_trait_count_in_journal("plant.unknown"), 0, "Plant trait count in journal for unknown is 0")
+	assert_eq(panel.get_decoration_trait_count_in_journal("decoration.bench"), 2, "Decoration trait count in journal for bench is 2")
+	assert_eq(panel.get_decoration_trait_count_in_journal("decoration.watering_can"), 0, "Decoration trait count in journal for watering_can is 0")
+	assert_true(panel.has_plant_any_traits_in_journal("plant.jasmine"), "has_plant_any_traits_in_journal(plant.jasmine) is true")
+	assert_false(panel.has_plant_any_traits_in_journal("plant.unknown"), "has_plant_any_traits_in_journal(plant.unknown) is false")
+	assert_true(panel.has_decoration_any_traits_in_journal("decoration.bench"), "has_decoration_any_traits_in_journal(decoration.bench) is true")
+	assert_false(panel.has_decoration_any_traits_in_journal("decoration.watering_can"), "has_decoration_any_traits_in_journal(decoration.watering_can) is false")
+	assert_eq(
+		panel.get_all_plant_display_names_in_journal(),
+		["กล้วย", "พริก", "กะเพรา", "มะลิ", "ดาวเรือง"],
+		"All plant display names in journal in catalog order"
+	)
+	assert_eq(
+		panel.get_all_visitor_display_names_in_journal(),
+		["นกกระจอกบ้านสวน", "ผีเสื้อบ้านสวน", "แมวข้างบ้าน", "หิ่งห้อย", "กบในสวน"],
+		"All visitor display names in journal in catalog order"
+	)
+	assert_eq(panel.get_all_decoration_display_names_in_journal().size(), 8, "8 all decoration display names in journal")
+	assert_eq(panel.get_all_event_display_names_in_journal().size(), 5, "5 all event display names in journal")
+	assert_eq(panel.get_discovered_plant_display_names_in_journal(), ["มะลิ"], "Discovered plant display names in journal")
+	assert_eq(
+		panel.get_discovered_visitor_display_names_in_journal(),
+		["นกกระจอกบ้านสวน", "ผีเสื้อบ้านสวน"],
+		"Discovered visitor display names in journal"
+	)
+	assert_eq(
+		panel.get_placed_decoration_display_names_in_journal(),
+		["ม้านั่งไม้ในสวน", "ตุ่มน้ำดินเผา"],
+		"Placed decoration display names in journal"
+	)
+	assert_eq(
+		panel.get_active_event_display_names_in_journal(),
+		["แมวนอนหลับบนม้านั่ง", "ฝูงผีเสื้อยามเช้า"],
+		"Active event display names in journal"
+	)
+	assert_eq(panel.get_discovered_plant_ids_in_journal(), ["plant.jasmine"], "Discovered plant IDs in journal")
+	assert_eq(
+		panel.get_undiscovered_plant_ids_in_journal(),
+		["plant.banana", "plant.chili", "plant.holy_basil", "plant.marigold"],
+		"Undiscovered plant IDs in journal"
+	)
+	assert_eq(
+		panel.get_discovered_visitor_ids_in_journal(),
+		["visitor.bird", "visitor.butterfly"],
+		"Discovered visitor IDs in journal"
+	)
+	assert_eq(
+		panel.get_undiscovered_visitor_ids_in_journal(),
+		["visitor.cat", "visitor.firefly", "visitor.frog"],
+		"Undiscovered visitor IDs in journal"
+	)
+	assert_eq(
+		panel.get_eligible_visitor_ids_in_journal(),
+		["visitor.butterfly", "visitor.cat", "visitor.firefly", "visitor.frog"],
+		"Eligible visitor IDs in journal"
+	)
+	assert_eq(
+		panel.get_ineligible_visitor_ids_in_journal(),
+		["visitor.bird"],
+		"Ineligible visitor IDs in journal"
+	)
+	assert_eq(
+		panel.get_placed_decoration_ids_in_journal(),
+		["decoration.bench", "decoration.clay_jar"],
+		"Placed decoration IDs in journal"
+	)
+	assert_eq(
+		panel.get_unplaced_decoration_ids_in_journal(),
+		[
+			"decoration.garden_lamp",
+			"decoration.plant_pot",
+			"decoration.small_pond",
+			"decoration.small_table",
+			"decoration.watering_can",
+			"decoration.wooden_fence",
+		],
+		"Unplaced decoration IDs in journal"
+	)
+	assert_eq(
+		panel.get_active_event_ids_in_journal(),
+		["event.cat_sleeping_bench", "event.morning_butterflies"],
+		"Active event IDs in journal"
+	)
+	assert_eq(
+		panel.get_inactive_event_ids_in_journal(),
+		["event.bird_shade_song", "event.firefly_night_glow", "event.frog_rain_chorus"],
+		"Inactive event IDs in journal"
+	)
+	assert_eq(
+		panel.get_undiscovered_plant_display_names_in_journal(),
+		["กล้วย", "พริก", "กะเพรา", "ดาวเรือง"],
+		"Undiscovered plant display names in journal"
+	)
+	assert_eq(
+		panel.get_undiscovered_visitor_display_names_in_journal(),
+		["แมวข้างบ้าน", "หิ่งห้อย", "กบในสวน"],
+		"Undiscovered visitor display names in journal"
+	)
+	assert_eq(
+		panel.get_eligible_visitor_display_names_in_journal(),
+		["ผีเสื้อบ้านสวน", "แมวข้างบ้าน", "หิ่งห้อย", "กบในสวน"],
+		"Eligible visitor display names in journal"
+	)
+	assert_eq(
+		panel.get_ineligible_visitor_display_names_in_journal(),
+		["นกกระจอกบ้านสวน"],
+		"Ineligible visitor display names in journal"
+	)
+	assert_eq(
+		panel.get_unplaced_decoration_display_names_in_journal(),
+		[
+			"โคมไฟในสวน",
+			"กระถางดินเผา",
+			"บ่อน้ำเล็ก",
+			"โต๊ะไม้เล็ก",
+			"บัวรดน้ำสังกะสี",
+			"รั้วไม้ระแนง",
+		],
+		"Unplaced decoration display names in journal"
+	)
+	assert_eq(
+		panel.get_inactive_event_display_names_in_journal(),
+		["นกร้องเพลงใต้ร่มไม้", "หิ่งห้อยเรืองแสงยามค่ำ", "กบร้องเพลงกลางสายฝน"],
+		"Inactive event display names in journal"
+	)
+	assert_eq(
+		panel.get_currently_planted_plant_display_names_in_journal(),
+		["มะลิ"],
+		"Currently planted plant display names in journal"
+	)
+	assert_eq(
+		panel.get_unplanted_plant_display_names_in_journal(),
+		["กล้วย", "พริก", "กะเพรา", "ดาวเรือง"],
+		"Unplanted plant display names in journal"
+	)
+	assert_eq(
+		panel.get_plant_ids_with_trait_in_journal("flower"),
+		["plant.jasmine", "plant.marigold"],
+		"Plant IDs with flower trait in journal"
+	)
+	assert_eq(panel.get_plant_ids_with_trait_in_journal("unknown_trait"), [], "Unknown trait returns empty plant IDs in journal")
+	assert_eq(
+		panel.get_decoration_ids_with_trait_in_journal("water"),
+		["decoration.clay_jar", "decoration.small_pond"],
+		"Decoration IDs with water trait in journal"
+	)
+	assert_eq(panel.get_decoration_ids_with_trait_in_journal("unknown_trait"), [], "Unknown trait returns empty decoration IDs in journal")
+	assert_eq(panel.get_plant_count_with_trait_in_journal("flower"), 2, "2 plants with flower trait in journal")
+	assert_eq(panel.get_plant_count_with_trait_in_journal("unknown_trait"), 0, "0 plants with unknown trait in journal")
+	assert_eq(panel.get_decoration_count_with_trait_in_journal("water"), 2, "2 decorations with water trait in journal")
+	assert_eq(panel.get_decoration_count_with_trait_in_journal("unknown_trait"), 0, "0 decorations with unknown trait in journal")
+	assert_true(panel.has_any_plants_with_trait_in_journal("flower"), "has_any_plants_with_trait_in_journal(flower) is true")
+	assert_false(panel.has_any_plants_with_trait_in_journal("unknown_trait"), "has_any_plants_with_trait_in_journal(unknown_trait) is false")
+	assert_true(panel.has_any_decorations_with_trait_in_journal("water"), "has_any_decorations_with_trait_in_journal(water) is true")
+	assert_false(panel.has_any_decorations_with_trait_in_journal("unknown_trait"), "has_any_decorations_with_trait_in_journal(unknown_trait) is false")
+	assert_eq(
+		panel.get_plant_display_names_with_trait_in_journal("flower"),
+		["มะลิ", "ดาวเรือง"],
+		"Plant display names with flower trait in journal"
+	)
+	assert_eq(panel.get_plant_display_names_with_trait_in_journal("unknown_trait"), [], "Unknown trait returns empty plant display names in journal")
+	assert_eq(
+		panel.get_decoration_display_names_with_trait_in_journal("water"),
+		["ตุ่มน้ำดินเผา", "บ่อน้ำเล็ก"],
+		"Decoration display names with water trait in journal"
+	)
+	assert_eq(panel.get_decoration_display_names_with_trait_in_journal("unknown_trait"), [], "Unknown trait returns empty decoration display names in journal")
+	assert_true(panel.has_plant_display_name_in_journal("plant.jasmine"), "has_plant_display_name_in_journal(plant.jasmine) is true")
+	assert_false(panel.has_plant_display_name_in_journal("plant.unknown"), "has_plant_display_name_in_journal(plant.unknown) is false")
+	assert_true(panel.has_visitor_display_name_in_journal("visitor.butterfly"), "has_visitor_display_name_in_journal(visitor.butterfly) is true")
+	assert_false(panel.has_visitor_display_name_in_journal("visitor.unknown"), "has_visitor_display_name_in_journal(visitor.unknown) is false")
+	assert_true(panel.has_decoration_display_name_in_journal("decoration.bench"), "has_decoration_display_name_in_journal(decoration.bench) is true")
+	assert_false(panel.has_decoration_display_name_in_journal("decoration.unknown"), "has_decoration_display_name_in_journal(decoration.unknown) is false")
+	assert_true(panel.has_event_display_name_in_journal("event.cat_sleeping_bench"), "has_event_display_name_in_journal(event.cat_sleeping_bench) is true")
+	assert_false(panel.has_event_display_name_in_journal("event.unknown"), "has_event_display_name_in_journal(event.unknown) is false")
+	assert_true(panel.has_event_description_in_journal("event.cat_sleeping_bench"), "has_event_description_in_journal(event.cat_sleeping_bench) is true")
+	assert_false(panel.has_event_description_in_journal("event.unknown"), "has_event_description_in_journal(event.unknown) is false")
+	assert_true(panel.has_plant_traits_summary_in_journal("plant.jasmine"), "has_plant_traits_summary_in_journal(plant.jasmine) is true")
+	assert_false(panel.has_plant_traits_summary_in_journal("plant.unknown"), "has_plant_traits_summary_in_journal(plant.unknown) is false")
+	assert_true(panel.has_decoration_traits_summary_in_journal("decoration.bench"), "has_decoration_traits_summary_in_journal(decoration.bench) is true")
+	assert_false(panel.has_decoration_traits_summary_in_journal("decoration.unknown"), "has_decoration_traits_summary_in_journal(decoration.unknown) is false")
+	assert_true(panel.has_visitor_clue_in_journal("visitor.butterfly"), "has_visitor_clue_in_journal(visitor.butterfly) is true")
+	assert_false(panel.has_visitor_clue_in_journal("visitor.unknown"), "has_visitor_clue_in_journal(visitor.unknown) is false")
+	assert_true(panel.has_event_clue_in_journal("event.frog_rain_chorus"), "has_event_clue_in_journal(event.frog_rain_chorus) is true")
+	assert_false(panel.has_event_clue_in_journal("event.unknown"), "has_event_clue_in_journal(event.unknown) is false")
+	assert_true(panel.has_decoration_positive_price_in_journal("decoration.bench"), "has_decoration_positive_price_in_journal(decoration.bench) is true")
+	assert_false(panel.has_decoration_positive_price_in_journal("decoration.unknown"), "has_decoration_positive_price_in_journal(decoration.unknown) is false")
+	assert_true(panel.has_plant_positive_harvest_reward_in_journal("plant.jasmine"), "has_plant_positive_harvest_reward_in_journal(plant.jasmine) is true")
+	assert_false(panel.has_plant_positive_harvest_reward_in_journal("plant.unknown"), "has_plant_positive_harvest_reward_in_journal(plant.unknown) is false")
+	assert_true(panel.has_plant_positive_mature_duration_in_journal("plant.jasmine"), "has_plant_positive_mature_duration_in_journal(plant.jasmine) is true")
+	assert_false(panel.has_plant_positive_mature_duration_in_journal("plant.unknown"), "has_plant_positive_mature_duration_in_journal(plant.unknown) is false")
+	assert_true(
+		panel.get_summary_text().contains("ของตกแต่ง 2/8 | เหตุการณ์ 2/5"),
+		"Journal summary text includes placed decorations and active events"
+	)
 	assert_eq(panel.get_placed_count_for_decoration_id("decoration.bench"), 2, "Bench placed count query returns 2")
 	assert_eq(panel.get_placed_count_for_decoration_id("decoration.small_pond"), 0, "Unplaced small_pond count query returns 0")
 	assert_true(panel.is_event_active_in_journal("event.cat_sleeping_bench"), "Cat sleeping on bench active in journal")

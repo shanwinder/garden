@@ -120,6 +120,8 @@ var _selected_plant_stage: PlantGrowth.Stage = PlantGrowth.Stage.INVALID
 var _selected_plant_seconds_until_next_stage: int = -1
 var _selected_plant_seconds_until_mature: int = -1
 var _selected_plant_traits: Array[String] = []
+var _selected_plant_harvest_reward: int = 0
+var _selected_plant_planted_at: int = -1
 var _next_time_period: String = ""
 var _seconds_until_next_time_period: int = 0
 var _next_weather_state: String = ""
@@ -423,11 +425,15 @@ func _render_plants(plants: Array[PlantState], now_utc: int) -> void:
 		# Derive growth stage using existing PlantGrowth domain logic (Requirement 9, 11).
 		var stage: PlantGrowth.Stage = PlantGrowth.Stage.INVALID
 		var harvest_reward: int = 0
+		var seconds_until_next_stage: int = -1
 		var seconds_until_mature: int = -1
+		var plant_traits: Array[String] = []
 		if definition != null:
 			stage = PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)
 			harvest_reward = definition.harvest_reward
+			seconds_until_next_stage = PlantGrowth.seconds_until_next_stage_at(plant_state, definition, now_utc)
 			seconds_until_mature = PlantGrowth.seconds_until_mature_at(plant_state, definition, now_utc)
+			plant_traits = definition.environmental_traits.duplicate()
 
 		# Instantiate PlantView component.
 		var view: PlantView = PLANT_VIEW_SCENE.instantiate() as PlantView
@@ -437,7 +443,9 @@ func _render_plants(plants: Array[PlantState], now_utc: int) -> void:
 			stage,
 			planted_at,
 			harvest_reward,
-			seconds_until_mature
+			seconds_until_mature,
+			plant_traits,
+			seconds_until_next_stage
 		)
 		view.plant_selected.connect(_on_plant_selected)
 
@@ -507,6 +515,8 @@ func _update_details_panel(
 		_selected_plant_seconds_until_next_stage = -1
 		_selected_plant_seconds_until_mature = -1
 		_selected_plant_traits = []
+		_selected_plant_harvest_reward = 0
+		_selected_plant_planted_at = -1
 		_no_selection_label.visible = true
 		_details_content.visible = false
 		if _harvest_button != null:
@@ -534,6 +544,12 @@ func _update_details_panel(
 		if definition != null
 		else []
 	)
+	_selected_plant_harvest_reward = (
+		maxi(0, definition.harvest_reward)
+		if definition != null
+		else 0
+	)
+	_selected_plant_planted_at = plant_state.get_planted_at()
 
 	var def_id: String = plant_state.get_definition_id()
 	var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id)
@@ -621,6 +637,8 @@ func _show_blocked_visual() -> void:
 	_selected_plant_seconds_until_next_stage = -1
 	_selected_plant_seconds_until_mature = -1
 	_selected_plant_traits = []
+	_selected_plant_harvest_reward = 0
+	_selected_plant_planted_at = -1
 	_next_time_period = ""
 	_seconds_until_next_time_period = 0
 	_next_weather_state = ""
@@ -1665,3 +1683,1001 @@ func get_total_pending_harvest_reward() -> int:
 		if pv != null and pv.is_ready_to_harvest():
 			total += pv.get_harvest_reward()
 	return total
+
+
+## Pure query for testing: returns the selected plant's harvest reward, or 0 if none selected or blocked.
+func get_selected_plant_harvest_reward() -> int:
+	return _selected_plant_harvest_reward if not _is_blocked else 0
+
+
+## Pure query for testing: returns the selected plant's planted_at UTC timestamp, or -1 if none selected or blocked.
+func get_selected_plant_planted_at() -> int:
+	return _selected_plant_planted_at if not _is_blocked else -1
+
+
+## Pure query for testing: returns text displayed in detail instance ID label.
+func get_detail_id_text() -> String:
+	_resolve_nodes()
+	return _detail_id_label.text if _detail_id_label != null else ""
+
+
+## Pure query for testing: returns text displayed in detail planted-at timestamp label.
+func get_detail_planted_at_text() -> String:
+	_resolve_nodes()
+	return _detail_planted_at_label.text if _detail_planted_at_label != null else ""
+
+
+## Pure query for testing: returns deterministic runtime_instance_ids of all rendered PlantView cards still growing (PLANTED, SPROUT, or GROWING).
+func get_growing_plant_ids() -> Array[String]:
+	if _is_blocked:
+		return []
+	var result: Array[String] = []
+	for pv: PlantView in get_plant_views():
+		if pv != null:
+			var st: PlantGrowth.Stage = pv.get_stage()
+			if st == PlantGrowth.Stage.PLANTED or st == PlantGrowth.Stage.SPROUT or st == PlantGrowth.Stage.GROWING:
+				result.append(pv.get_runtime_instance_id())
+	return result
+
+
+## Pure query for testing: returns the count of rendered PlantView cards still growing (PLANTED, SPROUT, or GROWING).
+func get_growing_plant_count() -> int:
+	return get_growing_plant_ids().size()
+
+
+## Pure query for testing: returns the minimum remaining seconds until mature across all growing PlantView cards, or -1 if none growing or blocked.
+func get_minimum_seconds_until_next_harvest() -> int:
+	if _is_blocked:
+		return -1
+	var min_sec: int = -1
+	for pv: PlantView in get_plant_views():
+		if pv != null:
+			var st: PlantGrowth.Stage = pv.get_stage()
+			var sec: int = pv.get_seconds_until_mature()
+			if (st == PlantGrowth.Stage.PLANTED or st == PlantGrowth.Stage.SPROUT or st == PlantGrowth.Stage.GROWING) and sec > 0:
+				if min_sec < 0 or sec < min_sec:
+					min_sec = sec
+	return min_sec
+
+
+## Pure query for testing: returns active environmental trait IDs in the latest snapshot, or [] if blocked.
+func get_active_environmental_traits() -> Array[String]:
+	if _is_blocked or _last_snapshot == null:
+		return []
+	return _last_snapshot.get_active_traits()
+
+
+## Pure query for testing: returns count for [param trait_id] in the latest snapshot, or 0 if blocked.
+func get_environmental_trait_count(trait_id: String) -> int:
+	if _is_blocked or _last_snapshot == null:
+		return 0
+	return _last_snapshot.get_trait_count(trait_id)
+
+
+## Pure query for testing: returns deterministic definition IDs of placed decorations in the latest snapshot, or [] if blocked.
+func get_present_decoration_definition_ids() -> Array[String]:
+	if _is_blocked or _last_snapshot == null:
+		return []
+	return _last_snapshot.get_present_decoration_definition_ids()
+
+
+## Pure query for testing: returns placed count for [param definition_id] in the latest snapshot, or 0 if blocked.
+func get_placed_decoration_count_for_id(definition_id: String) -> int:
+	if _is_blocked or _last_snapshot == null:
+		return 0
+	return _last_snapshot.get_decoration_count_for_definition(definition_id)
+
+
+## Pure query for testing: returns the minimum remaining seconds until the next stage across all growing PlantView cards, or -1 if none growing or blocked.
+func get_minimum_seconds_until_next_stage_transition() -> int:
+	if _is_blocked:
+		return -1
+	var min_sec: int = -1
+	for pv: PlantView in get_plant_views():
+		if pv != null and pv.is_growing_stage():
+			var sec: int = pv.get_seconds_until_next_stage()
+			if sec > 0 and (min_sec < 0 or sec < min_sec):
+				min_sec = sec
+	return min_sec
+
+
+## Pure query for testing: returns deterministic definition IDs of planted plants in the latest snapshot, or [] if blocked.
+func get_present_plant_definition_ids() -> Array[String]:
+	if _is_blocked or _last_snapshot == null:
+		return []
+	return _last_snapshot.get_present_plant_definition_ids()
+
+
+## Pure query for testing: returns planted count for [param definition_id] in the latest snapshot, or 0 if blocked.
+func get_planted_count_for_id(definition_id: String) -> int:
+	if _is_blocked or _last_snapshot == null:
+		return 0
+	return _last_snapshot.get_plant_count_for_definition(definition_id)
+
+
+## Pure query for testing: returns deterministic runtime_instance_ids of rendered PlantView cards matching [param stage].
+func get_plant_ids_for_stage(stage: PlantGrowth.Stage) -> Array[String]:
+	if _is_blocked:
+		return []
+	var result: Array[String] = []
+	for pv: PlantView in get_plant_views():
+		if pv != null and pv.get_stage() == stage:
+			result.append(pv.get_runtime_instance_id())
+	return result
+
+
+## Pure query for testing: returns count of rendered PlantView cards matching [param stage].
+func get_plant_count_for_stage(stage: PlantGrowth.Stage) -> int:
+	return get_plant_ids_for_stage(stage).size()
+
+
+## Pure query for testing: returns deterministic runtime_instance_ids of rendered PlantView cards matching [param definition_id].
+func get_plant_ids_for_definition_id(definition_id: String) -> Array[String]:
+	if _is_blocked or definition_id.is_empty():
+		return []
+	var result: Array[String] = []
+	for pv: PlantView in get_plant_views():
+		if pv != null and pv.get_definition_id() == definition_id:
+			result.append(pv.get_runtime_instance_id())
+	return result
+
+
+## Pure query for testing: returns count of distinct plant definitions currently planted in the latest snapshot (0 if blocked).
+func get_distinct_planted_species_count() -> int:
+	return get_present_plant_definition_ids().size()
+
+
+## Pure query for testing: returns count of distinct decoration definitions currently placed in the latest snapshot (0 if blocked).
+func get_distinct_placed_decoration_species_count() -> int:
+	return get_present_decoration_definition_ids().size()
+
+
+## Pure query for testing: returns count of discovered entries in the child JournalPanel (0 if blocked).
+func get_discovered_entry_count_in_garden() -> int:
+	if _is_blocked:
+		return 0
+	_resolve_nodes()
+	return _journal_panel.get_discovered_entry_count() if _journal_panel != null else 0
+
+
+## Pure query for testing: returns true if the garden has reached its maximum progression stage ("happy_garden_home") and is not blocked.
+func is_at_max_progression_stage() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.is_max_stage()
+
+
+## Pure query for testing: returns deterministic runtime_instance_ids of rendered PlantView cards exposing [param trait_id].
+func get_plant_ids_with_environmental_trait(trait_id: String) -> Array[String]:
+	if _is_blocked or trait_id.is_empty():
+		return []
+	var result: Array[String] = []
+	for pv: PlantView in get_plant_views():
+		if pv != null and pv.has_environmental_trait(trait_id):
+			result.append(pv.get_runtime_instance_id())
+	return result
+
+
+## Pure query for testing: returns count of rendered PlantView cards exposing [param trait_id].
+func get_plant_count_with_environmental_trait(trait_id: String) -> int:
+	return get_plant_ids_with_environmental_trait(trait_id).size()
+
+
+## Pure query for testing: returns count of undiscovered entries in the child JournalPanel (0 if blocked).
+func get_undiscovered_entry_count_in_garden() -> int:
+	if _is_blocked:
+		return 0
+	_resolve_nodes()
+	return _journal_panel.get_undiscovered_entry_count() if _journal_panel != null else 0
+
+
+## Pure query for testing: returns true if all catalog entries in the child JournalPanel have been discovered (false if blocked).
+func is_all_journal_entries_discovered_in_garden() -> bool:
+	if _is_blocked:
+		return false
+	_resolve_nodes()
+	return _journal_panel != null and _journal_panel.is_all_entries_discovered_in_journal()
+
+
+## Pure query for testing: returns count of eligible visitors from the latest refresh (0 if blocked).
+func get_eligible_visitor_count() -> int:
+	return _eligible_visitor_ids.size() if not _is_blocked else 0
+
+
+## Pure query for testing: returns count of eligible ambient/special events from the latest refresh (0 if blocked).
+func get_eligible_event_count() -> int:
+	return _eligible_event_ids.size() if not _is_blocked else 0
+
+
+## Pure query for testing: returns true if a plant is currently selected and startup is not blocked.
+func has_selected_plant() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty()
+
+
+## Pure query for testing: returns true if a plant is currently selected, at MATURE stage, has a positive harvest reward, and startup is not blocked.
+func is_selected_plant_ready_to_harvest() -> bool:
+	return (
+		not _is_blocked
+		and not _selected_runtime_instance_id.is_empty()
+		and _selected_plant_stage == PlantGrowth.Stage.MATURE
+		and _selected_plant_harvest_reward > 0
+	)
+
+
+## Pure query for testing: returns true if [param trait_id] has a positive count in the latest snapshot (false if blocked).
+func has_active_environmental_trait(trait_id: String) -> bool:
+	return (
+		not _is_blocked
+		and not trait_id.is_empty()
+		and _last_snapshot != null
+		and _last_snapshot.get_trait_count(trait_id) > 0
+	)
+
+
+## Pure query for testing: returns count of distinct active environmental traits in the latest snapshot (0 if blocked).
+func get_active_environmental_trait_count() -> int:
+	return get_active_environmental_traits().size()
+
+
+## Pure query for testing: returns true if [param definition_id] has at least one planted instance in the latest snapshot (false if blocked).
+func is_plant_definition_present_in_garden(definition_id: String) -> bool:
+	return (
+		not _is_blocked
+		and not definition_id.is_empty()
+		and _last_snapshot != null
+		and _last_snapshot.get_plant_count_for_definition(definition_id) > 0
+	)
+
+
+## Pure query for testing: returns true if [param definition_id] has at least one placed decoration instance in the latest snapshot (false if blocked).
+func is_decoration_definition_present_in_garden(definition_id: String) -> bool:
+	return (
+		not _is_blocked
+		and not definition_id.is_empty()
+		and _last_snapshot != null
+		and _last_snapshot.get_decoration_count_for_definition(definition_id) > 0
+	)
+
+
+## Pure query for testing: returns true if [param visitor_id] is currently eligible in the latest refresh (false if blocked).
+func is_visitor_currently_eligible(visitor_id: String) -> bool:
+	return not _is_blocked and not visitor_id.is_empty() and _eligible_visitor_ids.has(visitor_id)
+
+
+## Pure query for testing: returns true if [param event_id] is currently eligible in the latest refresh (false if blocked).
+func is_event_currently_eligible(event_id: String) -> bool:
+	return not _is_blocked and not event_id.is_empty() and _eligible_event_ids.has(event_id)
+
+
+## Pure query for testing: returns true if at least one plant is currently rendered in the garden and startup is not blocked.
+func has_any_planted_plants_in_garden() -> bool:
+	return not _is_blocked and get_displayed_plant_count() > 0
+
+
+## Pure query for testing: returns true if at least one rendered plant is still growing and startup is not blocked.
+func has_any_growing_plants_in_garden() -> bool:
+	return not _is_blocked and get_growing_plant_count() > 0
+
+
+## Pure query for testing: returns true if at least one plant in the latest snapshot is mature/ready to harvest and startup is not blocked.
+func has_any_ready_to_harvest_plants_in_garden() -> bool:
+	return not _is_blocked and get_ready_to_harvest_plant_count() > 0
+
+
+## Pure query for testing: returns true if at least one decoration is placed in the latest snapshot and startup is not blocked.
+func has_any_placed_decorations_in_garden() -> bool:
+	return not _is_blocked and get_displayed_decoration_count() > 0
+
+
+## Pure query for testing: returns true if at least one environmental trait is active in the latest snapshot and startup is not blocked.
+func has_any_active_environmental_traits_in_garden() -> bool:
+	return not _is_blocked and get_active_environmental_trait_count() > 0
+
+
+## Pure query for testing: returns true if at least one visitor is currently eligible in the latest refresh and startup is not blocked.
+func has_any_eligible_visitors_in_garden() -> bool:
+	return not _is_blocked and get_eligible_visitor_count() > 0
+
+
+## Pure query for testing: returns true if at least one ambient/special event is currently eligible in the latest refresh and startup is not blocked.
+func has_any_eligible_events_in_garden() -> bool:
+	return not _is_blocked and get_eligible_event_count() > 0
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant exposes [param trait_id].
+func has_selected_plant_environmental_trait(trait_id: String) -> bool:
+	return (
+		not _is_blocked
+		and not _selected_runtime_instance_id.is_empty()
+		and not trait_id.is_empty()
+		and _selected_plant_traits.has(trait_id)
+	)
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at an active growing stage (PLANTED, SPROUT, or GROWING).
+func is_selected_plant_growing() -> bool:
+	return (
+		not _is_blocked
+		and not _selected_runtime_instance_id.is_empty()
+		and (
+			_selected_plant_stage == PlantGrowth.Stage.PLANTED
+			or _selected_plant_stage == PlantGrowth.Stage.SPROUT
+			or _selected_plant_stage == PlantGrowth.Stage.GROWING
+		)
+	)
+
+
+## Pure query for testing: returns count of environmental traits on the currently selected plant (0 if none selected or blocked).
+func get_selected_plant_trait_count() -> int:
+	if _is_blocked or _selected_runtime_instance_id.is_empty():
+		return 0
+	return _selected_plant_traits.size()
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant has at least one environmental trait.
+func has_selected_plant_any_environmental_traits() -> bool:
+	return get_selected_plant_trait_count() > 0
+
+
+## Pure query for testing: returns true if at least one plant is rendered in the garden, startup is not blocked, and all rendered plants are ready to harvest.
+func is_all_planted_plants_ready_to_harvest_in_garden() -> bool:
+	var displayed: int = get_displayed_plant_count()
+	return (
+		not _is_blocked
+		and displayed > 0
+		and get_growing_plant_count() == 0
+		and get_ready_to_harvest_plant_count() == displayed
+	)
+
+
+## Pure query for testing: returns true if at least one catalog entry in the child JournalPanel has been discovered (false if blocked).
+func has_any_discovered_entries_in_garden() -> bool:
+	return not _is_blocked and get_discovered_entry_count_in_garden() > 0
+
+
+## Pure query for testing: returns true if at least one catalog entry in the child JournalPanel is still undiscovered (false if blocked).
+func has_any_undiscovered_entries_in_garden() -> bool:
+	return not _is_blocked and get_undiscovered_entry_count_in_garden() > 0
+
+
+## Pure query for testing: returns true if a visitor has been observed and is currently active in the garden HUD (false if blocked).
+func has_active_visitor_in_garden() -> bool:
+	return not _is_blocked and not _current_visitor_id.is_empty()
+
+
+## Pure query for testing: returns true if an ambient/special event has been observed and is currently active in the garden HUD (false if blocked).
+func has_active_event_in_garden() -> bool:
+	return not _is_blocked and not _current_event_id.is_empty()
+
+
+## Pure query for testing: returns true if a GameSession is bound and startup is not blocked.
+func has_bound_session() -> bool:
+	return not _is_blocked and _session != null
+
+
+## Pure query for testing: returns true if a ContentCatalog is bound and startup is not blocked.
+func has_bound_catalog() -> bool:
+	return not _is_blocked and _catalog != null
+
+
+## Pure query for testing: returns true if a GameClock is bound and startup is not blocked.
+func has_bound_clock() -> bool:
+	return not _is_blocked and _game_clock != null
+
+
+## Pure query for testing: returns true if a GardenSnapshot has been derived and startup is not blocked.
+func has_last_garden_snapshot() -> bool:
+	return not _is_blocked and _last_snapshot != null
+
+
+## Pure query for testing: returns true if a GardenProgressionSummary has been derived and startup is not blocked.
+func has_last_progression_summary() -> bool:
+	return not _is_blocked and _last_progression_summary != null
+
+
+## Pure query for testing: returns true if a GardenReturnSummary has been received and startup is not blocked.
+func has_last_return_summary() -> bool:
+	return not _is_blocked and _last_return_summary != null
+
+
+## Pure query for testing: returns true if the child PlantingPicker modal is currently open and startup is not blocked.
+func is_planting_picker_open_in_garden() -> bool:
+	if _is_blocked:
+		return false
+	_resolve_nodes()
+	return _planting_picker != null and _planting_picker.is_picker_open()
+
+
+## Pure query for testing: returns true if the child DecorationPicker modal is currently open and startup is not blocked.
+func is_decoration_picker_open_in_garden() -> bool:
+	if _is_blocked:
+		return false
+	_resolve_nodes()
+	return _decoration_picker != null and _decoration_picker.is_picker_open()
+
+
+## Pure query for testing: returns true if the child JournalPanel modal is currently open and startup is not blocked.
+func is_journal_open_in_garden() -> bool:
+	if _is_blocked:
+		return false
+	_resolve_nodes()
+	return _journal_panel != null and _journal_panel.is_journal_open()
+
+
+## Pure query for testing: returns true if any child modal (PlantingPicker, DecorationPicker, or JournalPanel) is currently open and startup is not blocked.
+func is_any_modal_open_in_garden() -> bool:
+	return (
+		is_planting_picker_open_in_garden()
+		or is_decoration_picker_open_in_garden()
+		or is_journal_open_in_garden()
+	)
+
+
+## Pure query for testing: returns true if a PlantingCheckpointResult has been received and startup is not blocked.
+func has_last_planting_checkpoint_result() -> bool:
+	return not _is_blocked and _last_checkpoint_result != null
+
+
+## Pure query for testing: returns true if a HarvestCheckpointResult has been received and startup is not blocked.
+func has_last_harvest_checkpoint_result() -> bool:
+	return not _is_blocked and _last_harvest_checkpoint_result != null
+
+
+## Pure query for testing: returns true if a VisitorSelectionResult has been received and startup is not blocked.
+func has_last_visitor_selection_result() -> bool:
+	return not _is_blocked and _last_visitor_selection_result != null
+
+
+## Pure query for testing: returns true if a VisitorObservationCheckpointResult has been received and startup is not blocked.
+func has_last_visitor_observation_checkpoint_result() -> bool:
+	return not _is_blocked and _last_visitor_observation_checkpoint_result != null
+
+
+## Pure query for testing: returns true if an EventSelectionResult has been received and startup is not blocked.
+func has_last_event_selection_result() -> bool:
+	return not _is_blocked and _last_event_selection_result != null
+
+
+## Pure query for testing: returns true if a DecorationPurchaseCheckpointResult has been received and startup is not blocked.
+func has_last_decoration_purchase_checkpoint_result() -> bool:
+	return not _is_blocked and _last_decoration_purchase_checkpoint_result != null
+
+
+## Pure query for testing: returns the localized Thai display name for the currently selected plant, or "" if none selected or blocked.
+func get_selected_plant_display_name() -> String:
+	if _is_blocked or _selected_runtime_instance_id.is_empty() or _selected_plant_definition_id.is_empty():
+		return ""
+	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(_selected_plant_definition_id, _selected_plant_definition_id)
+
+
+## Pure query for testing: returns the localized Thai display name for the current active visitor in the garden HUD, or "" if none active or blocked.
+func get_current_visitor_display_name() -> String:
+	if _is_blocked or _current_visitor_id.is_empty():
+		return ""
+	return PROVISIONAL_VISITOR_DISPLAY_NAMES.get(_current_visitor_id, _current_visitor_id)
+
+
+## Pure query for testing: returns the localized Thai display name for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
+func get_current_event_display_name() -> String:
+	if _is_blocked or _current_event_id.is_empty():
+		return ""
+	return PROVISIONAL_EVENT_DISPLAY_NAMES.get(_current_event_id, _current_event_id)
+
+
+## Pure query for testing: returns the localized Thai description for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
+func get_current_event_description() -> String:
+	if _is_blocked or _current_event_id.is_empty():
+		return ""
+	return PROVISIONAL_EVENT_DESCRIPTIONS.get(_current_event_id, "")
+
+
+## Pure query for testing: returns the localized Thai display name for the current time period from the latest snapshot, or "" if blocked/unavailable.
+func get_current_time_period_display_name() -> String:
+	var tp: String = get_current_time_period()
+	if _is_blocked or tp.is_empty():
+		return ""
+	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(tp, tp)
+
+
+## Pure query for testing: returns the localized Thai display name for the current weather state from the latest snapshot, or "" if blocked/unavailable.
+func get_current_weather_display_name() -> String:
+	var ws: String = get_current_weather_state()
+	if _is_blocked or ws.is_empty():
+		return ""
+	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(ws, ws)
+
+
+## Pure query for testing: returns the localized Thai display name for the next time period from the latest refresh, or "" if blocked/unavailable.
+func get_next_time_period_display_name() -> String:
+	if _is_blocked or _next_time_period.is_empty():
+		return ""
+	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(_next_time_period, _next_time_period)
+
+
+## Pure query for testing: returns the localized Thai display name for the next weather state from the latest refresh, or "" if blocked/unavailable.
+func get_next_weather_display_name() -> String:
+	if _is_blocked or _next_weather_state.is_empty():
+		return ""
+	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(_next_weather_state, _next_weather_state)
+
+
+## Pure query for testing: returns the localized Thai display name for the current progression stage from the latest refresh, or "" if blocked/unavailable.
+func get_current_progression_stage_display_name() -> String:
+	var st_id: String = get_current_progression_stage_id()
+	if _is_blocked or st_id.is_empty():
+		return ""
+	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(st_id, st_id)
+
+
+## Pure query for testing: returns the localized Thai display name for the next progression stage from the latest refresh, or "" if at max stage or blocked/unavailable.
+func get_next_progression_stage_display_name() -> String:
+	var next_id: String = get_next_progression_stage_id()
+	if _is_blocked or next_id.is_empty():
+		return ""
+	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(next_id, next_id)
+
+
+## Pure query for testing: returns the localized Thai display name for the current optional gentle guidance prompt from the latest refresh, or "" if blocked/unavailable.
+func get_current_guidance_display_name() -> String:
+	var gid: String = get_current_guidance_id()
+	if _is_blocked or gid.is_empty():
+		return ""
+	return PROVISIONAL_GUIDANCE_DISPLAY_NAMES.get(gid, gid)
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at PLANTED stage.
+func is_selected_plant_planted_stage() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_stage == PlantGrowth.Stage.PLANTED
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at SPROUT stage.
+func is_selected_plant_sprout_stage() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_stage == PlantGrowth.Stage.SPROUT
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at GROWING stage.
+func is_selected_plant_growing_phase_stage() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_stage == PlantGrowth.Stage.GROWING
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at MATURE stage.
+func is_selected_plant_mature_stage() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_stage == PlantGrowth.Stage.MATURE
+
+
+## Pure query for testing: returns localized Thai display name for [param trait_id], or "" if empty.
+func get_trait_display_name_for_id(trait_id: String) -> String:
+	if trait_id.is_empty():
+		return ""
+	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+
+
+## Pure query for testing: returns localized Thai display name for [param visitor_id], or "" if empty.
+func get_visitor_display_name_for_id(visitor_id: String) -> String:
+	if visitor_id.is_empty():
+		return ""
+	return PROVISIONAL_VISITOR_DISPLAY_NAMES.get(visitor_id, visitor_id)
+
+
+## Pure query for testing: returns localized Thai display name for [param event_id], or "" if empty.
+func get_event_display_name_for_id(event_id: String) -> String:
+	if event_id.is_empty():
+		return ""
+	return PROVISIONAL_EVENT_DISPLAY_NAMES.get(event_id, event_id)
+
+
+## Pure query for testing: returns localized Thai description for [param event_id], or "" if empty/unknown.
+func get_event_description_for_id(event_id: String) -> String:
+	if event_id.is_empty():
+		return ""
+	return PROVISIONAL_EVENT_DESCRIPTIONS.get(event_id, "")
+
+
+## Pure query for testing: returns localized Thai display name for [param time_period], or "" if empty.
+func get_time_period_display_name_for_id(time_period: String) -> String:
+	if time_period.is_empty():
+		return ""
+	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(time_period, time_period)
+
+
+## Pure query for testing: returns localized Thai display name for [param weather_state], or "" if empty.
+func get_weather_display_name_for_id(weather_state: String) -> String:
+	if weather_state.is_empty():
+		return ""
+	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(weather_state, weather_state)
+
+
+## Pure query for testing: returns localized Thai display name for [param stage_id], or "" if empty.
+func get_progression_stage_display_name_for_id(stage_id: String) -> String:
+	if stage_id.is_empty():
+		return ""
+	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(stage_id, stage_id)
+
+
+## Pure query for testing: returns localized Thai display name for [param guidance_id], or "" if empty.
+func get_guidance_display_name_for_id(guidance_id: String) -> String:
+	if guidance_id.is_empty():
+		return ""
+	return PROVISIONAL_GUIDANCE_DISPLAY_NAMES.get(guidance_id, guidance_id)
+
+
+## Pure query for testing: returns localized Thai display names for all active environmental traits in the latest snapshot, or [] if blocked/empty.
+func get_active_environmental_trait_display_names() -> Array[String]:
+	if _is_blocked or _last_snapshot == null:
+		return []
+	var result: Array[String] = []
+	for trait_id: String in _last_snapshot.get_active_traits():
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits on the currently selected plant, or [] if none selected or blocked.
+func get_selected_plant_trait_display_names() -> Array[String]:
+	if _is_blocked or _selected_runtime_instance_id.is_empty():
+		return []
+	var result: Array[String] = []
+	for trait_id: String in _selected_plant_traits:
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for eligible visitors from the latest refresh, or [] if blocked/empty.
+func get_eligible_visitor_display_names() -> Array[String]:
+	if _is_blocked:
+		return []
+	var result: Array[String] = []
+	for vid: String in _eligible_visitor_ids:
+		result.append(PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for eligible ambient/special events from the latest refresh, or [] if blocked/empty.
+func get_eligible_event_display_names() -> Array[String]:
+	if _is_blocked:
+		return []
+	var result: Array[String] = []
+	for eid: String in _eligible_event_ids:
+		result.append(PROVISIONAL_EVENT_DISPLAY_NAMES.get(eid, eid))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for distinct planted plant species in the latest snapshot, or [] if blocked/empty.
+func get_present_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_present_plant_definition_ids():
+		result.append(PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for distinct placed decoration species in the latest snapshot, or [] if blocked/empty.
+func get_present_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_present_decoration_definition_ids():
+		result.append(DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display name for plant [param definition_id], or "" if empty.
+func get_plant_display_name_for_id(definition_id: String) -> String:
+	if definition_id.is_empty():
+		return ""
+	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai display name for decoration [param definition_id], or "" if empty.
+func get_decoration_display_name_for_id(definition_id: String) -> String:
+	if definition_id.is_empty():
+		return ""
+	return DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns localized Thai growth stage display name for the currently selected plant, or "" if none selected or blocked.
+func get_selected_plant_stage_display_name() -> String:
+	if _is_blocked or _selected_runtime_instance_id.is_empty():
+		return ""
+	match _selected_plant_stage:
+		PlantGrowth.Stage.PLANTED:
+			return "เพาะเมล็ด"
+		PlantGrowth.Stage.SPROUT:
+			return "ต้นกล้า"
+		PlantGrowth.Stage.GROWING:
+			return "กำลังโต"
+		PlantGrowth.Stage.MATURE:
+			return "โตเต็มที่"
+		_:
+			return "ไม่ทราบสถานะ"
+
+
+## Pure query for testing: returns true if [param visitor_id] is in the provisional localized visitor display dictionary.
+func is_known_visitor_id(visitor_id: String) -> bool:
+	return not visitor_id.is_empty() and PROVISIONAL_VISITOR_DISPLAY_NAMES.has(visitor_id)
+
+
+## Pure query for testing: returns true if [param event_id] is in the provisional localized event display dictionary.
+func is_known_event_id(event_id: String) -> bool:
+	return not event_id.is_empty() and PROVISIONAL_EVENT_DISPLAY_NAMES.has(event_id)
+
+
+## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+func is_known_environmental_trait(trait_id: String) -> bool:
+	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+
+
+## Pure query for testing: returns true if [param time_period] is in the provisional localized time-of-day display dictionary.
+func is_known_time_period_id(time_period: String) -> bool:
+	return not time_period.is_empty() and PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.has(time_period)
+
+
+## Pure query for testing: returns true if [param weather_state] is in the provisional localized weather display dictionary.
+func is_known_weather_state_id(weather_state: String) -> bool:
+	return not weather_state.is_empty() and PROVISIONAL_WEATHER_DISPLAY_NAMES.has(weather_state)
+
+
+## Pure query for testing: returns true if [param stage_id] is in the provisional localized progression stage display dictionary.
+func is_known_progression_stage_id(stage_id: String) -> bool:
+	return not stage_id.is_empty() and PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.has(stage_id)
+
+
+## Pure query for testing: returns true if [param guidance_id] is in the provisional localized gentle guidance display dictionary.
+func is_known_guidance_id(guidance_id: String) -> bool:
+	return not guidance_id.is_empty() and PROVISIONAL_GUIDANCE_DISPLAY_NAMES.has(guidance_id)
+
+
+## Pure query for testing: returns true if [param definition_id] is in the provisional localized plant display dictionary.
+func is_known_plant_definition_id(definition_id: String) -> bool:
+	return not definition_id.is_empty() and PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] is in the provisional localized decoration display dictionary.
+func is_known_decoration_definition_id(definition_id: String) -> bool:
+	return not definition_id.is_empty() and DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.has(definition_id)
+
+
+## Pure query for testing: returns true if startup is not blocked and [param definition_id] exists as a plant definition in the bound catalog.
+func has_plant_in_garden_catalog(definition_id: String) -> bool:
+	return not _is_blocked and not definition_id.is_empty() and _catalog != null and _catalog.has_plant(definition_id)
+
+
+## Pure query for testing: returns true if startup is not blocked and [param definition_id] exists as a visitor definition in the bound catalog.
+func has_visitor_in_garden_catalog(definition_id: String) -> bool:
+	return not _is_blocked and not definition_id.is_empty() and _catalog != null and _catalog.has_visitor(definition_id)
+
+
+## Pure query for testing: returns true if startup is not blocked and [param definition_id] exists as a decoration definition in the bound catalog.
+func has_decoration_in_garden_catalog(definition_id: String) -> bool:
+	return not _is_blocked and not definition_id.is_empty() and _catalog != null and _catalog.has_decoration(definition_id)
+
+
+## Pure query for testing: returns true if startup is not blocked and [param definition_id] exists as an ambient event definition in the bound catalog.
+func has_event_in_garden_catalog(definition_id: String) -> bool:
+	return not _is_blocked and not definition_id.is_empty() and _catalog != null and _catalog.has_event(definition_id)
+
+
+## Pure query for testing: returns the stage-aware visual accent color for the currently selected plant, or STAGE_ACCENT_INVALID if none selected or blocked.
+func get_selected_plant_stage_accent_color() -> Color:
+	if _is_blocked or _selected_runtime_instance_id.is_empty():
+		return PlantView.STAGE_ACCENT_INVALID
+	match _selected_plant_stage:
+		PlantGrowth.Stage.PLANTED:
+			return PlantView.STAGE_ACCENT_PLANTED
+		PlantGrowth.Stage.SPROUT:
+			return PlantView.STAGE_ACCENT_SPROUT
+		PlantGrowth.Stage.GROWING:
+			return PlantView.STAGE_ACCENT_GROWING
+		PlantGrowth.Stage.MATURE:
+			return PlantView.STAGE_ACCENT_MATURE
+		_:
+			return PlantView.STAGE_ACCENT_INVALID
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, the selected plant is growing, and has a positive countdown to MATURE.
+func has_selected_plant_countdown_to_mature() -> bool:
+	return is_selected_plant_growing() and _selected_plant_seconds_until_mature > 0
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, the selected plant is growing, and has a positive countdown to the next stage.
+func has_selected_plant_countdown_to_next_stage() -> bool:
+	return is_selected_plant_growing() and _selected_plant_seconds_until_next_stage > 0
+
+
+## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant has a positive harvest reward.
+func has_selected_plant_harvest_reward() -> bool:
+	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_harvest_reward > 0
+
+
+## Pure query for testing: returns total plant definitions in the bound catalog (0 if blocked/unbound).
+func get_total_catalog_plant_count_in_garden() -> int:
+	return _catalog.get_plant_count() if not _is_blocked and _catalog != null else 0
+
+
+## Pure query for testing: returns total visitor definitions in the bound catalog (0 if blocked/unbound).
+func get_total_catalog_visitor_count_in_garden() -> int:
+	return _catalog.get_visitor_count() if not _is_blocked and _catalog != null else 0
+
+
+## Pure query for testing: returns total decoration definitions in the bound catalog (0 if blocked/unbound).
+func get_total_catalog_decoration_count_in_garden() -> int:
+	return _catalog.get_decoration_count() if not _is_blocked and _catalog != null else 0
+
+
+## Pure query for testing: returns total ambient event definitions in the bound catalog (0 if blocked/unbound).
+func get_total_catalog_event_count_in_garden() -> int:
+	return _catalog.get_event_count() if not _is_blocked and _catalog != null else 0
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all plants in the bound catalog, or [] if blocked/unbound.
+func get_all_catalog_plant_ids_in_garden() -> Array[String]:
+	return _catalog.get_all_plant_ids() if not _is_blocked and _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all visitors in the bound catalog, or [] if blocked/unbound.
+func get_all_catalog_visitor_ids_in_garden() -> Array[String]:
+	return _catalog.get_all_visitor_ids() if not _is_blocked and _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all decorations in the bound catalog, or [] if blocked/unbound.
+func get_all_catalog_decoration_ids_in_garden() -> Array[String]:
+	return _catalog.get_all_decoration_ids() if not _is_blocked and _catalog != null else []
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of all ambient events in the bound catalog, or [] if blocked/unbound.
+func get_all_catalog_event_ids_in_garden() -> Array[String]:
+	return _catalog.get_all_event_ids() if not _is_blocked and _catalog != null else []
+
+
+## Pure query for testing: returns true if startup is not blocked, a catalog is bound, and all catalog plant species are currently planted in the latest snapshot.
+func is_all_catalog_plant_species_present_in_garden() -> bool:
+	var total: int = get_total_catalog_plant_count_in_garden()
+	return total > 0 and get_distinct_planted_species_count() >= total
+
+
+## Pure query for testing: returns true if startup is not blocked, a catalog is bound, and all catalog decoration species are currently placed in the latest snapshot.
+func is_all_catalog_decoration_species_present_in_garden() -> bool:
+	var total: int = get_total_catalog_decoration_count_in_garden()
+	return total > 0 and get_distinct_placed_decoration_species_count() >= total
+
+
+## Pure query for testing: returns localized Thai display names for all plants in the bound catalog in deterministic catalog order, or [] if blocked/unbound.
+func get_all_catalog_plant_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_catalog_plant_ids_in_garden():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all visitors in the bound catalog in deterministic catalog order, or [] if blocked/unbound.
+func get_all_catalog_visitor_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_catalog_visitor_ids_in_garden():
+		result.append(get_visitor_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all decorations in the bound catalog in deterministic catalog order, or [] if blocked/unbound.
+func get_all_catalog_decoration_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_catalog_decoration_ids_in_garden():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all ambient events in the bound catalog in deterministic catalog order, or [] if blocked/unbound.
+func get_all_catalog_event_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_all_catalog_event_ids_in_garden():
+		result.append(get_event_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of catalog plants that are NOT currently planted in the latest snapshot, or [] if blocked/unbound.
+func get_unplanted_catalog_plant_ids_in_garden() -> Array[String]:
+	if _is_blocked or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if not is_plant_definition_present_in_garden(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of catalog decorations that are NOT currently placed in the latest snapshot, or [] if blocked/unbound.
+func get_unplaced_catalog_decoration_ids_in_garden() -> Array[String]:
+	if _is_blocked or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if not is_decoration_definition_present_in_garden(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns count of catalog plant species that are NOT currently planted in the latest snapshot (0 if blocked/unbound).
+func get_unplanted_catalog_plant_count_in_garden() -> int:
+	return get_unplanted_catalog_plant_ids_in_garden().size()
+
+
+## Pure query for testing: returns count of catalog decoration species that are NOT currently placed in the latest snapshot (0 if blocked/unbound).
+func get_unplaced_catalog_decoration_count_in_garden() -> int:
+	return get_unplaced_catalog_decoration_ids_in_garden().size()
+
+
+## Pure query for testing: returns true if startup is not blocked and at least one catalog plant species is NOT currently planted in the latest snapshot.
+func has_any_unplanted_catalog_plants_in_garden() -> bool:
+	return get_unplanted_catalog_plant_count_in_garden() > 0
+
+
+## Pure query for testing: returns true if startup is not blocked and at least one catalog decoration species is NOT currently placed in the latest snapshot.
+func has_any_unplaced_catalog_decorations_in_garden() -> bool:
+	return get_unplaced_catalog_decoration_count_in_garden() > 0
+
+
+## Pure query for testing: returns localized Thai display names for catalog plants that are NOT currently planted in the latest snapshot in deterministic catalog order, or [] if blocked/unbound.
+func get_unplanted_catalog_plant_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplanted_catalog_plant_ids_in_garden():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for catalog decorations that are NOT currently placed in the latest snapshot in deterministic catalog order, or [] if blocked/unbound.
+func get_unplaced_catalog_decoration_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplaced_catalog_decoration_ids_in_garden():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of catalog visitors that are NOT currently eligible in the latest refresh, or [] if blocked/unbound.
+func get_ineligible_catalog_visitor_ids_in_garden() -> Array[String]:
+	if _is_blocked or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for vid: String in _catalog.get_all_visitor_ids():
+		if not is_visitor_currently_eligible(vid):
+			result.append(vid)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of catalog ambient events that are NOT currently eligible in the latest refresh, or [] if blocked/unbound.
+func get_ineligible_catalog_event_ids_in_garden() -> Array[String]:
+	if _is_blocked or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for eid: String in _catalog.get_all_event_ids():
+		if not is_event_currently_eligible(eid):
+			result.append(eid)
+	return result
+
+
+## Pure query for testing: returns count of catalog visitors that are NOT currently eligible in the latest refresh (0 if blocked/unbound).
+func get_ineligible_catalog_visitor_count_in_garden() -> int:
+	return get_ineligible_catalog_visitor_ids_in_garden().size()
+
+
+## Pure query for testing: returns count of catalog ambient events that are NOT currently eligible in the latest refresh (0 if blocked/unbound).
+func get_ineligible_catalog_event_count_in_garden() -> int:
+	return get_ineligible_catalog_event_ids_in_garden().size()
+
+
+## Pure query for testing: returns true if startup is not blocked and at least one catalog visitor is NOT currently eligible in the latest refresh.
+func has_any_ineligible_catalog_visitors_in_garden() -> bool:
+	return get_ineligible_catalog_visitor_count_in_garden() > 0
+
+
+## Pure query for testing: returns true if startup is not blocked and at least one catalog ambient event is NOT currently eligible in the latest refresh.
+func has_any_ineligible_catalog_events_in_garden() -> bool:
+	return get_ineligible_catalog_event_count_in_garden() > 0
+
+
+## Pure query for testing: returns localized Thai display names for catalog visitors that are NOT currently eligible in the latest refresh in deterministic catalog order, or [] if blocked/unbound.
+func get_ineligible_catalog_visitor_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for vid: String in get_ineligible_catalog_visitor_ids_in_garden():
+		result.append(get_visitor_display_name_for_id(vid))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for catalog ambient events that are NOT currently eligible in the latest refresh in deterministic catalog order, or [] if blocked/unbound.
+func get_ineligible_catalog_event_display_names_in_garden() -> Array[String]:
+	var result: Array[String] = []
+	for eid: String in get_ineligible_catalog_event_ids_in_garden():
+		result.append(get_event_display_name_for_id(eid))
+	return result

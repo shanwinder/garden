@@ -24,13 +24,33 @@ const PROVISIONAL_PLANT_DISPLAY_NAMES: Dictionary = {
 	"plant.banana": "กล้วย",
 }
 
+const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
+	"dense_vegetation": "พุ่มไม้หนาแน่น",
+	"flower": "ดอกไม้",
+	"food": "พืชอาหาร",
+	"fruit": "ผลไม้",
+	"light": "แสงไฟ",
+	"perch": "กิ่งไม้เกาะพัก",
+	"shade": "ร่มเงา",
+	"shelter": "ที่หลบพัก",
+	"water": "แหล่งน้ำ",
+}
+
+const STAGE_ACCENT_PLANTED: Color = Color(0.82, 0.74, 0.58, 1.0)
+const STAGE_ACCENT_SPROUT: Color = Color(0.62, 0.88, 0.64, 1.0)
+const STAGE_ACCENT_GROWING: Color = Color(0.48, 0.86, 0.56, 1.0)
+const STAGE_ACCENT_MATURE: Color = Color(0.96, 0.84, 0.38, 1.0)
+const STAGE_ACCENT_INVALID: Color = Color(0.75, 0.70, 0.70, 1.0)
+
 var _runtime_instance_id: String = ""
 var _definition_id: String = ""
 var _display_name: String = ""
 var _planted_at: int = 0
 var _stage: PlantGrowth.Stage = PlantGrowth.Stage.INVALID
 var _harvest_reward: int = 0
+var _seconds_until_next_stage: int = -1
 var _seconds_until_mature: int = -1
+var _environmental_traits: Array[String] = []
 var _is_selected: bool = false
 
 var _name_label: Label = null
@@ -72,7 +92,9 @@ func bind_plant_data(
 	stage: PlantGrowth.Stage,
 	planted_at: int,
 	harvest_reward: int = 0,
-	seconds_until_mature: int = -1
+	seconds_until_mature: int = -1,
+	environmental_traits: Array[String] = [],
+	seconds_until_next_stage: int = -1
 ) -> void:
 	_runtime_instance_id = runtime_instance_id
 	_definition_id = definition_id
@@ -81,6 +103,12 @@ func bind_plant_data(
 	_planted_at = planted_at
 	_harvest_reward = maxi(0, harvest_reward)
 	_seconds_until_mature = seconds_until_mature
+	_environmental_traits = environmental_traits.duplicate()
+	_seconds_until_next_stage = (
+		0
+		if stage == PlantGrowth.Stage.MATURE
+		else seconds_until_next_stage
+	)
 	_render()
 
 
@@ -119,9 +147,413 @@ func get_seconds_until_mature() -> int:
 	return _seconds_until_mature
 
 
+## Pure query for the bound remaining seconds until the next growth stage (-1 if not set, 0 if MATURE).
+func get_seconds_until_next_stage() -> int:
+	return _seconds_until_next_stage
+
+
+## Pure query returning true if this plant view is at an active growing stage (PLANTED, SPROUT, or GROWING).
+func is_growing_stage() -> bool:
+	return (
+		_stage == PlantGrowth.Stage.PLANTED
+		or _stage == PlantGrowth.Stage.SPROUT
+		or _stage == PlantGrowth.Stage.GROWING
+	)
+
+
+## Pure query returning a defensive copy of the bound environmental traits.
+func get_environmental_traits() -> Array[String]:
+	return _environmental_traits.duplicate()
+
+
+## Pure query returning localized Thai environmental traits summary, or "" if empty.
+func get_traits_summary_text() -> String:
+	if _environmental_traits.is_empty():
+		return ""
+	var parts: PackedStringArray = PackedStringArray()
+	for trait_id: String in _environmental_traits:
+		parts.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return ", ".join(parts)
+
+
+## Pure query returning the rendered instance ID & traits subtitle label text.
+func get_instance_id_label_text() -> String:
+	_resolve_nodes()
+	return _id_label.text if _id_label != null else ""
+
+
+## Pure query returning the stage-aware visual accent color for the current growth stage.
+func get_stage_accent_color() -> Color:
+	match _stage:
+		PlantGrowth.Stage.PLANTED:
+			return STAGE_ACCENT_PLANTED
+		PlantGrowth.Stage.SPROUT:
+			return STAGE_ACCENT_SPROUT
+		PlantGrowth.Stage.GROWING:
+			return STAGE_ACCENT_GROWING
+		PlantGrowth.Stage.MATURE:
+			return STAGE_ACCENT_MATURE
+		_:
+			return STAGE_ACCENT_INVALID
+
+
+## Pure query returning true if this plant view is at PLANTED stage.
+func is_planted_stage() -> bool:
+	return _stage == PlantGrowth.Stage.PLANTED
+
+
+## Pure query returning true if this plant view is at SPROUT stage.
+func is_sprout_stage() -> bool:
+	return _stage == PlantGrowth.Stage.SPROUT
+
+
+## Pure query returning true if this plant view is at GROWING stage.
+func is_growing_phase_stage() -> bool:
+	return _stage == PlantGrowth.Stage.GROWING
+
+
+## Pure query returning true if this plant view is at MATURE stage.
+func is_mature_stage() -> bool:
+	return _stage == PlantGrowth.Stage.MATURE
+
+
+## Pure query returning true if this plant view has a valid (non-INVALID) growth stage.
+func is_valid_stage() -> bool:
+	return _stage != PlantGrowth.Stage.INVALID
+
+
 ## Pure query returning true if this plant view is at MATURE stage with a positive harvest reward.
 func is_ready_to_harvest() -> bool:
 	return _stage == PlantGrowth.Stage.MATURE and _harvest_reward > 0
+
+
+## Pure query returning true if [param trait_id] is present in the bound environmental traits.
+func has_environmental_trait(trait_id: String) -> bool:
+	return not trait_id.is_empty() and _environmental_traits.has(trait_id)
+
+
+## Pure query returning the count of bound environmental traits.
+func get_environmental_trait_count() -> int:
+	return _environmental_traits.size()
+
+
+## Pure query returning true if this plant view has at least one bound environmental trait.
+func has_any_environmental_traits() -> bool:
+	return not _environmental_traits.is_empty()
+
+
+## Pure query returning true if this plant view has a positive harvest reward.
+func has_harvest_reward() -> bool:
+	return _harvest_reward > 0
+
+
+## Pure query returning true if this plant view is at an active growing stage with a positive countdown to MATURE.
+func has_countdown_to_mature() -> bool:
+	return is_growing_stage() and _seconds_until_mature > 0
+
+
+## Pure query returning true if this plant view is at an active growing stage with a positive countdown to the next stage.
+func has_countdown_to_next_stage() -> bool:
+	return is_growing_stage() and _seconds_until_next_stage > 0
+
+
+## Pure query returning true if a non-empty runtime_instance_id is bound.
+func has_runtime_instance_id() -> bool:
+	return not _runtime_instance_id.is_empty()
+
+
+## Pure query returning true if a non-empty definition_id is bound.
+func has_definition_id() -> bool:
+	return not _definition_id.is_empty()
+
+
+## Pure query returning true if a non-empty display name is bound.
+func has_display_name() -> bool:
+	return not _display_name.is_empty()
+
+
+## Pure query returning true if this plant view has bound runtime_instance_id, definition_id, and a valid growth stage.
+func is_bound() -> bool:
+	return (
+		not _runtime_instance_id.is_empty()
+		and not _definition_id.is_empty()
+		and _stage != PlantGrowth.Stage.INVALID
+	)
+
+
+## Pure query returning true if this plant view is at INVALID growth stage.
+func is_invalid_stage() -> bool:
+	return _stage == PlantGrowth.Stage.INVALID
+
+
+## Pure query returning true if a positive planted_at timestamp is bound.
+func has_planted_timestamp() -> bool:
+	return _planted_at > 0
+
+
+## Pure query returning true if the bound definition_id is in the provisional localized plant display dictionary.
+func is_known_plant_definition() -> bool:
+	return not _definition_id.is_empty() and PROVISIONAL_PLANT_DISPLAY_NAMES.has(_definition_id)
+
+
+## Pure query returning true if the selection highlight node is currently visible.
+func is_selection_highlight_visible() -> bool:
+	_resolve_nodes()
+	return _selection_highlight != null and _selection_highlight.visible
+
+
+## Pure query returning true if [param trait_id] is in the provisional localized trait display dictionary.
+func is_known_environmental_trait(trait_id: String) -> bool:
+	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+
+
+## Pure query returning true if the touch button is present and not disabled.
+func is_touch_button_enabled() -> bool:
+	_resolve_nodes()
+	return _touch_button != null and not _touch_button.disabled
+
+
+## Pure query returning true if the rendered instance ID / traits subtitle label is non-empty.
+func has_instance_id_label_text() -> bool:
+	return not get_instance_id_label_text().is_empty()
+
+
+## Pure query returning true if the rendered traits summary text is non-empty.
+func has_traits_summary_text() -> bool:
+	return not get_traits_summary_text().is_empty()
+
+
+## Pure query returning true if the rendered plant name label text is non-empty and not the placeholder "—".
+func has_name_label_text() -> bool:
+	var txt: String = get_name_label_text()
+	return not txt.is_empty() and txt != "—"
+
+
+## Pure query returning true if the rendered stage label text is non-empty.
+func has_stage_label_text() -> bool:
+	return not get_stage_label_text().is_empty()
+
+
+## Pure query returning true if the rendered stage badge text is non-empty.
+func has_stage_badge_text() -> bool:
+	return not get_stage_badge_text().is_empty()
+
+
+## Pure query returning the localized Thai display name for [param trait_id], or "" if empty.
+func get_trait_display_name_for_id(trait_id: String) -> String:
+	if trait_id.is_empty():
+		return ""
+	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+
+
+## Pure query returning the localized Thai display name for [param definition_id], or "" if empty.
+func get_plant_display_name_for_id(definition_id: String) -> String:
+	if definition_id.is_empty():
+		return ""
+	return PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query returning true if [param definition_id] is in the provisional localized plant display dictionary.
+func is_known_plant_definition_id(definition_id: String) -> bool:
+	return not definition_id.is_empty() and PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+
+
+## Pure query returning localized Thai display names for all bound environmental traits in order.
+func get_bound_trait_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in _environmental_traits:
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query returning the canonical localized Thai display name for the bound growth stage.
+func get_stage_display_name() -> String:
+	return get_stage_display_name_for_stage(_stage)
+
+
+## Pure query returning the canonical localized Thai display name for [param stage].
+func get_stage_display_name_for_stage(stage: PlantGrowth.Stage) -> String:
+	match stage:
+		PlantGrowth.Stage.PLANTED:
+			return "เพาะเมล็ด"
+		PlantGrowth.Stage.SPROUT:
+			return "ต้นกล้า"
+		PlantGrowth.Stage.GROWING:
+			return "กำลังโต"
+		PlantGrowth.Stage.MATURE:
+			return "โตเต็มที่"
+		_:
+			return "ไม่ทราบสถานะ"
+
+
+## Pure query returning the stage-aware visual accent color for [param stage].
+func get_stage_accent_color_for_stage(stage: PlantGrowth.Stage) -> Color:
+	match stage:
+		PlantGrowth.Stage.PLANTED:
+			return STAGE_ACCENT_PLANTED
+		PlantGrowth.Stage.SPROUT:
+			return STAGE_ACCENT_SPROUT
+		PlantGrowth.Stage.GROWING:
+			return STAGE_ACCENT_GROWING
+		PlantGrowth.Stage.MATURE:
+			return STAGE_ACCENT_MATURE
+		_:
+			return STAGE_ACCENT_INVALID
+
+
+## Pure query returning true if at least one bound environmental trait is in the provisional localized trait display dictionary.
+func has_known_environmental_trait() -> bool:
+	for trait_id: String in _environmental_traits:
+		if is_known_environmental_trait(trait_id):
+			return true
+	return false
+
+
+## Pure query returning true if this plant view has at least one bound environmental trait and all bound traits are in the provisional localized trait display dictionary.
+func is_all_bound_traits_known() -> bool:
+	if _environmental_traits.is_empty():
+		return false
+	for trait_id: String in _environmental_traits:
+		if not is_known_environmental_trait(trait_id):
+			return false
+	return true
+
+
+## Pure query returning bound environmental trait IDs that are in the provisional localized trait display dictionary in order.
+func get_known_bound_trait_ids() -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in _environmental_traits:
+		if is_known_environmental_trait(trait_id):
+			result.append(trait_id)
+	return result
+
+
+## Pure query returning bound environmental trait IDs that are NOT in the provisional localized trait display dictionary in order.
+func get_unknown_bound_trait_ids() -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in _environmental_traits:
+		if not is_known_environmental_trait(trait_id):
+			result.append(trait_id)
+	return result
+
+
+## Pure query returning count of bound environmental traits that are in the provisional localized trait display dictionary.
+func get_known_bound_trait_count() -> int:
+	return get_known_bound_trait_ids().size()
+
+
+## Pure query returning true if [param stage] is an active growing stage (PLANTED, SPROUT, or GROWING).
+func is_stage_growing_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return (
+		stage == PlantGrowth.Stage.PLANTED
+		or stage == PlantGrowth.Stage.SPROUT
+		or stage == PlantGrowth.Stage.GROWING
+	)
+
+
+## Pure query returning count of bound environmental traits that are NOT in the provisional localized trait display dictionary.
+func get_unknown_bound_trait_count() -> int:
+	return get_unknown_bound_trait_ids().size()
+
+
+## Pure query returning true if at least one bound environmental trait is NOT in the provisional localized trait display dictionary.
+func has_unknown_environmental_trait() -> bool:
+	return get_unknown_bound_trait_count() > 0
+
+
+## Pure query returning localized Thai display names for bound environmental traits that are in the provisional localized trait display dictionary in order.
+func get_known_bound_trait_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_known_bound_trait_ids():
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query returning true if [param stage] is a valid (non-INVALID) growth stage.
+func is_stage_valid_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return (
+		stage == PlantGrowth.Stage.PLANTED
+		or stage == PlantGrowth.Stage.SPROUT
+		or stage == PlantGrowth.Stage.GROWING
+		or stage == PlantGrowth.Stage.MATURE
+	)
+
+
+## Pure query returning true if [param stage] is MATURE stage.
+func is_stage_mature_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return stage == PlantGrowth.Stage.MATURE
+
+
+## Pure query returning fallback display names for bound environmental traits that are NOT in the provisional localized trait display dictionary in order.
+func get_unknown_bound_trait_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_unknown_bound_trait_ids():
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query returning true if [param stage] is PLANTED stage.
+func is_stage_planted_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return stage == PlantGrowth.Stage.PLANTED
+
+
+## Pure query returning true if [param stage] is SPROUT stage.
+func is_stage_sprout_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return stage == PlantGrowth.Stage.SPROUT
+
+
+## Pure query returning true if [param stage] is GROWING stage.
+func is_stage_growing_phase_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return stage == PlantGrowth.Stage.GROWING
+
+
+## Pure query returning true if [param stage] is NOT a valid growth stage (i.e. INVALID or unrecognized).
+func is_stage_invalid_for_stage(stage: PlantGrowth.Stage) -> bool:
+	return not is_stage_valid_for_stage(stage)
+
+
+## Pure query returning true if [param definition_id] is in the provisional localized plant display dictionary and maps to a non-empty display name.
+func has_known_plant_display_name_for_id(definition_id: String) -> bool:
+	return is_known_plant_definition_id(definition_id) and not get_plant_display_name_for_id(definition_id).is_empty()
+
+
+## Pure query returning true if [param trait_id] is in the provisional localized trait display dictionary and maps to a non-empty display name.
+func has_known_trait_display_name_for_id(trait_id: String) -> bool:
+	return is_known_environmental_trait(trait_id) and not get_trait_display_name_for_id(trait_id).is_empty()
+
+
+## Pure query returning deterministic sorted environmental trait IDs from the provisional localized trait display dictionary.
+func get_known_trait_ids_in_dictionary() -> Array[String]:
+	var result: Array[String] = []
+	for key: Variant in PROVISIONAL_TRAIT_DISPLAY_NAMES.keys():
+		result.append(String(key))
+	result.sort()
+	return result
+
+
+## Pure query returning deterministic sorted plant definition IDs from the provisional localized plant display dictionary.
+func get_known_plant_definition_ids_in_dictionary() -> Array[String]:
+	var result: Array[String] = []
+	for key: Variant in PROVISIONAL_PLANT_DISPLAY_NAMES.keys():
+		result.append(String(key))
+	result.sort()
+	return result
+
+
+## Pure query returning count of environmental traits in the provisional localized trait display dictionary.
+func get_known_trait_count_in_dictionary() -> int:
+	return PROVISIONAL_TRAIT_DISPLAY_NAMES.size()
+
+
+## Pure query returning count of plant definitions in the provisional localized plant display dictionary.
+func get_known_plant_definition_count_in_dictionary() -> int:
+	return PROVISIONAL_PLANT_DISPLAY_NAMES.size()
+
+
+## Pure query for the rendered plant name label text.
+func get_name_label_text() -> String:
+	_resolve_nodes()
+	return _name_label.text if _name_label != null else ""
 
 
 ## Pure query for the rendered stage label text.
@@ -163,7 +595,17 @@ func _render() -> void:
 		return
 
 	_name_label.text = _display_name if not _display_name.is_empty() else "—"
-	_id_label.text = "ID: %s" % _runtime_instance_id if not _runtime_instance_id.is_empty() else ""
+	if _runtime_instance_id.is_empty():
+		_id_label.text = ""
+	else:
+		var traits_summary: String = get_traits_summary_text()
+		if not traits_summary.is_empty():
+			_id_label.text = "ID: %s | คุณสมบัติ: %s" % [_runtime_instance_id, traits_summary]
+		else:
+			_id_label.text = "ID: %s" % _runtime_instance_id
+
+	if _stage_badge != null:
+		_stage_badge.add_theme_color_override("font_color", get_stage_accent_color())
 
 	match _stage:
 		PlantGrowth.Stage.PLANTED:

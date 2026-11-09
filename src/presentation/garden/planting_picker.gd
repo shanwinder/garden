@@ -201,20 +201,32 @@ func select_plant_definition(definition_id: String) -> void:
 	var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
 	var def: PlantDefinition = _catalog.get_plant(definition_id)
 	if _confirm_prompt_label != null:
+		var prompt_text: String = "เพิ่มต้น%sลงในสวนหรือไม่?" % thai_name
 		if def != null and (def.mature_after_seconds > 0 or def.harvest_reward > 0):
+			var prompt_parts: PackedStringArray = PackedStringArray()
+			prompt_parts.append("โตเต็มที่ %d วินาที" % def.mature_after_seconds)
+			prompt_parts.append("รางวัล +%d เหรียญ" % def.harvest_reward)
 			var traits_summary: String = _format_traits_summary(def)
 			if not traits_summary.is_empty():
-				_confirm_prompt_label.text = (
-					"เพิ่มต้น%sลงในสวนหรือไม่? (โตเต็มที่ %d วินาที | รางวัล +%d เหรียญ | คุณสมบัติ: %s)"
-					% [thai_name, def.mature_after_seconds, def.harvest_reward, traits_summary]
+				prompt_parts.append("คุณสมบัติ: %s" % traits_summary)
+			if _snapshot != null:
+				prompt_parts.append(
+					"ปลูกแล้ว %d ต้น"
+					% _snapshot.get_plant_count_for_definition(definition_id)
 				)
-			else:
-				_confirm_prompt_label.text = (
-					"เพิ่มต้น%sลงในสวนหรือไม่? (โตเต็มที่ %d วินาที | รางวัล +%d เหรียญ)"
-					% [thai_name, def.mature_after_seconds, def.harvest_reward]
-				)
-		else:
-			_confirm_prompt_label.text = "เพิ่มต้น%sลงในสวนหรือไม่?" % thai_name
+			prompt_text = "เพิ่มต้น%sลงในสวนหรือไม่? (%s)" % [thai_name, " | ".join(prompt_parts)]
+		elif _snapshot != null:
+			prompt_text = (
+				"เพิ่มต้น%sลงในสวนหรือไม่? (ปลูกแล้ว %d ต้น)"
+				% [thai_name, _snapshot.get_plant_count_for_definition(definition_id)]
+			)
+		if _journal != null:
+			prompt_text += (
+				" [ค้นพบแล้ว]"
+				if _journal.has_discovered(definition_id)
+				else " [พันธุ์ใหม่]"
+			)
+		_confirm_prompt_label.text = prompt_text
 
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = true
@@ -373,3 +385,460 @@ func get_plant_traits_for_id(definition_id: String) -> Array[String]:
 		return []
 	var def: PlantDefinition = _catalog.get_plant(definition_id)
 	return def.environmental_traits.duplicate() if def != null else []
+
+
+## Pure query for testing: returns mature_after_seconds for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_mature_after_seconds_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.mature_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns harvest_reward for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_harvest_reward_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.harvest_reward) if def != null else 0
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of plants currently planted in the bound GardenSnapshot.
+func get_planted_plant_ids() -> Array[String]:
+	if _catalog == null or _snapshot == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _snapshot.get_plant_count_for_definition(def_id) > 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of plants not currently planted in the bound GardenSnapshot.
+func get_unplanted_plant_ids() -> Array[String]:
+	if _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if _snapshot == null or _snapshot.get_plant_count_for_definition(def_id) <= 0:
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns true if [param definition_id] is currently planted in the bound GardenSnapshot.
+func is_plant_currently_planted(definition_id: String) -> bool:
+	return _snapshot != null and _snapshot.get_plant_count_for_definition(definition_id) > 0
+
+
+## Pure query for testing: returns sprout_after_seconds for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_sprout_after_seconds_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.sprout_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns growing_after_seconds for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_growing_after_seconds_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return 0
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return maxi(0, def.growing_after_seconds) if def != null else 0
+
+
+## Pure query for testing: returns count of distinct plant definitions currently planted in the bound GardenSnapshot.
+func get_planted_species_count() -> int:
+	return get_planted_plant_ids().size()
+
+
+## Pure query for testing: returns count of discovered plant definitions in the bound JournalState.
+func get_discovered_plant_count() -> int:
+	return get_discovered_plant_ids().size()
+
+
+## Pure query for testing: returns total planted instances across all species in the bound GardenSnapshot, or 0.
+func get_total_planted_instance_count() -> int:
+	return _snapshot.get_total_plant_count() if _snapshot != null else 0
+
+
+## Pure query for testing: returns count of undiscovered plant definitions in the bound JournalState.
+func get_undiscovered_plant_count() -> int:
+	return get_undiscovered_plant_ids().size()
+
+
+## Pure query for testing: returns count of distinct plant definitions not currently planted in the bound GardenSnapshot.
+func get_unplanted_species_count() -> int:
+	return get_unplanted_plant_ids().size()
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and exposes [param trait_id].
+func has_plant_trait(definition_id: String, trait_id: String) -> bool:
+	if trait_id.is_empty() or _catalog == null or not _catalog.has_plant(definition_id):
+		return false
+	var def: PlantDefinition = _catalog.get_plant(definition_id)
+	return def != null and def.environmental_traits.has(trait_id)
+
+
+## Pure query for testing: returns deterministic catalog-ordered plant IDs that expose [param trait_id].
+func get_plant_ids_with_trait(trait_id: String) -> Array[String]:
+	if trait_id.is_empty() or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_plant_ids():
+		if has_plant_trait(def_id, trait_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns count of catalog plant definitions that expose [param trait_id].
+func get_plant_count_with_trait(trait_id: String) -> int:
+	return get_plant_ids_with_trait(trait_id).size()
+
+
+## Pure query for testing: returns total plant definitions in the bound catalog, or 0 if unbound.
+func get_total_catalog_plant_count() -> int:
+	return _catalog.get_plant_count() if _catalog != null else 0
+
+
+## Pure query for testing: returns true if all catalog plant definitions have been discovered in the bound JournalState.
+func is_all_plants_discovered() -> bool:
+	var total: int = get_total_catalog_plant_count()
+	return total > 0 and get_discovered_plant_count() >= total
+
+
+## Pure query for testing: returns true if all catalog plant definitions are currently planted in the bound GardenSnapshot.
+func is_all_plant_species_planted() -> bool:
+	var total: int = get_total_catalog_plant_count()
+	return total > 0 and get_planted_species_count() >= total
+
+
+## Pure query for testing: returns the localized Thai display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
+func get_plant_display_name_for_id(definition_id: String) -> String:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return ""
+	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns the count of environmental traits for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_plant_trait_count_for_id(definition_id: String) -> int:
+	return get_plant_traits_for_id(definition_id).size()
+
+
+## Pure query for testing: returns true if at least one plant is currently planted in the bound GardenSnapshot.
+func has_any_planted_plants() -> bool:
+	return get_total_planted_instance_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant has been discovered in the bound JournalState.
+func has_any_discovered_plants() -> bool:
+	return get_discovered_plant_count() > 0
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog.
+func has_plant_in_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_plant(definition_id)
+
+
+## Pure query for testing: returns true if at least one catalog plant is not yet discovered in the bound JournalState.
+func has_any_undiscovered_plants() -> bool:
+	return get_undiscovered_plant_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog plant species is not currently planted in the bound GardenSnapshot.
+func has_any_unplanted_plants() -> bool:
+	return get_unplanted_species_count() > 0
+
+
+## Pure query for testing: returns true if a ContentCatalog is bound to this picker.
+func has_bound_catalog() -> bool:
+	return _catalog != null
+
+
+## Pure query for testing: returns true if a GardenSnapshot is bound to this picker.
+func has_bound_snapshot() -> bool:
+	return _snapshot != null
+
+
+## Pure query for testing: returns true if a JournalState is bound to this picker.
+func has_bound_journal() -> bool:
+	return _journal != null
+
+
+## Pure query for testing: returns true if a plant definition is currently pending confirmation.
+func has_pending_selection() -> bool:
+	return not _pending_definition_id.is_empty()
+
+
+## Pure query for testing: returns true if a plant definition is currently pending confirmation and has been discovered in the bound JournalState.
+func is_pending_plant_discovered() -> bool:
+	return not _pending_definition_id.is_empty() and is_plant_discovered(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a plant definition is currently pending confirmation and has at least one planted instance in the bound GardenSnapshot.
+func is_pending_plant_currently_planted() -> bool:
+	return not _pending_definition_id.is_empty() and is_plant_currently_planted(_pending_definition_id)
+
+
+## Pure query for testing: returns current planted count for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_planted_count() -> int:
+	return get_planted_count_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns catalog harvest_reward for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_harvest_reward() -> int:
+	return get_harvest_reward_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns catalog mature_after_seconds for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_mature_after_seconds() -> int:
+	return get_mature_after_seconds_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns the localized Thai display name for the pending plant definition, or "" if none is pending.
+func get_pending_plant_display_name() -> String:
+	return get_plant_display_name_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns a defensive copy of environmental traits for the pending plant definition, or [] if none is pending.
+func get_pending_plant_traits() -> Array[String]:
+	return get_plant_traits_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else []
+
+
+## Pure query for testing: returns the count of environmental traits for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_trait_count() -> int:
+	return get_plant_trait_count_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and exposes at least one environmental trait.
+func has_pending_plant_any_traits() -> bool:
+	return get_pending_plant_trait_count() > 0
+
+
+## Pure query for testing: returns catalog sprout_after_seconds for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_sprout_after_seconds() -> int:
+	return get_sprout_after_seconds_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns catalog growing_after_seconds for the pending plant definition, or 0 if none is pending.
+func get_pending_plant_growing_after_seconds() -> int:
+	return get_growing_after_seconds_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and exposes [param trait_id].
+func has_pending_plant_trait(trait_id: String) -> bool:
+	return not _pending_definition_id.is_empty() and has_plant_trait(_pending_definition_id, trait_id)
+
+
+## Pure query for testing: returns formatted option button text for the pending plant definition, or "" if none is pending.
+func get_pending_plant_option_text() -> String:
+	return get_plant_option_text_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns the number of rendered plant option buttons.
+func get_plant_button_count() -> int:
+	return _plant_buttons.size()
+
+
+## Pure query for testing: returns true if the confirmation prompt label has non-empty text.
+func has_confirm_prompt_text() -> bool:
+	return not get_confirm_prompt_text().is_empty()
+
+
+## Pure query for testing: returns localized Thai traits summary string for [param definition_id] in the bound catalog, or "" if unknown/empty.
+func get_plant_traits_summary_for_id(definition_id: String) -> String:
+	if _catalog == null or not _catalog.has_plant(definition_id):
+		return ""
+	return _format_traits_summary(_catalog.get_plant(definition_id))
+
+
+## Pure query for testing: returns localized Thai traits summary string for the pending plant definition, or "" if none is pending.
+func get_pending_plant_traits_summary() -> String:
+	return get_plant_traits_summary_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns true if [param definition_id] is in the provisional localized plant display dictionary.
+func is_known_plant_definition(definition_id: String) -> bool:
+	return not definition_id.is_empty() and PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+
+
+## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+func is_known_environmental_trait(trait_id: String) -> bool:
+	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+
+
+## Pure query for testing: returns the localized Thai display name for [param trait_id], or "" if empty.
+func get_trait_display_name_for_id(trait_id: String) -> String:
+	if trait_id.is_empty():
+		return ""
+	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
+func get_plant_trait_display_names_for_id(definition_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_plant_traits_for_id(definition_id):
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of the pending plant definition, or [] if none is pending.
+func get_pending_plant_trait_display_names() -> Array[String]:
+	return get_plant_trait_display_names_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else []
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog exposes at least one environmental trait.
+func has_plant_any_traits(definition_id: String) -> bool:
+	return get_plant_trait_count_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns localized Thai display names for all catalog plants in deterministic catalog order, or [] if unbound.
+func get_available_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_available_plant_ids():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all currently planted catalog plants in deterministic catalog order, or [] if unbound.
+func get_planted_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_planted_plant_ids():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all unplanted catalog plants in deterministic catalog order, or [] if unbound.
+func get_unplanted_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplanted_plant_ids():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all discovered catalog plants in deterministic catalog order, or [] if unbound.
+func get_discovered_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_discovered_plant_ids():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all undiscovered catalog plants in deterministic catalog order, or [] if unbound.
+func get_undiscovered_plant_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_undiscovered_plant_ids():
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and is in the provisional localized plant display dictionary.
+func is_pending_plant_known_definition() -> bool:
+	return not _pending_definition_id.is_empty() and is_known_plant_definition(_pending_definition_id)
+
+
+## Pure query for testing: returns localized Thai display names for catalog plants that expose [param trait_id] in deterministic catalog order, or [] if empty/unbound.
+func get_plant_display_names_with_trait(trait_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_plant_ids_with_trait(trait_id):
+		result.append(get_plant_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns true if at least one catalog plant exposes [param trait_id].
+func has_any_plants_with_trait(trait_id: String) -> bool:
+	return get_plant_count_with_trait(trait_id) > 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and exists in the bound catalog.
+func is_pending_plant_in_catalog() -> bool:
+	return not _pending_definition_id.is_empty() and has_plant_in_catalog(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a positive harvest_reward.
+func has_pending_plant_harvest_reward() -> bool:
+	return get_pending_plant_harvest_reward() > 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a positive mature_after_seconds duration.
+func has_pending_plant_mature_duration() -> bool:
+	return get_pending_plant_mature_after_seconds() > 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has NOT yet been discovered in the bound JournalState.
+func is_pending_plant_undiscovered() -> bool:
+	return not _pending_definition_id.is_empty() and has_plant_in_catalog(_pending_definition_id) and not is_plant_discovered(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and is NOT currently planted in the bound GardenSnapshot.
+func is_pending_plant_unplanted() -> bool:
+	return not _pending_definition_id.is_empty() and has_plant_in_catalog(_pending_definition_id) and not is_plant_currently_planted(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a positive sprout_after_seconds duration.
+func has_pending_plant_sprout_duration() -> bool:
+	return get_pending_plant_sprout_after_seconds() > 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a positive growing_after_seconds duration.
+func has_pending_plant_growing_duration() -> bool:
+	return get_pending_plant_growing_after_seconds() > 0
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a non-empty localized traits summary string.
+func has_pending_plant_traits_summary() -> bool:
+	return not get_pending_plant_traits_summary().is_empty()
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a non-empty formatted option button text.
+func has_pending_plant_option_text() -> bool:
+	return not get_pending_plant_option_text().is_empty()
+
+
+## Pure query for testing: returns true if a plant definition is pending confirmation and has a non-empty localized display name.
+func has_pending_plant_display_name() -> bool:
+	return not get_pending_plant_display_name().is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty formatted option button text in the picker.
+func has_plant_option_text_for_id(definition_id: String) -> bool:
+	return not get_plant_option_text_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_plant_display_name_for_id(definition_id: String) -> bool:
+	return not get_plant_display_name_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty localized environmental traits summary in the bound catalog.
+func has_plant_traits_summary_for_id(definition_id: String) -> bool:
+	return not get_plant_traits_summary_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog has a positive harvest_reward (> 0).
+func has_plant_positive_harvest_reward_for_id(definition_id: String) -> bool:
+	return get_harvest_reward_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog has a positive mature_after_seconds duration (> 0).
+func has_plant_positive_mature_duration_for_id(definition_id: String) -> bool:
+	return get_mature_after_seconds_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog has a positive sprout_after_seconds duration (> 0).
+func has_plant_positive_sprout_duration_for_id(definition_id: String) -> bool:
+	return get_sprout_after_seconds_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog has a positive growing_after_seconds duration (> 0).
+func has_plant_positive_growing_duration_for_id(definition_id: String) -> bool:
+	return get_growing_after_seconds_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and has NOT yet been discovered in the bound JournalState.
+func is_plant_undiscovered(definition_id: String) -> bool:
+	return has_plant_in_catalog(definition_id) and not is_plant_discovered(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and is NOT currently planted in the bound GardenSnapshot.
+func is_plant_unplanted(definition_id: String) -> bool:
+	return has_plant_in_catalog(definition_id) and not is_plant_currently_planted(definition_id)

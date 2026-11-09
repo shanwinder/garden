@@ -197,16 +197,29 @@ func select_decoration_definition(definition_id: String) -> void:
 	var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
 	var traits_summary: String = _format_traits_summary(def)
 	if _confirm_prompt_label != null:
+		var prompt_parts: PackedStringArray = PackedStringArray()
+		prompt_parts.append("%d เหรียญ" % price_val)
 		if _has_currency_context:
-			_confirm_prompt_label.text = (
-				"ซื้อและวาง%s (%d เหรียญ | เหรียญที่มี: %d เหรียญ | คุณสมบัติ: %s) ลงในสวนหรือไม่?"
-				% [thai_name, price_val, _available_currency, traits_summary]
+			prompt_parts.append("เหรียญที่มี: %d เหรียญ" % _available_currency)
+		prompt_parts.append("คุณสมบัติ: %s" % traits_summary)
+		if _snapshot != null:
+			prompt_parts.append(
+				"วางแล้ว %d ชิ้น"
+				% _snapshot.get_decoration_count_for_definition(definition_id)
 			)
-		else:
-			_confirm_prompt_label.text = (
-				"ซื้อและวาง%s (%d เหรียญ | คุณสมบัติ: %s) ลงในสวนหรือไม่?"
-				% [thai_name, price_val, traits_summary]
+		var prompt_text: String = (
+			"ซื้อและวาง%s (%s) ลงในสวนหรือไม่?"
+			% [thai_name, " | ".join(prompt_parts)]
+		)
+		if _snapshot != null:
+			prompt_text += (
+				" [จัดวางแล้ว]"
+				if _snapshot.get_decoration_count_for_definition(definition_id) > 0
+				else " [ของตกแต่งใหม่]"
 			)
+		if _has_currency_context and _available_currency < price_val:
+			prompt_text += " [เหรียญไม่พอ]"
+		_confirm_prompt_label.text = prompt_text
 
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = true
@@ -391,3 +404,417 @@ func get_affordable_decoration_ids() -> Array[String]:
 		if can_afford_decoration(def_id):
 			result.append(def_id)
 	return result
+
+
+## Pure query for testing: returns deterministic catalog-ordered IDs of decorations unaffordable under the current currency context.
+func get_unaffordable_decoration_ids() -> Array[String]:
+	if _catalog == null or not _has_currency_context:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if not can_afford_decoration(def_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns the catalog price for [param definition_id], or -1 if unknown.
+func get_price_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return -1
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def.price if def != null else -1
+
+
+## Pure query for testing: returns count of distinct decoration definitions currently placed in the bound GardenSnapshot.
+func get_placed_decoration_species_count() -> int:
+	return get_placed_decoration_ids().size()
+
+
+## Pure query for testing: returns total placed decoration instances in the bound GardenSnapshot, or 0.
+func get_total_placed_decoration_count() -> int:
+	return _snapshot.get_total_decoration_count() if _snapshot != null else 0
+
+
+## Pure query for testing: returns count of catalog decorations affordable under the current currency context.
+func get_affordable_decoration_count() -> int:
+	return get_affordable_decoration_ids().size()
+
+
+## Pure query for testing: returns additional coins needed to afford [param definition_id] (0 if affordable or no currency context, -1 if unknown).
+func get_coins_needed_for_id(definition_id: String) -> int:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return -1
+	if not _has_currency_context:
+		return 0
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	if def == null:
+		return -1
+	return maxi(0, def.price - _available_currency)
+
+
+## Pure query for testing: returns count of distinct decoration definitions not yet placed in the bound GardenSnapshot.
+func get_unplaced_decoration_species_count() -> int:
+	return get_unplaced_decoration_ids().size()
+
+
+## Pure query for testing: returns count of catalog decorations unaffordable under the current currency context.
+func get_unaffordable_decoration_count() -> int:
+	return get_unaffordable_decoration_ids().size()
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and exposes [param trait_id].
+func has_decoration_trait(definition_id: String, trait_id: String) -> bool:
+	if trait_id.is_empty() or _catalog == null or not _catalog.has_decoration(definition_id):
+		return false
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	return def != null and def.environmental_traits.has(trait_id)
+
+
+## Pure query for testing: returns deterministic catalog-ordered decoration IDs that expose [param trait_id].
+func get_decoration_ids_with_trait(trait_id: String) -> Array[String]:
+	if trait_id.is_empty() or _catalog == null:
+		return []
+	var result: Array[String] = []
+	for def_id: String in _catalog.get_all_decoration_ids():
+		if has_decoration_trait(def_id, trait_id):
+			result.append(def_id)
+	return result
+
+
+## Pure query for testing: returns count of catalog decoration definitions that expose [param trait_id].
+func get_decoration_count_with_trait(trait_id: String) -> int:
+	return get_decoration_ids_with_trait(trait_id).size()
+
+
+## Pure query for testing: returns total decoration definitions in the bound catalog, or 0 if unbound.
+func get_total_catalog_decoration_count() -> int:
+	return _catalog.get_decoration_count() if _catalog != null else 0
+
+
+## Pure query for testing: returns true if all catalog decoration definitions are currently placed in the bound GardenSnapshot.
+func is_all_decoration_species_placed() -> bool:
+	var total: int = get_total_catalog_decoration_count()
+	return total > 0 and get_placed_decoration_species_count() >= total
+
+
+## Pure query for testing: returns true if all catalog decoration definitions are affordable under the current currency context.
+func is_all_decorations_affordable() -> bool:
+	var total: int = get_total_catalog_decoration_count()
+	return total > 0 and get_affordable_decoration_count() >= total
+
+
+## Pure query for testing: returns the localized Thai display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
+func get_decoration_display_name_for_id(definition_id: String) -> String:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return ""
+	return PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+
+
+## Pure query for testing: returns the count of environmental traits for [param definition_id] in the bound catalog, or 0 if unknown.
+func get_decoration_trait_count_for_id(definition_id: String) -> int:
+	return get_decoration_traits_for_id(definition_id).size()
+
+
+## Pure query for testing: returns true if at least one decoration is currently placed in the bound GardenSnapshot.
+func has_any_placed_decorations() -> bool:
+	return get_total_placed_decoration_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog decoration is affordable under the current currency context.
+func has_any_affordable_decorations() -> bool:
+	return get_affordable_decoration_count() > 0
+
+
+## Pure query for testing: returns true if an explicit currency context has been bound to the picker.
+func has_currency_context() -> bool:
+	return _has_currency_context
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog.
+func has_decoration_in_catalog(definition_id: String) -> bool:
+	return not definition_id.is_empty() and _catalog != null and _catalog.has_decoration(definition_id)
+
+
+## Pure query for testing: returns true if at least one catalog decoration species is not yet placed in the bound GardenSnapshot.
+func has_any_unplaced_decorations() -> bool:
+	return get_unplaced_decoration_species_count() > 0
+
+
+## Pure query for testing: returns true if at least one catalog decoration is unaffordable under the current currency context.
+func has_any_unaffordable_decorations() -> bool:
+	return get_unaffordable_decoration_count() > 0
+
+
+## Pure query for testing: returns true if a ContentCatalog is bound to this picker.
+func has_bound_catalog() -> bool:
+	return _catalog != null
+
+
+## Pure query for testing: returns true if a GardenSnapshot is bound to this picker.
+func has_bound_snapshot() -> bool:
+	return _snapshot != null
+
+
+## Pure query for testing: returns true if a decoration definition is currently pending confirmation.
+func has_pending_selection() -> bool:
+	return not _pending_definition_id.is_empty()
+
+
+## Pure query for testing: returns true if a decoration definition is currently pending confirmation and is placed in the bound GardenSnapshot.
+func is_pending_decoration_placed() -> bool:
+	return not _pending_definition_id.is_empty() and is_decoration_placed(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a decoration definition is currently pending confirmation and is affordable under the current currency context.
+func can_afford_pending_decoration() -> bool:
+	return not _pending_definition_id.is_empty() and can_afford_decoration(_pending_definition_id)
+
+
+## Pure query for testing: returns catalog price for the pending decoration definition, or -1 if none is pending.
+func get_pending_decoration_price() -> int:
+	return get_price_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else -1
+
+
+## Pure query for testing: returns placed count for the pending decoration definition, or 0 if none is pending.
+func get_pending_decoration_placed_count() -> int:
+	return get_placed_count_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns additional coins needed for the pending decoration definition, or -1 if none is pending.
+func get_pending_decoration_coins_needed() -> int:
+	return get_coins_needed_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else -1
+
+
+## Pure query for testing: returns the localized Thai display name for the pending decoration definition, or "" if none is pending.
+func get_pending_decoration_display_name() -> String:
+	return get_decoration_display_name_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns a defensive copy of environmental traits for the pending decoration definition, or [] if none is pending.
+func get_pending_decoration_traits() -> Array[String]:
+	return get_decoration_traits_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else []
+
+
+## Pure query for testing: returns the count of environmental traits for the pending decoration definition, or 0 if none is pending.
+func get_pending_decoration_trait_count() -> int:
+	return get_decoration_trait_count_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else 0
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and exposes at least one environmental trait.
+func has_pending_decoration_any_traits() -> bool:
+	return get_pending_decoration_trait_count() > 0
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and exposes [param trait_id].
+func has_pending_decoration_trait(trait_id: String) -> bool:
+	return not _pending_definition_id.is_empty() and has_decoration_trait(_pending_definition_id, trait_id)
+
+
+## Pure query for testing: returns formatted option button text for the pending decoration definition, or "" if none is pending.
+func get_pending_decoration_option_text() -> String:
+	return get_decoration_option_text_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns the number of rendered decoration option buttons.
+func get_decoration_button_count() -> int:
+	return _decoration_buttons.size()
+
+
+## Pure query for testing: returns true if the confirmation prompt label has non-empty text.
+func has_confirm_prompt_text() -> bool:
+	return not get_confirm_prompt_text().is_empty()
+
+
+## Pure query for testing: returns localized Thai traits summary string for [param definition_id] in the bound catalog, or "" if unknown/unbound.
+func get_decoration_traits_summary_for_id(definition_id: String) -> String:
+	if _catalog == null or not _catalog.has_decoration(definition_id):
+		return ""
+	return _format_traits_summary(_catalog.get_decoration(definition_id))
+
+
+## Pure query for testing: returns localized Thai traits summary string for the pending decoration definition, or "" if none is pending.
+func get_pending_decoration_traits_summary() -> String:
+	return get_decoration_traits_summary_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
+
+
+## Pure query for testing: returns true if [param definition_id] is in the provisional localized decoration display dictionary.
+func is_known_decoration_definition(definition_id: String) -> bool:
+	return not definition_id.is_empty() and PROVISIONAL_DECORATION_DISPLAY_NAMES.has(definition_id)
+
+
+## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+func is_known_environmental_trait(trait_id: String) -> bool:
+	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+
+
+## Pure query for testing: returns the localized Thai display name for [param trait_id], or "" if empty.
+func get_trait_display_name_for_id(trait_id: String) -> String:
+	if trait_id.is_empty():
+		return ""
+	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
+func get_decoration_trait_display_names_for_id(definition_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for trait_id: String in get_decoration_traits_for_id(definition_id):
+		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for environmental traits of the pending decoration definition, or [] if none is pending.
+func get_pending_decoration_trait_display_names() -> Array[String]:
+	return get_decoration_trait_display_names_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else []
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog exposes at least one environmental trait.
+func has_decoration_any_traits(definition_id: String) -> bool:
+	return get_decoration_trait_count_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns localized Thai display names for all catalog decorations in deterministic catalog order, or [] if unbound.
+func get_available_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_available_decoration_ids():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all currently placed catalog decorations in deterministic catalog order, or [] if unbound.
+func get_placed_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_placed_decoration_ids():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all unplaced catalog decorations in deterministic catalog order, or [] if unbound.
+func get_unplaced_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unplaced_decoration_ids():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all affordable catalog decorations in deterministic catalog order, or [] if unbound.
+func get_affordable_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_affordable_decoration_ids():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns localized Thai display names for all unaffordable catalog decorations in deterministic catalog order, or [] if unbound.
+func get_unaffordable_decoration_display_names() -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_unaffordable_decoration_ids():
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and is in the provisional localized decoration display dictionary.
+func is_pending_decoration_known_definition() -> bool:
+	return not _pending_definition_id.is_empty() and is_known_decoration_definition(_pending_definition_id)
+
+
+## Pure query for testing: returns localized Thai display names for catalog decorations that expose [param trait_id] in deterministic catalog order, or [] if empty/unbound.
+func get_decoration_display_names_with_trait(trait_id: String) -> Array[String]:
+	var result: Array[String] = []
+	for def_id: String in get_decoration_ids_with_trait(trait_id):
+		result.append(get_decoration_display_name_for_id(def_id))
+	return result
+
+
+## Pure query for testing: returns true if at least one catalog decoration exposes [param trait_id].
+func has_any_decorations_with_trait(trait_id: String) -> bool:
+	return get_decoration_count_with_trait(trait_id) > 0
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and exists in the bound catalog.
+func is_pending_decoration_in_catalog() -> bool:
+	return not _pending_definition_id.is_empty() and has_decoration_in_catalog(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and has a positive price.
+func has_pending_decoration_positive_price() -> bool:
+	return get_pending_decoration_price() > 0
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and is NOT affordable under the current currency context.
+func is_pending_decoration_unaffordable() -> bool:
+	return not _pending_definition_id.is_empty() and has_decoration_in_catalog(_pending_definition_id) and not can_afford_decoration(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and is NOT currently placed in the bound GardenSnapshot.
+func is_pending_decoration_unplaced() -> bool:
+	return not _pending_definition_id.is_empty() and has_decoration_in_catalog(_pending_definition_id) and not is_decoration_placed(_pending_definition_id)
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and requires additional coins (> 0) under the current currency context.
+func has_pending_decoration_coins_needed() -> bool:
+	return get_pending_decoration_coins_needed() > 0
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and has a non-empty localized traits summary string.
+func has_pending_decoration_traits_summary() -> bool:
+	return not get_pending_decoration_traits_summary().is_empty()
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and has a non-empty formatted option button text.
+func has_pending_decoration_option_text() -> bool:
+	return not get_pending_decoration_option_text().is_empty()
+
+
+## Pure query for testing: returns true if a decoration definition is pending confirmation and has a non-empty localized display name.
+func has_pending_decoration_display_name() -> bool:
+	return not get_pending_decoration_display_name().is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty formatted option button text in the picker.
+func has_decoration_option_text_for_id(definition_id: String) -> bool:
+	return not get_decoration_option_text_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty localized display name in the bound catalog.
+func has_decoration_display_name_for_id(definition_id: String) -> bool:
+	return not get_decoration_display_name_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] has a non-empty localized environmental traits summary in the bound catalog.
+func has_decoration_traits_summary_for_id(definition_id: String) -> bool:
+	return not get_decoration_traits_summary_for_id(definition_id).is_empty()
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog has a positive price (> 0).
+func has_decoration_positive_price_for_id(definition_id: String) -> bool:
+	return get_price_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] in the bound catalog requires additional coins (> 0) under the current currency context.
+func has_decoration_coins_needed_for_id(definition_id: String) -> bool:
+	return get_coins_needed_for_id(definition_id) > 0
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and is NOT currently placed in the bound GardenSnapshot.
+func is_decoration_unplaced(definition_id: String) -> bool:
+	return has_decoration_in_catalog(definition_id) and not is_decoration_placed(definition_id)
+
+
+## Pure query for testing: returns true if [param definition_id] exists in the bound catalog and is NOT affordable under the current currency context.
+func is_decoration_unaffordable(definition_id: String) -> bool:
+	return _has_currency_context and has_decoration_in_catalog(definition_id) and not can_afford_decoration(definition_id)
+
+
+## Pure query for testing: returns true if at least one decoration definition exists in the bound catalog.
+func has_available_decorations() -> bool:
+	return get_total_catalog_decoration_count() > 0
+
+
+## Pure query for testing: returns true if at least one decoration option button is rendered in the picker.
+func has_rendered_decoration_buttons() -> bool:
+	return get_decoration_button_count() > 0
+
+
+## Pure query for testing: returns true if an explicit currency context is bound with a positive available currency balance (> 0).
+func has_positive_available_currency() -> bool:
+	return _has_currency_context and _available_currency > 0
