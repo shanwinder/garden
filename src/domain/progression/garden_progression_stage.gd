@@ -190,6 +190,11 @@ static func evaluate(
 		journal
 	)
 	var ftue_step: FtueStep = FtueEvaluator.evaluate(snapshot, journal, currency)
+	var pacing_milestone: DiscoveryPacingMilestone = DiscoveryPacingEvaluator.evaluate_active_milestone(
+		snapshot,
+		journal,
+		day_number
+	)
 
 	return GardenProgressionSummary.new(
 		current_stage,
@@ -200,5 +205,6 @@ static func evaluate(
 		remaining,
 		guidance,
 		daily_items,
-		ftue_step
+		ftue_step,
+		pacing_milestone
 	)

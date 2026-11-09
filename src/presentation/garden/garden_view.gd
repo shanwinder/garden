@@ -144,6 +144,7 @@ var _currency_label: Label = null
 var _progression_label: Label = null
 var _daily_guidance_label: Label = null
 var _ftue_label: Label = null
+var _discovery_pacing_label: Label = null
 var _atmosphere_label: Label = null
 var _environment_label: Label = null
 var _visitor_row: Control = null
@@ -203,6 +204,8 @@ func _resolve_nodes() -> void:
 		_daily_guidance_label = get_node_or_null("MainMargin/LayoutBox/DailyGuidanceLabel") as Label
 	if _ftue_label == null:
 		_ftue_label = get_node_or_null("MainMargin/LayoutBox/FtueLabel") as Label
+	if _discovery_pacing_label == null:
+		_discovery_pacing_label = get_node_or_null("MainMargin/LayoutBox/DiscoveryPacingLabel") as Label
 	if _atmosphere_label == null:
 		_atmosphere_label = get_node_or_null("MainMargin/LayoutBox/AtmosphereLabel") as Label
 	if _environment_label == null:
@@ -662,6 +665,8 @@ func _show_blocked_visual() -> void:
 		_daily_guidance_label.visible = false
 	if _ftue_label != null:
 		_ftue_label.visible = false
+	if _discovery_pacing_label != null:
+		_discovery_pacing_label.visible = false
 	if _atmosphere_label != null:
 		_atmosphere_label.visible = false
 	if _environment_label != null:
@@ -757,6 +762,19 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 			_ftue_label.text = "%s: %s" % [ftue_step.get_title(), ftue_step.get_instruction()]
 		else:
 			_ftue_label.visible = false
+
+	if _discovery_pacing_label != null:
+		if _last_progression_summary != null and _last_progression_summary.has_discovery_pacing_milestone():
+			_discovery_pacing_label.visible = true
+			var pacing: DiscoveryPacingMilestone = _last_progression_summary.get_discovery_pacing_milestone()
+			var status_suffix: String = " (สำเร็จแล้ว)" if pacing.is_achieved() else ""
+			_discovery_pacing_label.text = "เป้าหมายการค้นพบ: %s%s - %s" % [
+				pacing.get_title(),
+				status_suffix,
+				pacing.get_recommended_focus()
+			]
+		else:
+			_discovery_pacing_label.visible = false
 
 	var time_period: String = _last_snapshot.get_time_period()
 	var weather_state: String = _last_snapshot.get_weather_state()
@@ -1619,6 +1637,58 @@ func get_ftue_title() -> String:
 ## Pure query for testing: returns localized FTUE step action instruction.
 func get_ftue_instruction() -> String:
 	return _last_progression_summary.get_ftue_instruction() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns the DiscoveryPacingLabel node.
+func get_discovery_pacing_label() -> Label:
+	_resolve_nodes()
+	return _discovery_pacing_label
+
+
+## Pure query for testing: returns discovery pacing HUD banner text.
+func get_discovery_pacing_text() -> String:
+	_resolve_nodes()
+	return _discovery_pacing_label.text if _discovery_pacing_label != null else ""
+
+
+## Pure query for testing: returns true if a discovery pacing milestone is attached in latest progression summary.
+func has_discovery_pacing_milestone() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.has_discovery_pacing_milestone()
+
+
+## Pure query for testing: returns canonical discovery pacing milestone ID.
+func get_discovery_pacing_milestone_id() -> String:
+	return _last_progression_summary.get_discovery_pacing_milestone_id() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns 1-based day index (1..7), or -1 if invalid.
+func get_discovery_pacing_day_index() -> int:
+	return _last_progression_summary.get_discovery_pacing_day_index() if _last_progression_summary != null else -1
+
+
+## Pure query for testing: returns short theme key of active discovery pacing milestone.
+func get_discovery_pacing_theme() -> String:
+	return _last_progression_summary.get_discovery_pacing_theme() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns localized discovery pacing milestone title.
+func get_discovery_pacing_title() -> String:
+	return _last_progression_summary.get_discovery_pacing_title() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns localized discovery pacing milestone description.
+func get_discovery_pacing_description() -> String:
+	return _last_progression_summary.get_discovery_pacing_description() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns localized discovery pacing recommended focus.
+func get_discovery_pacing_recommended_focus() -> String:
+	return _last_progression_summary.get_discovery_pacing_recommended_focus() if _last_progression_summary != null else ""
+
+
+## Pure query for testing: returns true if active discovery pacing milestone has been achieved.
+func is_discovery_pacing_achieved() -> bool:
+	return not _is_blocked and _last_progression_summary != null and _last_progression_summary.is_discovery_pacing_achieved()
 
 
 ## Displays calm, non-intrusive feedback summarizing away/offline changes from a GardenReturnSummary.

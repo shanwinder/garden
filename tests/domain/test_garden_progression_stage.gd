@@ -16,6 +16,7 @@ func run_tests() -> void:
 	_test_gentle_guidance_selection_progression()
 	_test_summary_daily_guidance_integration()
 	_test_summary_ftue_step_integration()
+	_test_summary_discovery_pacing_integration()
 	_test_null_inputs_handled_safely()
 
 
@@ -258,6 +259,34 @@ func _test_summary_ftue_step_integration() -> void:
 	assert_true(summary_done.is_ftue_completed(), "FTUE is completed")
 	assert_eq(summary_done.get_ftue_step_id(), FtueStep.STEP_COMPLETED, "STEP_COMPLETED attached")
 	assert_eq(summary_done.get_ftue_step_index(), 6, "Index is 6")
+
+
+func _test_summary_discovery_pacing_integration() -> void:
+	describe("GardenProgressionSummary integrates DiscoveryPacingMilestone seamlessly")
+	var snap_empty: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0)
+	var journal: JournalState = JournalState.new()
+
+	# Empty garden -> Day 1 early phase
+	var summary_empty: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_empty, journal, 0, 0)
+	assert_true(summary_empty.has_discovery_pacing_milestone(), "Empty garden has discovery pacing milestone")
+	assert_false(summary_empty.is_discovery_pacing_achieved(), "Day 1 not achieved on empty garden")
+	assert_eq(summary_empty.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_1_EARLY_PHASE, "Starts at Day 1")
+	assert_eq(summary_empty.get_discovery_pacing_day_index(), 1, "Day index is 1")
+	assert_eq(summary_empty.get_discovery_pacing_theme(), "early_phase", "Theme is early_phase")
+	assert_false(summary_empty.get_discovery_pacing_title().is_empty(), "Title is not empty")
+	assert_false(summary_empty.get_discovery_pacing_description().is_empty(), "Description is not empty")
+	assert_false(summary_empty.get_discovery_pacing_recommended_focus().is_empty(), "Recommended focus is not empty")
+
+	var milestone_obj: DiscoveryPacingMilestone = summary_empty.get_discovery_pacing_milestone()
+	assert_true(milestone_obj != null and milestone_obj.is_valid(), "get_discovery_pacing_milestone returns valid object")
+
+	# Garden with 1 plant -> Day 1 achieved, active moves to Day 2
+	var snap_plant: GardenSnapshot = GardenSnapshot.new({"flower": 1}, {"plant.marigold": 1}, 1, 0)
+	var summary_plant: GardenProgressionSummary = GardenProgressionStage.evaluate(snap_plant, journal, 0, 0)
+	assert_true(summary_plant.has_discovery_pacing_milestone(), "Has pacing milestone after planting")
+	assert_eq(summary_plant.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_2_EARLY_RETURN, "Advances to Day 2")
+	assert_eq(summary_plant.get_discovery_pacing_day_index(), 2, "Day index is 2")
+	assert_false(summary_plant.is_discovery_pacing_achieved(), "Day 2 not achieved yet")
 
 
 func _test_null_inputs_handled_safely() -> void:

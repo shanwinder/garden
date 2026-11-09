@@ -97,6 +97,7 @@ func run_tests() -> void:
 	_test_weather_time_of_day_and_ambient_events_matrix_loop()
 	_test_garden_progression_and_gentle_guidance_e2e_loop()
 	_test_first_time_user_experience_ftue_e2e_sequence()
+	_test_suggested_seven_days_discovery_pacing_e2e_sequence()
 	_test_offline_return_summary_and_resume_feedback_e2e_loop()
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
@@ -912,6 +913,134 @@ func _test_first_time_user_experience_ftue_e2e_sequence() -> void:
 	assert_eq(view.get_ftue_step_id(), FtueStep.STEP_COMPLETED, "Step 7: STEP_COMPLETED")
 	assert_eq(view.get_ftue_step_index(), 6, "Step 7 index is 6")
 	assert_false(view.get_ftue_label().visible, "FtueLabel is hidden when FTUE is completed")
+
+	main_screen.free()
+	app.free()
+	_cleanup_test_files()
+
+
+func _test_suggested_seven_days_discovery_pacing_e2e_sequence() -> void:
+	describe("E2E: Full 7-phase Suggested First Seven Days of Discovery pacing per GAME_DESIGN.md §22")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+	var scripted_ints: Array[int] = []
+	for i: int in range(100):
+		scripted_ints.append(1000 + i)
+	var rng: FakeRandomSource = FakeRandomSource.new(
+		[0.85, 0.5, 0.2, 0.9],
+		scripted_ints
+	)
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# 1. Day 1: Early phase (empty garden)
+	assert_true(view.has_discovery_pacing_milestone(), "Has pacing milestone at start")
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_1_EARLY_PHASE, "Starts at Day 1")
+	assert_eq(view.get_discovery_pacing_day_index(), 1, "Day 1 index is 1")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 1 not achieved yet")
+	assert_true(view.get_discovery_pacing_label().visible, "DiscoveryPacingLabel visible")
+
+	# Plant marigold -> Day 1 achieved, advances to Day 2
+	view.open_planting_picker()
+	view.get_planting_picker().select_plant_definition("plant.marigold")
+	view.get_planting_picker().confirm_planting()
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_2_EARLY_RETURN, "Advances to Day 2")
+	assert_eq(view.get_discovery_pacing_day_index(), 2, "Day 2 index is 2")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 2 not achieved yet")
+
+	# 2. Advance time +2700s to mature and harvest to earn coins
+	clock.set_utc_seconds(3700)
+	view.refresh_from_session()
+	var marigold_id: String = view.get_plant_views()[0].get_runtime_instance_id()
+	view.get_plant_view_by_id(marigold_id).simulate_selection_input()
+	view.get_harvest_button().pressed.emit()
+	assert_eq(view.get_currency_text(), "เหรียญ: 20", "20 coins earned")
+
+	# Purchase clay_jar (-15 coins) -> adds water trait -> Day 2 achieved, advances to Day 3
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.clay_jar")
+	view.get_decoration_picker().confirm_purchase()
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_3_DEVELOPING_GARDEN, "Advances to Day 3")
+	assert_eq(view.get_discovery_pacing_day_index(), 3, "Day 3 index is 3")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 3 not achieved yet")
+
+	# 3. Harvest marigold again to earn coins for bench
+	clock.set_utc_seconds(6400)
+	view.refresh_from_session()
+	view.get_plant_view_by_id(marigold_id).simulate_selection_input()
+	view.get_harvest_button().pressed.emit()
+	assert_eq(view.get_currency_text(), "เหรียญ: 25", "25 coins available")
+
+	# Purchase bench (-25 coins) -> resting_spot -> Day 3 achieved, advances to Day 4
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.bench")
+	view.get_decoration_picker().confirm_purchase()
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_4_WEATHER_DISCOVERY, "Advances to Day 4")
+	assert_eq(view.get_discovery_pacing_day_index(), 4, "Day 4 index is 4")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 4 not achieved yet")
+
+	# 4. Advance clock to rain weather timestamp
+	# GardenWeather cycle: period 7200s (0..2879 sunny, 2880..5039 overcast, 5040..7199 rain)
+	# 7200 * 2 + 5500 = 19900s -> rain
+	clock.set_utc_seconds(19900)
+	view.refresh_from_session()
+	assert_eq(view.get_current_weather_state(), GardenWeather.RAIN, "Weather is rain")
+	# Rain + water trait allows observing frog visitor
+	view.get_observe_visitor_button().pressed.emit()
+	# Satisfies Day 4 -> advances to Day 5
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_5_WATER_HABITAT, "Advances to Day 5")
+	assert_eq(view.get_discovery_pacing_day_index(), 5, "Day 5 index is 5")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 5 not achieved yet")
+
+	# 5. Harvest marigold again to get coins
+	view.get_plant_view_by_id(marigold_id).simulate_selection_input()
+	view.get_harvest_button().pressed.emit()
+	# Add coins directly to economy for small_pond (50 coins)
+	app.game_session.get_state().get_economy().grant_currency(50)
+	view.refresh_from_session()
+
+	# Purchase small_pond (-50 coins) -> Day 5 achieved, advances to Day 6
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.small_pond")
+	view.get_decoration_picker().confirm_purchase()
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_6_NIGHT_DISCOVERY, "Advances to Day 6")
+	assert_eq(view.get_discovery_pacing_day_index(), 6, "Day 6 index is 6")
+	assert_false(view.is_discovery_pacing_achieved(), "Day 6 not achieved yet")
+
+	# 6. Purchase garden_lamp (-30 coins) and shift clock to night
+	app.game_session.get_state().get_economy().grant_currency(50)
+	view.refresh_from_session()
+	view.get_decorate_button().pressed.emit()
+	view.get_decoration_picker().select_decoration_definition("decoration.garden_lamp")
+	view.get_decoration_picker().confirm_purchase()
+
+	# Shift clock to night period: 86400s cycle, night is 75600..86399
+	clock.set_utc_seconds(80000)
+	view.refresh_from_session()
+	assert_eq(view.get_current_time_period(), GardenTimePeriod.NIGHT, "Time period is night")
+	# Night + light from garden_lamp satisfies Day 6 -> advances to Day 7
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION, "Advances to Day 7")
+	assert_eq(view.get_discovery_pacing_day_index(), 7, "Day 7 index is 7")
+	assert_true(view.get_current_establishment_score() >= GardenProgressionStage.THRESHOLD_LIVING_GARDEN, "Living garden score reached")
+	assert_true(view.is_discovery_pacing_achieved(), "Day 7 achieved with living garden establishment")
+	assert_true(view.get_discovery_pacing_text().contains("สำเร็จแล้ว"), "Label indicates completion")
+
+	# 7. Plant remaining plants and record sightings to complete journal
+	var journal: JournalState = app.game_session.get_state().get_journal()
+	for pid: String in ["plant.banana", "plant.chili", "plant.holy_basil", "plant.jasmine"]:
+		journal.try_record_sighting(pid, 80000)
+	for vid: String in ["visitor.bird", "visitor.butterfly", "visitor.cat", "visitor.firefly"]:
+		journal.try_record_sighting(vid, 80000)
+
+	view.refresh_from_session()
+	assert_true(view.is_discovery_pacing_achieved(), "Day 7 remains achieved")
+	assert_eq(view.get_discovery_pacing_milestone_id(), DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION, "Milestone is Day 7")
+	assert_true(view.get_discovery_pacing_text().contains("สำเร็จแล้ว"), "Label indicates completion")
 
 	main_screen.free()
 	app.free()

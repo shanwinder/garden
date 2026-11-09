@@ -19,6 +19,7 @@ var _points_to_next_stage: int
 var _guidance_id: String
 var _daily_guidance_items: Array[DailyGuidanceItem]
 var _ftue_step: FtueStep = null
+var _discovery_pacing_milestone: DiscoveryPacingMilestone = null
 
 
 func _init(
@@ -30,7 +31,8 @@ func _init(
 	points_to_next_stage: int,
 	guidance_id: String,
 	daily_guidance_items: Array[DailyGuidanceItem] = [],
-	ftue_step: FtueStep = null
+	ftue_step: FtueStep = null,
+	discovery_pacing_milestone: DiscoveryPacingMilestone = null
 ) -> void:
 	_stage_id = stage_id
 	_stage_index = stage_index
@@ -47,6 +49,10 @@ func _init(
 		_ftue_step = ftue_step
 	else:
 		_ftue_step = null
+	if discovery_pacing_milestone != null and discovery_pacing_milestone.is_valid():
+		_discovery_pacing_milestone = discovery_pacing_milestone
+	else:
+		_discovery_pacing_milestone = null
 
 
 ## Returns the canonical garden progression stage ID.
@@ -152,6 +158,51 @@ func is_ftue_completed() -> bool:
 	return _ftue_step != null and _ftue_step.is_completed()
 
 
+## Returns the DiscoveryPacingMilestone value object, or null if not attached.
+func get_discovery_pacing_milestone() -> DiscoveryPacingMilestone:
+	return _discovery_pacing_milestone
+
+
+## Returns true if a discovery pacing milestone is attached.
+func has_discovery_pacing_milestone() -> bool:
+	return _discovery_pacing_milestone != null and _discovery_pacing_milestone.is_valid()
+
+
+## Returns the canonical discovery pacing milestone ID, or empty string if not attached.
+func get_discovery_pacing_milestone_id() -> String:
+	return _discovery_pacing_milestone.get_milestone_id() if _discovery_pacing_milestone != null else ""
+
+
+## Returns the 1-based day index (1..7), or -1 if not attached.
+func get_discovery_pacing_day_index() -> int:
+	return _discovery_pacing_milestone.get_day_index() if _discovery_pacing_milestone != null else -1
+
+
+## Returns the short theme string, or empty string if not attached.
+func get_discovery_pacing_theme() -> String:
+	return _discovery_pacing_milestone.get_theme() if _discovery_pacing_milestone != null else ""
+
+
+## Returns the localized title, or empty string if not attached.
+func get_discovery_pacing_title() -> String:
+	return _discovery_pacing_milestone.get_title() if _discovery_pacing_milestone != null else ""
+
+
+## Returns the localized description, or empty string if not attached.
+func get_discovery_pacing_description() -> String:
+	return _discovery_pacing_milestone.get_description() if _discovery_pacing_milestone != null else ""
+
+
+## Returns the localized recommended discovery focus, or empty string if not attached.
+func get_discovery_pacing_recommended_focus() -> String:
+	return _discovery_pacing_milestone.get_recommended_focus() if _discovery_pacing_milestone != null else ""
+
+
+## Returns true if the attached discovery pacing milestone has been achieved.
+func is_discovery_pacing_achieved() -> bool:
+	return _discovery_pacing_milestone != null and _discovery_pacing_milestone.is_achieved()
+
+
 ## Returns true if all fields satisfy domain invariants.
 func is_valid() -> bool:
 	if not GardenProgressionStage.is_valid_stage(_stage_id):
@@ -170,5 +221,7 @@ func is_valid() -> bool:
 		if item == null or not item.is_valid():
 			return false
 	if _ftue_step != null and not _ftue_step.is_valid():
+		return false
+	if _discovery_pacing_milestone != null and not _discovery_pacing_milestone.is_valid():
 		return false
 	return true
