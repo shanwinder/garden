@@ -1826,7 +1826,7 @@ func _test_ambient_event_observation_button_and_feedback() -> void:
 	assert_false(gview.is_observe_event_button_enabled(), "ObserveEventButton disabled on empty garden")
 	assert_eq(gview.get_current_event_id(), "", "No active event ID initially")
 	assert_eq(gview.get_journal_panel().get_total_decoration_entry_count(), 8, "JournalPanel has 8 decorations")
-	assert_eq(gview.get_journal_panel().get_total_event_entry_count(), 5, "JournalPanel has 5 ambient events")
+	assert_eq(gview.get_journal_panel().get_total_event_entry_count(), 6, "JournalPanel has 6 events (5 ambient + 1 secret)")
 	assert_eq(gview.get_journal_panel().get_active_event_entry_count(), 0, "JournalPanel has 0 active events on empty garden")
 
 	# 2. Plant Jasmine -> morning_butterflies becomes eligible, ObserveEventButton enabled, JournalPanel updates

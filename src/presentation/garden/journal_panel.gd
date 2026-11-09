@@ -15,6 +15,10 @@ extends Control
 
 signal journal_closed()
 
+## Clue shown for secret combination events instead of their exact recipe
+## (GAME_DESIGN.md Section 12: encourage experimentation without listing the combination).
+const SECRET_EVENT_CLUE_TEXT: String = "ความลับของสวน ลองผสมพันธุ์ไม้ ของตกแต่ง และช่วงเวลาในแบบที่ยังไม่เคยลอง"
+
 var _journal: JournalState = null
 var _catalog: ContentCatalog = null
 var _decorations: DecorationCollectionState = null
@@ -222,6 +226,10 @@ func bind_journal(
 					"[เกิดขึ้นได้ในสวน] %s (%s)\n%s\nเงื่อนไข: %s"
 					% [e_name, def_id, e_desc, clue_text]
 				)
+			elif event_def.is_secret:
+				# Secret combination events stay unnamed until their combination is present,
+				# so the journal hints that more exists without listing the recipe.
+				entry_text = "[???] เหตุการณ์ลับปริศนา\nคำใบ้: %s" % clue_text
 			else:
 				entry_text = (
 					"[???] เหตุการณ์พิเศษปริศนา (%s)\nคำใบ้เงื่อนไข: %s"
@@ -291,6 +299,8 @@ func _format_decoration_traits(decor_def: DecorationDefinition) -> String:
 func _format_event_clue(event_def: EventDefinition) -> String:
 	if event_def == null:
 		return "สวนที่มีบรรยากาศเหมาะสม"
+	if event_def.is_secret:
+		return SECRET_EVENT_CLUE_TEXT
 	var parts: PackedStringArray = PackedStringArray()
 	if not event_def.required_trait_counts.is_empty():
 		var trait_keys: Array = event_def.required_trait_counts.keys()
@@ -304,6 +314,13 @@ func _format_event_clue(event_def: EventDefinition) -> String:
 		parts.append(DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(decor_id, decor_id))
 	for plant_id: String in event_def.required_plant_ids:
 		parts.append(PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(plant_id, plant_id))
+	if not event_def.required_plant_counts.is_empty():
+		var plant_count_keys: Array = event_def.required_plant_counts.keys()
+		plant_count_keys.sort()
+		for raw_plant_key: Variant in plant_count_keys:
+			var counted_plant_id: String = str(raw_plant_key)
+			var plant_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(counted_plant_id, counted_plant_id)
+			parts.append("%s x%d" % [plant_name, int(event_def.required_plant_counts[raw_plant_key])])
 	if not event_def.allowed_time_periods.is_empty():
 		var t_names: PackedStringArray = PackedStringArray()
 		for tp: String in event_def.allowed_time_periods:

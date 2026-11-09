@@ -1987,7 +1987,7 @@ class FailingEventContentLoader extends EventContentLoader:
 
 
 func _test_event_content_bootstrap_and_evaluate_event_now() -> void:
-	describe("AppRoot bootstraps 5 production events, blocks on event load failure, and evaluates ambient events")
+	describe("AppRoot bootstraps 6 production events, blocks on event load failure, and evaluates ambient events")
 	_cleanup_test_files()
 
 	# 1. Failing event loader blocks bootstrap with LOAD_FAILED
@@ -2018,7 +2018,7 @@ func _test_event_content_bootstrap_and_evaluate_event_now() -> void:
 	)
 	root_fail.free()
 
-	# 2. Successful bootstrap loads all 5 production events and evaluates event
+	# 2. Successful bootstrap loads all 6 production events and evaluates event
 	var repo_ok: LocalSaveRepository = _create_test_repo()
 	var clock_ok: FakeGameClock = FakeGameClock.new(21600, 0) # 21600s -> morning + clear
 	var rng_ok: FakeRandomSource = FakeRandomSource.new([0.25], [1, 2, 3, 4])
@@ -2026,11 +2026,11 @@ func _test_event_content_bootstrap_and_evaluate_event_now() -> void:
 	root_ok.bootstrap_session()
 
 	assert_true(root_ok.has_content_catalog(), "Catalog exists")
-	assert_eq(root_ok.get_content_catalog().get_event_count(), 5, "All 5 production events in catalog")
+	assert_eq(root_ok.get_content_catalog().get_event_count(), 6, "All 6 production events in catalog")
 	assert_eq(
 		root_ok.get_content_catalog().get_all_event_ids(),
 		AppRoot.EXPECTED_PRODUCTION_EVENT_IDS,
-		"Expected 5 production event IDs"
+		"Expected 6 production event IDs"
 	)
 
 	# Empty garden -> NO_ELIGIBLE_EVENTS

@@ -59,6 +59,7 @@ const PROVISIONAL_WEATHER_DISPLAY_NAMES: Dictionary = {
 
 const PROVISIONAL_EVENT_DISPLAY_NAMES: Dictionary = {
 	"event.bird_shade_song": "นกร้องเพลงใต้ร่มไม้",
+	"event.cat_jasmine_night_rest": "แมวพักใต้กลิ่นมะลิยามค่ำ",
 	"event.cat_sleeping_bench": "แมวนอนหลับบนม้านั่ง",
 	"event.firefly_night_glow": "หิ่งห้อยเรืองแสงยามค่ำ",
 	"event.frog_rain_chorus": "กบร้องเพลงกลางสายฝน",
@@ -67,6 +68,7 @@ const PROVISIONAL_EVENT_DISPLAY_NAMES: Dictionary = {
 
 const PROVISIONAL_EVENT_DESCRIPTIONS: Dictionary = {
 	"event.bird_shade_song": "นกกระจอกส่งเสียงร้องสดใสอยู่บนกิ่งไม้ใต้ร่มเงา",
+	"event.cat_jasmine_night_rest": "แมวข้างบ้านนอนหลับตาพริ้มอยู่ใต้ม้านั่ง ท่ามกลางกลิ่นมะลิหอมอ่อนในคืนสงบ",
 	"event.cat_sleeping_bench": "แมวข้างบ้านขดตัวนอนหลับอย่างสบายใจอยู่บนม้านั่งไม้",
 	"event.firefly_night_glow": "แสงหิ่งห้อยส่องประกายระยิบระยับอยู่ตามพุ่มไม้ยามค่ำคืน",
 	"event.frog_rain_chorus": "กบในสวนส่งเสียงร้องรับสายฝนอยู่ริมแหล่งน้ำ",

@@ -86,9 +86,11 @@ const EXPECTED_PRODUCTION_DECORATION_IDS: Array[String] = [
 	"decoration.wooden_fence",
 ]
 
-## Exact five approved production ambient/special event definitions expected in the production catalog.
+## Exact approved production event definitions expected in the production catalog:
+## five MVP ambient/special events plus one secret combination event (GAME_DESIGN.md Section 12).
 const EXPECTED_PRODUCTION_EVENT_IDS: Array[String] = [
 	"event.bird_shade_song",
+	"event.cat_jasmine_night_rest",
 	"event.cat_sleeping_bench",
 	"event.firefly_night_glow",
 	"event.frog_rain_chorus",

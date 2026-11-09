@@ -18,6 +18,7 @@ func run_tests() -> void:
 	_test_null_catalog_and_null_journal_handling()
 	_test_read_only_presentation_boundary()
 	_test_decorations_and_ambient_events_sections_rendering()
+	_test_secret_combination_event_hides_recipe()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -195,7 +196,7 @@ func _create_full_production_catalog() -> ContentCatalog:
 
 
 func _test_decorations_and_ambient_events_sections_rendering() -> void:
-	describe("JournalPanel renders 8 decorations and 5 ambient events with placed counts and condition clues")
+	describe("JournalPanel renders 8 decorations and 6 events (5 ambient + 1 secret) with placed counts and condition clues")
 	var panel: JournalPanel = _instantiate_journal()
 	var catalog: ContentCatalog = _create_full_production_catalog()
 	var state: GameState = GameState.new()
@@ -209,7 +210,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	assert_false(panel.is_visitor_eligible_in_journal("visitor.butterfly"), "Butterfly not eligible on empty garden")
 	assert_eq(panel.get_total_decoration_entry_count(), 8, "8 decoration definitions rendered")
 	assert_eq(panel.get_placed_decoration_entry_count(), 0, "0 placed decorations initially")
-	assert_eq(panel.get_total_event_entry_count(), 5, "5 event definitions rendered")
+	assert_eq(panel.get_total_event_entry_count(), 6, "6 event definitions rendered")
 	assert_eq(panel.get_active_event_entry_count(), 0, "0 active events on empty garden")
 
 	for decor_id: String in catalog.get_all_decoration_ids():
@@ -222,6 +223,8 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	for event_id: String in catalog.get_all_event_ids():
 		assert_true(panel.has_displayed_entry_for_id(event_id), "Event entry rendered for %s" % event_id)
 		var ev_text: String = panel.get_entry_text_for_id(event_id)
+		if catalog.get_event(event_id).is_secret:
+			continue
 		assert_true(ev_text.contains("[???] เหตุการณ์พิเศษปริศนา"), "Inactive event %s shows [???] placeholder" % event_id)
 		assert_true(ev_text.contains("คำใบ้เงื่อนไข:"), "Inactive event %s shows condition clue" % event_id)
 
@@ -253,7 +256,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	assert_false(panel.is_all_entries_discovered_in_journal(), "Not all entries discovered yet")
 	assert_eq(panel.get_ineligible_visitor_entry_count(), 1, "1 ineligible visitor (bird) in populated_snapshot")
 	assert_eq(panel.get_unplaced_decoration_entry_count(), 6, "6 unplaced decoration species in populated_snapshot")
-	assert_eq(panel.get_inactive_event_entry_count(), 3, "3 inactive events in populated_snapshot")
+	assert_eq(panel.get_inactive_event_entry_count(), 4, "4 inactive events in populated_snapshot")
 	assert_true(
 		panel.get_entry_text_for_id("plant.jasmine").contains("กำลังปลูกในสวน: 1 ต้น"),
 		"Discovered jasmine shows live planted count = 1 when snapshot is bound"
@@ -284,7 +287,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	assert_false(panel.is_all_plants_discovered_in_journal(), "Not all plants discovered (1/5)")
 	assert_false(panel.is_all_visitors_discovered_in_journal(), "Not all visitors discovered (2/5)")
 	assert_false(panel.is_all_decorations_placed_in_journal(), "Not all decorations placed (2/8)")
-	assert_false(panel.is_all_events_active_in_journal(), "Not all events active (2/5)")
+	assert_false(panel.is_all_events_active_in_journal(), "Not all events active (2/6)")
 	assert_true(panel.has_any_discovered_entries_in_journal(), "Has discovered entries in journal")
 	assert_true(panel.has_any_discovered_plants_in_journal(), "Has discovered plants in journal")
 	assert_true(panel.has_any_discovered_visitors_in_journal(), "Has discovered visitors in journal")
@@ -297,7 +300,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	assert_true(panel.has_any_undiscovered_visitors_in_journal(), "Has undiscovered visitors in journal (3/5)")
 	assert_true(panel.has_any_ineligible_visitors_in_journal(), "Has ineligible visitors in journal (1/5)")
 	assert_true(panel.has_any_unplaced_decorations_in_journal(), "Has unplaced decorations in journal (6/8)")
-	assert_true(panel.has_any_inactive_events_in_journal(), "Has inactive events in journal (3/5)")
+	assert_true(panel.has_any_inactive_events_in_journal(), "Has inactive events in journal (4/6)")
 	assert_true(panel.has_any_currently_planted_plants_in_journal(), "Has currently planted plants in journal (1/5)")
 	assert_true(panel.has_any_unplanted_plants_in_journal(), "Has unplanted plants in journal (4/5)")
 	assert_false(panel.is_all_planted_species_present_in_journal(), "Not all plant species currently planted in journal (1/5)")
@@ -324,7 +327,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 		"All visitor IDs in journal catalog"
 	)
 	assert_eq(panel.get_all_decoration_ids_in_journal().size(), 8, "8 total decoration IDs in journal catalog")
-	assert_eq(panel.get_all_event_ids_in_journal().size(), 5, "5 total event IDs in journal catalog")
+	assert_eq(panel.get_all_event_ids_in_journal().size(), 6, "6 total event IDs in journal catalog")
 	assert_eq(panel.get_total_planted_plant_instance_count_in_journal(), 1, "1 total planted plant instance in journal")
 	assert_eq(panel.get_total_placed_decoration_instance_count_in_journal(), 3, "3 total placed decoration instances in journal")
 	assert_true(panel.is_decoration_placed_in_journal("decoration.bench"), "Bench is placed in journal")
@@ -346,7 +349,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	)
 	assert_eq(panel.get_event_description_in_journal("event.unknown"), "", "Unknown event description in journal is empty")
 	assert_true(panel.has_summary_text(), "Journal panel has non-empty summary text")
-	assert_eq(panel.get_displayed_entry_count(), 23, "23 total displayed entries across plants (5), visitors (5), decorations (8), and events (5)")
+	assert_eq(panel.get_displayed_entry_count(), 24, "24 total displayed entries across plants (5), visitors (5), decorations (8), and events (6)")
 	assert_true(panel.has_any_displayed_entries(), "Journal panel has displayed entries")
 	assert_eq(panel.get_plant_traits_summary_in_journal("plant.jasmine"), "พุ่มไม้หนาแน่น, ดอกไม้", "Plant traits summary in journal for jasmine")
 	assert_eq(panel.get_plant_traits_summary_in_journal("plant.unknown"), "", "Unknown plant traits summary in journal is empty")
@@ -406,7 +409,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 		"All visitor display names in journal in catalog order"
 	)
 	assert_eq(panel.get_all_decoration_display_names_in_journal().size(), 8, "8 all decoration display names in journal")
-	assert_eq(panel.get_all_event_display_names_in_journal().size(), 5, "5 all event display names in journal")
+	assert_eq(panel.get_all_event_display_names_in_journal().size(), 6, "6 all event display names in journal")
 	assert_eq(panel.get_discovered_plant_display_names_in_journal(), ["มะลิ"], "Discovered plant display names in journal")
 	assert_eq(
 		panel.get_discovered_visitor_display_names_in_journal(),
@@ -473,7 +476,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	)
 	assert_eq(
 		panel.get_inactive_event_ids_in_journal(),
-		["event.bird_shade_song", "event.firefly_night_glow", "event.frog_rain_chorus"],
+		["event.bird_shade_song", "event.cat_jasmine_night_rest", "event.firefly_night_glow", "event.frog_rain_chorus"],
 		"Inactive event IDs in journal"
 	)
 	assert_eq(
@@ -510,7 +513,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	)
 	assert_eq(
 		panel.get_inactive_event_display_names_in_journal(),
-		["นกร้องเพลงใต้ร่มไม้", "หิ่งห้อยเรืองแสงยามค่ำ", "กบร้องเพลงกลางสายฝน"],
+		["นกร้องเพลงใต้ร่มไม้", "แมวพักใต้กลิ่นมะลิยามค่ำ", "หิ่งห้อยเรืองแสงยามค่ำ", "กบร้องเพลงกลางสายฝน"],
 		"Inactive event display names in journal"
 	)
 	assert_eq(
@@ -580,7 +583,7 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 	assert_true(panel.has_plant_positive_mature_duration_in_journal("plant.jasmine"), "has_plant_positive_mature_duration_in_journal(plant.jasmine) is true")
 	assert_false(panel.has_plant_positive_mature_duration_in_journal("plant.unknown"), "has_plant_positive_mature_duration_in_journal(plant.unknown) is false")
 	assert_true(
-		panel.get_summary_text().contains("ของตกแต่ง 2/8 | เหตุการณ์ 2/5"),
+		panel.get_summary_text().contains("ของตกแต่ง 2/8 | เหตุการณ์ 2/6"),
 		"Journal summary text includes placed decorations and active events"
 	)
 	assert_eq(panel.get_placed_count_for_decoration_id("decoration.bench"), 2, "Bench placed count query returns 2")
@@ -629,4 +632,50 @@ func _test_decorations_and_ambient_events_sections_rendering() -> void:
 		"Frog rain chorus clue includes rain requirement"
 	)
 
+	panel.free()
+
+
+func _test_secret_combination_event_hides_recipe() -> void:
+	describe("JournalPanel keeps the secret combination event unnamed and recipe-free until its combination is present")
+	var panel: JournalPanel = _instantiate_journal()
+	var catalog: ContentCatalog = _create_full_production_catalog()
+	var secret_id: String = "event.cat_jasmine_night_rest"
+	var secret_name: String = GardenView.PROVISIONAL_EVENT_DISPLAY_NAMES[secret_id]
+	var jasmine_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES["plant.jasmine"]
+	var bench_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES["decoration.bench"]
+	var night_utc: int = 3600
+
+	# 1. Bench + 2 jasmine at night: secret is inactive and must not reveal name, ID, or recipe.
+	var state: GameState = GameState.new()
+	state.get_decorations().try_add_decoration(DecorationState.new("dec-1", "decoration.bench", 100))
+	state.get_plants().try_add_plant(PlantState.new("jas-1", "plant.jasmine", 100))
+	state.get_plants().try_add_plant(PlantState.new("jas-2", "plant.jasmine", 100))
+	var partial_snapshot: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, night_utc)
+	panel.bind_journal(state.get_journal(), catalog, state.get_decorations(), partial_snapshot)
+
+	assert_false(panel.is_event_active_in_journal(secret_id), "Secret inactive with only 2 jasmine")
+	var hidden_text: String = panel.get_entry_text_for_id(secret_id)
+	assert_true(hidden_text.contains("[???] เหตุการณ์ลับปริศนา"), "Inactive secret shows secret placeholder")
+	assert_true(hidden_text.contains(JournalPanel.SECRET_EVENT_CLUE_TEXT), "Inactive secret shows experimentation hint")
+	assert_false(hidden_text.contains(secret_name), "Inactive secret hides its display name")
+	assert_false(hidden_text.contains(secret_id), "Inactive secret hides its definition ID")
+	assert_false(hidden_text.contains(jasmine_name), "Inactive secret hides required plant")
+	assert_false(hidden_text.contains(bench_name), "Inactive secret hides required decoration")
+	assert_eq(panel.get_event_clue_in_journal(secret_id), JournalPanel.SECRET_EVENT_CLUE_TEXT, "Clue query returns the secret hint, not the recipe")
+	assert_true(
+		panel.get_event_clue_in_journal("event.cat_sleeping_bench").contains(bench_name),
+		"Non-secret event clue still lists its conditions"
+	)
+
+	# 2. Third jasmine completes the combination: the event becomes active and named, recipe stays hidden.
+	state.get_plants().try_add_plant(PlantState.new("jas-3", "plant.jasmine", 100))
+	var full_snapshot: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, night_utc)
+	panel.bind_journal(state.get_journal(), catalog, state.get_decorations(), full_snapshot)
+
+	assert_true(panel.is_event_active_in_journal(secret_id), "Secret active with 3 jasmine + bench at night")
+	var active_text: String = panel.get_entry_text_for_id(secret_id)
+	assert_true(active_text.contains("[เกิดขึ้นได้ในสวน]"), "Active secret shows active marker")
+	assert_true(active_text.contains(secret_name), "Active secret shows its display name")
+	assert_true(active_text.contains(GardenView.PROVISIONAL_EVENT_DESCRIPTIONS[secret_id]), "Active secret shows its description")
+	assert_false(active_text.contains(jasmine_name + " x3"), "Active secret still hides the exact recipe")
 	panel.free()

@@ -24,6 +24,7 @@ func run_tests() -> void:
 	_test_empty_garden_or_no_matches_consumes_zero_rng()
 	_test_single_eligible_event_selected_deterministically()
 	_test_multiple_eligible_events_weighted_selection_deterministic()
+	_test_secret_combination_event_joins_weighted_selection()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -134,3 +135,34 @@ func _test_multiple_eligible_events_weighted_selection_deterministic() -> void:
 
 	var r_high: EventSelectionResult = EventSelectionService.evaluate_and_select_at(state, catalog, rng, 43200)
 	assert_eq(r_high.get_selected_event_id(), "event.cat_sleeping_bench", "Roll 0.99 selects cat_sleeping_bench")
+
+
+func _test_secret_combination_event_joins_weighted_selection() -> void:
+	describe("Secret combination event joins weighted selection only when jasmine x3 + bench at night is present")
+	var catalog: ContentCatalog = _create_production_catalog()
+	var secret_id: String = "event.cat_jasmine_night_rest"
+	var night_utc: int = 3600
+	var state: GameState = GameState.new()
+	state.get_decorations().try_add_decoration(DecorationState.new("dec-1", "decoration.bench", 100))
+	state.get_plants().try_add_plant(PlantState.new("jas-1", "plant.jasmine", 100))
+	state.get_plants().try_add_plant(PlantState.new("jas-2", "plant.jasmine", 100))
+
+	var partial: EventSelectionResult = EventSelectionService.evaluate_and_select_at(
+		state, catalog, FakeRandomSource.new([0.0], []), night_utc
+	)
+	assert_false(partial.get_eligible_event_ids().has(secret_id), "Secret not eligible with 2 jasmine")
+
+	state.get_plants().try_add_plant(PlantState.new("jas-3", "plant.jasmine", 100))
+	var low_roll: EventSelectionResult = EventSelectionService.evaluate_and_select_at(
+		state, catalog, FakeRandomSource.new([0.0], []), night_utc
+	)
+	assert_true(low_roll.is_selected(), "Selection succeeds with full combination")
+	assert_eq(low_roll.get_eligible_event_ids()[0], secret_id, "Secret is first in ascending ID order")
+	assert_true(low_roll.get_eligible_event_ids().size() > 1, "Secret competes with ordinary ambient events")
+	assert_eq(low_roll.get_selected_event_id(), secret_id, "Lowest roll lands in the secret weight band")
+
+	var high_roll: EventSelectionResult = EventSelectionService.evaluate_and_select_at(
+		state, catalog, FakeRandomSource.new([0.99], []), night_utc
+	)
+	assert_true(high_roll.is_selected(), "High roll selection succeeds")
+	assert_ne(high_roll.get_selected_event_id(), secret_id, "High roll selects an ordinary ambient event")

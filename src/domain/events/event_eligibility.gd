@@ -42,6 +42,12 @@ static func is_eligible(event_def: EventDefinition, snapshot: GardenSnapshot) ->
 		if snapshot.get_plant_count_for_definition(required_plant_id) < 1:
 			return false
 
+	for key: Variant in event_def.required_plant_counts.keys():
+		var counted_plant_id: String = key as String
+		var required_plant_count: int = event_def.required_plant_counts[key] as int
+		if snapshot.get_plant_count_for_definition(counted_plant_id) < required_plant_count:
+			return false
+
 	for required_decor_id: String in event_def.required_decoration_ids:
 		if snapshot.get_decoration_count_for_definition(required_decor_id) < 1:
 			return false

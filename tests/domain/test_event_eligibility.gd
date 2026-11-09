@@ -12,6 +12,7 @@ func run_tests() -> void:
 	_test_null_and_invalid_inputs_rejected()
 	_test_mvp_interaction_matrix_five_events()
 	_test_filter_eligible_events_preserves_order()
+	_test_secret_combination_requires_plant_counts()
 
 
 func _make_event(
@@ -256,3 +257,79 @@ func _test_filter_eligible_events_preserves_order() -> void:
 	assert_eq(eligible.size(), 2, "Exactly 2 events must be eligible")
 	assert_eq(eligible[0].id, "event.a", "First eligible event must be event.a")
 	assert_eq(eligible[1].id, "event.c", "Second eligible event must be event.c")
+
+
+func _test_secret_combination_requires_plant_counts() -> void:
+	describe("Secret combination event requires jasmine x3 + bench + night (GAME_DESIGN.md Section 12)")
+	var bench_only: Array[String] = ["decoration.bench"]
+	var night_only: Array[String] = ["night"]
+	var any_weather: Array[String] = []
+	var secret: EventDefinition = _make_event(
+		"event.cat_jasmine_night_rest",
+		{},
+		bench_only,
+		night_only,
+		any_weather
+	)
+	secret.required_plant_counts = {"plant.jasmine": 3}
+	secret.is_secret = true
+
+	var three_jasmine_night: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 3, "dense_vegetation": 3, "shade": 1, "shelter": 1},
+		{"plant.jasmine": 3},
+		3,
+		0,
+		{"decoration.bench": 1},
+		1,
+		"night",
+		"rain"
+	)
+	assert_true(EventEligibility.is_eligible(secret, three_jasmine_night), "3 jasmine + bench at night (any weather) is eligible")
+
+	var four_jasmine_night: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 4},
+		{"plant.jasmine": 4},
+		4,
+		0,
+		{"decoration.bench": 1},
+		1,
+		"night",
+		"clear"
+	)
+	assert_true(EventEligibility.is_eligible(secret, four_jasmine_night), "More than the required count is eligible")
+
+	var two_jasmine_night: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 2},
+		{"plant.jasmine": 2, "plant.marigold": 5},
+		7,
+		0,
+		{"decoration.bench": 1},
+		1,
+		"night",
+		"clear"
+	)
+	assert_false(EventEligibility.is_eligible(secret, two_jasmine_night), "2 jasmine is not enough even with other plants")
+
+	var three_jasmine_evening: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 3},
+		{"plant.jasmine": 3},
+		3,
+		0,
+		{"decoration.bench": 1},
+		1,
+		"evening",
+		"clear"
+	)
+	assert_false(EventEligibility.is_eligible(secret, three_jasmine_evening), "Evening is not night")
+
+	var three_jasmine_no_bench: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 3},
+		{"plant.jasmine": 3},
+		3,
+		0,
+		{"decoration.small_table": 1},
+		1,
+		"night",
+		"clear"
+	)
+	assert_false(EventEligibility.is_eligible(secret, three_jasmine_no_bench), "Bench is required")

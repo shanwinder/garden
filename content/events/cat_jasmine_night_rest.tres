@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EventDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/domain/events/event_definition.gd" id="1_event_def"]
+
+[resource]
+script = ExtResource("1_event_def")
+id = "event.cat_jasmine_night_rest"
+weight = 5.0
+required_trait_counts = {}
+required_plant_ids = Array[String]([])
+required_decoration_ids = Array[String](["decoration.bench"])
+allowed_time_periods = Array[String](["night"])
+allowed_weather_states = Array[String]([])
+min_total_plants = 0
+min_mature_plants = 0
+min_total_decorations = 1
+required_plant_counts = {
+"plant.jasmine": 3
+}
+is_secret = true

@@ -14,6 +14,7 @@ func run_tests() -> void:
 	_test_invalid_id_rejected()
 	_test_invalid_traits_plants_decorations_periods_weather_rejected()
 	_test_invalid_weight_and_minimums_rejected()
+	_test_secret_flag_and_required_plant_counts()
 
 
 func _make_valid_event() -> EventDefinition:
@@ -141,3 +142,31 @@ func _test_invalid_weight_and_minimums_rejected() -> void:
 	var neg_decors: EventDefinition = _make_valid_event()
 	neg_decors.min_total_decorations = -1
 	assert_false(neg_decors.is_valid(), "Negative min_total_decorations must be rejected")
+
+
+func _test_secret_flag_and_required_plant_counts() -> void:
+	describe("EventDefinition supports secret combination events with validated required_plant_counts")
+	var def: EventDefinition = _make_valid_event()
+	assert_false(def.is_secret, "is_secret defaults to false")
+	assert_eq(def.required_plant_counts, {}, "required_plant_counts defaults to empty")
+
+	var secret: EventDefinition = _make_valid_event()
+	secret.id = "event.cat_jasmine_night_rest"
+	secret.is_secret = true
+	secret.required_plant_counts = {"plant.jasmine": 3}
+	assert_true(secret.is_valid(), "Secret event with positive plant count must be valid")
+
+	var bad_counts: Array[Dictionary] = [
+		{"plant.jasmine": 0},
+		{"plant.jasmine": -2},
+		{"plant.jasmine": 3.0},
+		{"plant.jasmine": "3"},
+		{"decoration.bench": 1},
+		{"plant.Jasmine": 1},
+		{"plant.": 1},
+		{7: 1},
+	]
+	for bad: Dictionary in bad_counts:
+		var invalid: EventDefinition = _make_valid_event()
+		invalid.required_plant_counts = bad
+		assert_false(invalid.is_valid(), "Invalid required_plant_counts %s must be rejected" % str(bad))

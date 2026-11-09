@@ -14,6 +14,10 @@
 ## - Weight must be finite and strictly positive (> 0.0).
 ## - Required trait counts must map valid EnvironmentalTrait IDs to strictly positive integer counts (> 0).
 ## - Required plant IDs must be valid "plant." StableContentIds with no duplicates.
+## - Required plant counts must map valid "plant." StableContentIds to strictly positive
+##   integer counts (> 0); used by combination events such as "jasmine x3".
+## - is_secret marks a rare combination event (GAME_DESIGN.md Section 12 "Secret combination
+##   events") whose recipe must not be revealed by presentation clues.
 ## - Required decoration IDs must be valid "decoration." StableContentIds with no duplicates.
 ## - Allowed time periods must be valid GardenTimePeriod IDs with no duplicates (empty = any period).
 ## - Allowed weather states must be valid GardenWeather IDs with no duplicates (empty = any weather).
@@ -35,6 +39,8 @@ const EVENT_NAMESPACE_PREFIX: String = "event."
 @export var min_total_plants: int = 0
 @export var min_mature_plants: int = 0
 @export var min_total_decorations: int = 0
+@export var required_plant_counts: Dictionary = {}
+@export var is_secret: bool = false
 
 
 ## Returns true if this event definition is structurally valid.
@@ -53,6 +59,9 @@ func is_valid() -> bool:
 		return false
 
 	if not _is_valid_required_plant_ids(required_plant_ids):
+		return false
+
+	if not _is_valid_required_plant_counts(required_plant_counts):
 		return false
 
 	if not _is_valid_required_decoration_ids(required_decoration_ids):
@@ -105,6 +114,23 @@ static func _is_valid_required_plant_ids(plant_ids: Array[String]) -> bool:
 		if seen.has(plant_id):
 			return false
 		seen[plant_id] = true
+	return true
+
+
+static func _is_valid_required_plant_counts(counts_map: Dictionary) -> bool:
+	for key: Variant in counts_map.keys():
+		if typeof(key) != TYPE_STRING:
+			return false
+		var plant_id: String = key as String
+		if not plant_id.begins_with(PlantDefinition.PLANT_NAMESPACE_PREFIX):
+			return false
+		if not StableContentId.is_valid(plant_id):
+			return false
+		var raw_count: Variant = counts_map[key]
+		if typeof(raw_count) != TYPE_INT:
+			return false
+		if (raw_count as int) <= 0:
+			return false
 	return true
 
 

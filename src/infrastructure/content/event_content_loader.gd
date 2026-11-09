@@ -9,7 +9,8 @@
 ## - Lightweight loading adapter: extends RefCounted (not Node, Autoload, singleton, or Resource).
 ## - Does not depend on AppRoot, GameSession, GameState, LifecycleCoordinator, or LocalSaveRepository.
 ## - Avoids depending on ContentCatalog from infrastructure; catalog validation remains at application level.
-## - Deterministic production manifest: five explicit resource paths in ascending order.
+## - Deterministic production manifest: six explicit resource paths in ascending order
+##   (five MVP ambient events plus one secret combination event).
 ## - No directory scanning, recursive discovery, or filesystem enumeration order dependence.
 ## - Strict all-or-nothing validation: rejects empty, non-res, duplicate, missing, null, or wrong-type resources.
 ## - Preserves caller's path order in path-based loading.
@@ -18,9 +19,10 @@
 class_name EventContentLoader
 extends RefCounted
 
-## Explicit deterministic production resource manifest for MVP ambient events.
+## Explicit deterministic production resource manifest for MVP ambient and secret events.
 const PRODUCTION_EVENT_PATHS: Array[String] = [
 	"res://content/events/bird_shade_song.tres",
+	"res://content/events/cat_jasmine_night_rest.tres",
 	"res://content/events/cat_sleeping_bench.tres",
 	"res://content/events/firefly_night_glow.tres",
 	"res://content/events/frog_rain_chorus.tres",
@@ -30,7 +32,7 @@ const PRODUCTION_EVENT_PATHS: Array[String] = [
 const RES_PREFIX: String = "res://"
 
 
-## Loads the standard five authored MVP event definitions from the explicit production manifest.
+## Loads the authored production event definitions from the explicit production manifest.
 func load_production_definitions() -> EventContentLoadResult:
 	return load_from_paths(PRODUCTION_EVENT_PATHS)
 
