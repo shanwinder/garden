@@ -112,6 +112,7 @@ func run_tests() -> void:
 	_test_return_summary_and_resume_feedback()
 	_test_ambient_event_observation_button_and_feedback()
 	_test_selected_plant_growth_countdown_and_atmosphere_forecast()
+	_test_placed_decoration_cards_rendering_selection_and_inspection()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -2499,5 +2500,89 @@ func _test_selected_plant_growth_countdown_and_atmosphere_forecast() -> void:
 	assert_eq(view.get_seconds_until_next_time_period(), 0, "Blocked resets time period countdown")
 	assert_eq(view.get_next_weather_state(), "", "Blocked clears next weather state")
 	assert_eq(view.get_seconds_until_next_weather_state(), 0, "Blocked resets weather countdown")
+	assert_eq(view.get_rendered_decoration_count(), 0, "Blocked clears rendered DecorationView items")
+	assert_false(view.has_selected_decoration(), "Blocked clears selected decoration")
+	assert_eq(view.get_selected_decoration_instance_id(), "", "Blocked clears selected decoration ID")
 
+	view.free()
+
+
+func _test_placed_decoration_cards_rendering_selection_and_inspection() -> void:
+	describe("GardenView renders placed DecorationView cards, supports mutual-exclusive selection, and inspects decoration details")
+	var catalog: ContentCatalog = ContentCatalog.try_create(
+		PlantContentLoader.new().load_production_definitions().get_definitions(),
+		VisitorContentLoader.new().load_production_definitions().get_definitions(),
+		DecorationContentLoader.new().load_production_definitions().get_definitions(),
+		EventContentLoader.new().load_production_definitions().get_definitions()
+	)
+	var session: GameSession = GameSession.new()
+	var clock: FakeGameClock = FakeGameClock.new(5000, 0)
+
+	# 1. Placed decorations alone (0 plants) still render in GardenScroll without EmptyState blocking them
+	session.get_state().get_decorations().try_add_decoration(
+		DecorationState.new("decor-b", "decoration.bench", 4100)
+	)
+	session.get_state().get_decorations().try_add_decoration(
+		DecorationState.new("decor-a", "decoration.watering_can", 4000)
+	)
+
+	var view: GardenView = _instantiate_garden_view()
+	view.bind_garden(session, catalog, clock)
+
+	assert_false(view.is_empty_garden_displayed(), "Garden with placed decorations does not hide workspace behind empty state")
+	assert_eq(view.get_displayed_plant_count(), 0, "Zero PlantView cards")
+	assert_eq(view.get_rendered_decoration_count(), 2, "Two DecorationView cards rendered")
+	var dviews: Array[DecorationView] = view.get_decoration_views()
+	assert_eq(dviews[0].get_runtime_instance_id(), "decor-a", "Rendered in ascending runtime ID order (0)")
+	assert_eq(dviews[1].get_runtime_instance_id(), "decor-b", "Rendered in ascending runtime ID order (1)")
+
+	# 2. Tap decoration card -> updates DetailsArea & clears/keeps HarvestButton disabled
+	dviews[1].get_touch_button().pressed.emit()
+	assert_true(view.has_selected_decoration(), "Decoration selected")
+	assert_false(view.has_selected_plant(), "No plant selected")
+	assert_eq(view.get_selected_decoration_instance_id(), "decor-b", "Selected decoration ID is decor-b")
+	assert_eq(view.get_selected_decoration_definition_id(), "decoration.bench", "Selected decoration definition matches")
+	assert_eq(view.get_selected_decoration_traits(), ["shade", "shelter"], "Selected decoration traits match")
+	assert_eq(view.get_selected_decoration_price(), 25, "Selected decoration price matches")
+	assert_eq(view.get_selected_decoration_placed_at(), 4100, "Selected decoration placed_at matches")
+	assert_eq(view.get_details_header_text(), "รายละเอียดของตกแต่ง", "Details header reflects decoration")
+	assert_true(view.get_detail_name_text().contains("ม้านั่งไม้ในสวน"), "Details name shows bench Thai name")
+	assert_true(view.get_detail_name_text().contains("ร่มเงา"), "Details name shows bench traits")
+	assert_true(view.get_detail_reward_text().contains("25 เหรียญ"), "Details reward line shows purchase price")
+	assert_true(view.get_detail_id_text().contains("decor-b"), "Details ID line shows runtime ID")
+	assert_true(view.get_detail_planted_at_text().contains("4100"), "Details timestamp shows placed_at")
+	assert_false(view.is_harvest_button_enabled(), "HarvestButton disabled when inspecting decoration")
+	assert_eq(view.get_harvest_button().text, "ของตกแต่งไม่ต้องเก็บเกี่ยว", "HarvestButton shows decoration message")
+	assert_true(dviews[1].is_selected(), "Selected DecorationView highlighted")
+	assert_false(dviews[0].is_selected(), "Other DecorationView unselected")
+
+	# 3. Refresh preserves decoration selection, and adding a plant allows switching selection cleanly
+	session.try_register_plant(catalog, "plant-01", "plant.holy_basil", 4200)
+	view.refresh_from_session()
+	assert_eq(view.get_displayed_plant_count(), 1, "1 PlantView rendered alongside decorations")
+	assert_eq(view.get_rendered_decoration_count(), 2, "Still 2 DecorationViews without duplicates")
+	assert_true(view.has_selected_decoration(), "Decoration selection preserved across refresh")
+	assert_true(view.get_decoration_view_by_id("decor-b").is_selected(), "decor-b highlight preserved")
+
+	var pview: PlantView = view.get_plant_view_by_id("plant-01")
+	pview.simulate_selection_input()
+	assert_true(view.has_selected_plant(), "Plant selected on tap")
+	assert_false(view.has_selected_decoration(), "Decoration selection cleared when selecting plant")
+	assert_false(view.get_decoration_view_by_id("decor-b").is_selected(), "DecorationView highlight cleared")
+	assert_eq(view.get_details_header_text(), "รายละเอียดต้นไม้", "Details header restored to plant")
+
+	# 4. Cosmetic decoration (no traits) displays cosmetic status cleanly
+	view.get_decoration_view_by_id("decor-a").get_touch_button().pressed.emit()
+	assert_true(view.has_selected_decoration(), "Cosmetic decoration selected")
+	assert_false(view.has_selected_plant(), "Plant selection cleared when selecting decoration")
+	assert_false(view.get_plant_view_by_id("plant-01").is_selected(), "PlantView highlight cleared")
+	assert_true(view.get_detail_name_text().contains("บัวรดน้ำสังกะสี"), "Cosmetic decoration name shown")
+	assert_true(view.get_detail_name_text().contains("ตกแต่งเพื่อความสวยงาม"), "Cosmetic role shown")
+	assert_true(view.get_detail_stage_text().contains("ของตกแต่งเพื่อความสวยงาม"), "Cosmetic status shown")
+
+	# 5. Blocked startup clears decoration views and selection
+	view.show_blocked_startup("blocked")
+	assert_eq(view.get_rendered_decoration_count(), 0, "Blocked clears DecorationViews")
+	assert_false(view.has_selected_decoration(), "Blocked clears selected decoration")
+	assert_eq(view.get_selected_decoration_instance_id(), "", "Blocked clears selected decoration ID")
 	view.free()

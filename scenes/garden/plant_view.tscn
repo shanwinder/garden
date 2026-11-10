@@ -22,9 +22,9 @@ corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
 [node name="PlantView" type="PanelContainer"]
-custom_minimum_size = Vector2(280, 180)
-offset_right = 280.0
-offset_bottom = 180.0
+custom_minimum_size = Vector2(260, 160)
+offset_right = 260.0
+offset_bottom = 160.0
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_card")
 script = ExtResource("1_plant_view")

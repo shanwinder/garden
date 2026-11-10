@@ -47,14 +47,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 48
-theme_override_constants/margin_top = 64
-theme_override_constants/margin_right = 48
-theme_override_constants/margin_bottom = 64
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 28
 
 [node name="LayoutBox" type="VBoxContainer" parent="MainMargin"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 8
 
 [node name="HeaderArea" type="HBoxContainer" parent="MainMargin/LayoutBox"]
 layout_mode = 2
@@ -224,6 +224,7 @@ vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="ContentArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
+custom_minimum_size = Vector2(0, 320)
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxEmpty_content")
@@ -237,16 +238,43 @@ size_flags_vertical = 3
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-theme_override_constants/margin_left = 8
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 8
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_left = 4
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 4
+theme_override_constants/margin_bottom = 4
 
-[node name="PlantsContainer" type="GridContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin"]
+[node name="GardenItemsVBox" type="VBoxContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/h_separation = 20
-theme_override_constants/v_separation = 20
+theme_override_constants/separation = 16
+
+[node name="PlantsSectionLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.9, 0.78, 1)
+theme_override_font_sizes/font_size = 22
+text = "ต้นไม้ในสวน"
+
+[node name="PlantsContainer" type="GridContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 16
+columns = 2
+
+[node name="DecorationsSectionLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.88, 0.72, 1)
+theme_override_font_sizes/font_size = 22
+text = "ของตกแต่งในสวน"
+
+[node name="DecorationsContainer" type="GridContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 16
 columns = 2
 
 [node name="EmptyStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea"]
@@ -275,71 +303,74 @@ vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="DetailsArea" type="PanelContainer" parent="MainMargin/LayoutBox"]
-custom_minimum_size = Vector2(0, 310)
+custom_minimum_size = Vector2(0, 230)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_details")
 
 [node name="MarginContainer" type="MarginContainer" parent="MainMargin/LayoutBox/DetailsArea"]
 layout_mode = 2
-theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 20
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 14
 
 [node name="DetailsVBox" type="VBoxContainer" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 6
 
 [node name="DetailsHeaderLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.9, 0.85, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 24
 text = "รายละเอียดต้นไม้"
 
 [node name="NoSelectionLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_colors/font_color = Color(0.65, 0.7, 0.65, 1)
-theme_override_font_sizes/font_size = 22
-text = "แตะที่ต้นไม้เพื่อดูรายละเอียด"
+theme_override_font_sizes/font_size = 20
+text = "แตะที่ต้นไม้หรือของตกแต่งเพื่อดูรายละเอียด"
 vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="DetailsContent" type="VBoxContainer" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox"]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 4
 
 [node name="DetailNameLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "พืช: —"
+autowrap_mode = 2
 
 [node name="DetailStageLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "ระยะ: —"
+autowrap_mode = 2
 
 [node name="DetailRewardLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.45, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 19
 text = "รางวัลเก็บเกี่ยว: —"
 
 [node name="DetailIdLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "รหัสประจำต้น: —"
 
 [node name="DetailPlantedAtLabel" type="Label" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.7, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "ปลูกเมื่อ: —"
 
 [node name="HarvestButton" type="Button" parent="MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent"]
-custom_minimum_size = Vector2(220, 56)
+custom_minimum_size = Vector2(220, 52)
 layout_mode = 2
 size_flags_horizontal = 0
 focus_mode = 2

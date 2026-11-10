@@ -1256,6 +1256,9 @@ Main (res://scenes/app/main.tscn — MainScreen)
     ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
     ├── CurrencyLabel (Authoritative Coin HUD display)
     ├── ProgressionLabel (Derived GardenProgressionStage & Optional Gentle Guidance HUD)
+    ├── DailyGuidanceLabel (Optional Daily Guidance HUD)
+    ├── FtueLabel (Optional First-Time User Experience HUD)
+    ├── DiscoveryPacingLabel (Optional 7-Day Discovery Pacing HUD)
     ├── AtmosphereLabel (Derived Time-of-Day, Weather, and Active Ambient Events HUD)
     ├── EnvironmentLabel (Derived GardenSnapshot trait summary)
     ├── VisitorRow (VisitorStatusLabel + ObserveVisitorButton + ObserveEventButton)
@@ -1263,10 +1266,12 @@ Main (res://scenes/app/main.tscn — MainScreen)
     ├── DecorationRow (DecorationStatusLabel + DecorateButton)
     ├── FeedbackArea (FeedbackLabel)
     ├── ContentArea
-    │   ├── PlantsScroll -> PlantsContainer (GridContainer of PlantView instances)
+    │   ├── PlantsScroll -> GardenItemsVBox
+    │   │   ├── PlantsSectionLabel + PlantsContainer (GridContainer of PlantView instances)
+    │   │   └── DecorationsSectionLabel + DecorationsContainer (GridContainer of DecorationView instances)
     │   ├── EmptyStateContainer
     │   └── BlockedStateContainer
-    ├── DetailsArea (Selection inspection panel + DetailRewardLabel + HarvestButton)
+    ├── DetailsArea (Selection inspection panel for plants or placed decorations + DetailRewardLabel + HarvestButton)
     ├── PlantingPicker (res://scenes/garden/planting_picker.tscn — PlantingPicker)
     │   ├── PickerPanel (Catalog plant option buttons)
     │   └── ConfirmationOverlay (Explicit Confirm / Cancel dialog)
@@ -1278,8 +1283,8 @@ Main (res://scenes/app/main.tscn — MainScreen)
 ```
 
 - `MainScreen` (`src/presentation/app/main_screen.gd`) acts as a thin composition adapter binding `AppRoot` (`game_session`, `content_catalog`, `game_clock`, and `session_resumed`) into `GardenView`, and supports `bind_app_root(app)` for isolated test injection without global Autoload coupling.
-- `GardenView` (`src/presentation/garden/garden_view.gd`), `PlantView` (`src/presentation/garden/plant_view.gd`), and `PlantingPicker` (`src/presentation/garden/planting_picker.gd`) receive dependencies explicitly (`bind_garden`, `bind_plant_data`, `bind_catalog`) and never own, duplicate, or directly mutate `GameState`.
-- Responsive portrait sizing accommodates narrow portrait viewports (such as `720x1600`) as well as the `1080x1920` reference canvas without control clipping.
+- `GardenView` (`src/presentation/garden/garden_view.gd`), `PlantView` (`src/presentation/garden/plant_view.gd`), `DecorationView` (`src/presentation/garden/decoration_view.gd`), and `PlantingPicker` (`src/presentation/garden/planting_picker.gd`) receive dependencies explicitly (`bind_garden`, `bind_plant_data`, `bind_decoration_data`, `bind_catalog`) and never own, duplicate, or directly mutate `GameState`.
+- Responsive portrait sizing accommodates narrow portrait viewports (such as `720x1600`) as well as the `1080x1920` reference canvas without control clipping, guaranteeing at least `320px` of vertical garden workspace in `ContentArea`.
 
 ---
 
@@ -1309,9 +1314,9 @@ For broad UI refresh after load/resume, a controlled `state_reloaded`/snapshot r
 
 #### Implementation Status (Milestones 8, 9, 10, and 11)
 
-- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_currency()` for `CurrencyLabel`, reads `GameSession.get_state().get_plants().get_all_plants()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`, and derives the garden's environmental traits and eligible visitors via `GardenSnapshotBuilder.build_snapshot(...)` and `VisitorEligibility.filter_eligible_visitors(...)` using the same `now_utc` sample without consuming RNG.
-- **No per-frame polling**: Neither `GardenView`, `PlantView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
-- **Ephemeral selection**: `GardenView` tracks selected `runtime_instance_id` purely in presentation memory, preserving selection across refreshes if the plant still exists and clearing it safely otherwise.
+- **Controlled snapshot refresh**: `GardenView.refresh_from_session()` reads `GameSession.get_currency()` for `CurrencyLabel`, reads `GameSession.get_state().get_plants().get_all_plants()` and `GameSession.get_state().get_decorations().get_all_decorations()` in deterministic `runtime_instance_id` order, samples `GameClock.utc_now_seconds()` **once** per refresh, computes each plant's stage via `PlantGrowth.stage_for_state_at(plant_state, definition, now_utc)`, renders `PlantView` and `DecorationView` cards, and derives the garden's environmental traits and eligible visitors via `GardenSnapshotBuilder.build_snapshot(...)` and `VisitorEligibility.filter_eligible_visitors(...)` using the same `now_utc` sample without consuming RNG.
+- **No per-frame polling**: Neither `GardenView`, `PlantView`, `DecorationView`, nor `PlantingPicker` runs `_process`, `_physics_process`, or per-plant `Timer` nodes for growth progression.
+- **Ephemeral selection**: `GardenView` tracks mutually exclusive selected plant or decoration `runtime_instance_id` purely in presentation memory, preserving valid selection across refreshes and clearing stale selection safely otherwise.
 - **Narrow command & lifecycle signals**:
   - `PlantingPicker` emits `planting_requested(definition_id)` only upon confirmed touch input (guarded against duplicate confirmation dispatch), which `GardenView` forwards to `MainScreen` to execute `AppRoot.try_plant_and_checkpoint(definition_id)` and trigger `refresh_from_session()`.
   - `GardenView` enables `HarvestButton` only when the selected plant's derived stage is `PlantGrowth.Stage.MATURE` and `definition.harvest_reward > 0`, emitting `harvest_requested(runtime_instance_id)` to `MainScreen` to execute `AppRoot.try_harvest_and_checkpoint(runtime_instance_id)`, render `HarvestCheckpointResult` feedback, and trigger `refresh_from_session()` when `result.is_harvested()` is true.

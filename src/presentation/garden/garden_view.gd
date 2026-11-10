@@ -23,6 +23,7 @@ signal event_observation_requested()
 signal decoration_purchase_requested(definition_id: String)
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
+const DECORATION_VIEW_SCENE: PackedScene = preload("res://scenes/garden/decoration_view.tscn")
 
 const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
 	"dense_vegetation": "พุ่มไม้หนาแน่น",
@@ -108,6 +109,7 @@ var _catalog: ContentCatalog = null
 var _game_clock: GameClock = null
 
 var _selected_runtime_instance_id: String = ""
+var _selected_decoration_instance_id: String = ""
 var _current_visitor_id: String = ""
 var _current_event_id: String = ""
 var _eligible_visitor_ids: Array[String] = []
@@ -124,6 +126,10 @@ var _selected_plant_seconds_until_mature: int = -1
 var _selected_plant_traits: Array[String] = []
 var _selected_plant_harvest_reward: int = 0
 var _selected_plant_planted_at: int = -1
+var _selected_decoration_definition_id: String = ""
+var _selected_decoration_traits: Array[String] = []
+var _selected_decoration_price: int = 0
+var _selected_decoration_placed_at: int = -1
 var _next_time_period: String = ""
 var _seconds_until_next_time_period: int = 0
 var _next_weather_state: String = ""
@@ -163,13 +169,17 @@ var _planting_picker: PlantingPicker = null
 var _journal_panel: JournalPanel = null
 var _decoration_picker: DecorationPicker = null
 
+var _plants_section_label: Label = null
 var _plants_container: Container = null
+var _decorations_section_label: Label = null
+var _decorations_container: Container = null
 var _plants_scroll: ScrollContainer = null
 var _empty_container: Control = null
 var _empty_label: Label = null
 var _blocked_container: Control = null
 var _blocked_label: Label = null
 
+var _details_header_label: Label = null
 var _no_selection_label: Label = null
 var _details_content: Control = null
 var _detail_name_label: Label = null
@@ -240,8 +250,14 @@ func _resolve_nodes() -> void:
 		_journal_panel = get_node_or_null("JournalPanel") as JournalPanel
 	if _decoration_picker == null:
 		_decoration_picker = get_node_or_null("DecorationPicker") as DecorationPicker
+	if _plants_section_label == null:
+		_plants_section_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/PlantsSectionLabel") as Label
 	if _plants_container == null:
-		_plants_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/PlantsContainer") as Container
+		_plants_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/PlantsContainer") as Container
+	if _decorations_section_label == null:
+		_decorations_section_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/DecorationsSectionLabel") as Label
+	if _decorations_container == null:
+		_decorations_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/DecorationsContainer") as Container
 	if _plants_scroll == null:
 		_plants_scroll = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll") as ScrollContainer
 	if _empty_container == null:
@@ -252,6 +268,8 @@ func _resolve_nodes() -> void:
 		_blocked_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer") as Control
 	if _blocked_label == null:
 		_blocked_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer/BlockedLabel") as Label
+	if _details_header_label == null:
+		_details_header_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsHeaderLabel") as Label
 	if _no_selection_label == null:
 		_no_selection_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/NoSelectionLabel") as Label
 	if _details_content == null:
@@ -384,10 +402,16 @@ func refresh_from_session() -> void:
 		_currency_label.visible = true
 		_currency_label.text = "เหรียญ: %d" % _session.get_currency()
 
-	# Authoritative plant collection in deterministic order (Requirement 9, 20).
+	# Authoritative plant and placed decoration collections in deterministic order.
 	var plants: Array[PlantState] = _session.get_state().get_plants().get_all_plants()
+	var decor_collection: DecorationCollectionState = _session.get_state().get_decorations()
+	var decorations: Array[DecorationState] = (
+		decor_collection.get_all_decorations()
+		if decor_collection != null
+		else []
+	)
 
-	_render_plants(plants, now_utc)
+	_render_garden_items(plants, decorations, now_utc)
 	_update_environment_and_visitors(now_utc)
 	_update_journal_ui()
 
@@ -396,16 +420,30 @@ func _on_refresh_button_pressed() -> void:
 	refresh_from_session()
 
 
-func _render_plants(plants: Array[PlantState], now_utc: int) -> void:
+func _render_garden_items(
+	plants: Array[PlantState],
+	decorations: Array[DecorationState],
+	now_utc: int
+) -> void:
 	_resolve_nodes()
 
 	if _blocked_container != null:
 		_blocked_container.visible = false
 
-	# Gracefully handle empty garden (Requirement 16).
-	if plants.is_empty():
+	# Gracefully handle completely empty garden (no plants and no decorations).
+	if plants.is_empty() and decorations.is_empty():
 		_clear_plant_views()
+		_clear_decoration_views()
 		_selected_runtime_instance_id = ""
+		_selected_decoration_instance_id = ""
+		if _plants_section_label != null:
+			_plants_section_label.visible = false
+		if _plants_container != null:
+			_plants_container.visible = false
+		if _decorations_section_label != null:
+			_decorations_section_label.visible = false
+		if _decorations_container != null:
+			_decorations_container.visible = false
 		if _empty_container != null:
 			_empty_container.visible = true
 		if _plants_scroll != null:
@@ -418,8 +456,14 @@ func _render_plants(plants: Array[PlantState], now_utc: int) -> void:
 	if _plants_scroll != null:
 		_plants_scroll.visible = true
 
-	# Clear previous plant views to avoid duplicate nodes on refresh (Requirement 19).
+	# Clear previous item views to avoid duplicate nodes on refresh.
 	_clear_plant_views()
+	_clear_decoration_views()
+
+	if _plants_section_label != null:
+		_plants_section_label.visible = not plants.is_empty()
+	if _plants_container != null:
+		_plants_container.visible = not plants.is_empty()
 
 	var selected_plant_state: PlantState = null
 	var selected_definition: PlantDefinition = null
@@ -470,31 +514,92 @@ func _render_plants(plants: Array[PlantState], now_utc: int) -> void:
 		if _plants_container != null:
 			_plants_container.add_child(view)
 
-	# If the previously selected plant no longer exists, safely clear selection (Requirement 18).
-	if selected_plant_state == null:
-		_selected_runtime_instance_id = ""
-		_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
-	else:
+	if _decorations_section_label != null:
+		_decorations_section_label.visible = not decorations.is_empty()
+	if _decorations_container != null:
+		_decorations_container.visible = not decorations.is_empty()
+
+	var selected_decoration_state: DecorationState = null
+	var selected_decoration_def: DecorationDefinition = null
+
+	for decor_state: DecorationState in decorations:
+		var decor_inst_id: String = decor_state.get_runtime_instance_id()
+		var decor_def_id: String = decor_state.get_definition_id()
+		var placed_at: int = decor_state.get_placed_at()
+		var decor_def: DecorationDefinition = _catalog.get_decoration(decor_def_id)
+		var decor_price: int = decor_def.price if decor_def != null else 0
+		var decor_traits: Array[String] = (
+			decor_def.environmental_traits.duplicate()
+			if decor_def != null
+			else []
+		)
+
+		var decor_view: DecorationView = DECORATION_VIEW_SCENE.instantiate() as DecorationView
+		decor_view.bind_decoration_data(
+			decor_inst_id,
+			decor_def_id,
+			placed_at,
+			decor_price,
+			decor_traits
+		)
+		decor_view.decoration_selected.connect(_on_decoration_selected)
+
+		if selected_plant_state == null and decor_inst_id == _selected_decoration_instance_id:
+			decor_view.set_selected(true)
+			selected_decoration_state = decor_state
+			selected_decoration_def = decor_def
+
+		if _decorations_container != null:
+			_decorations_container.add_child(decor_view)
+
+	# Preserve active plant or decoration details; safely clear stale selection.
+	if selected_plant_state != null:
+		_selected_decoration_instance_id = ""
 		_update_details_panel(selected_plant_state, selected_definition, selected_stage, now_utc)
+	elif selected_decoration_state != null:
+		_selected_runtime_instance_id = ""
+		_update_decoration_details_panel(selected_decoration_state, selected_decoration_def)
+	else:
+		_selected_runtime_instance_id = ""
+		_selected_decoration_instance_id = ""
+		_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
+
+
+func _clear_container_children(container: Container) -> void:
+	if container == null:
+		return
+	for child: Node in container.get_children():
+		container.remove_child(child)
+		child.queue_free()
 
 
 func _clear_plant_views() -> void:
-	if _plants_container == null:
-		return
-	for child: Node in _plants_container.get_children():
-		_plants_container.remove_child(child)
-		child.queue_free()
+	_clear_container_children(_plants_container)
+
+
+func _clear_decoration_views() -> void:
+	_clear_container_children(_decorations_container)
+
+
+func _sync_selection_highlights() -> void:
+	if _plants_container != null:
+		for child: Node in _plants_container.get_children():
+			if child is PlantView:
+				var pview: PlantView = child as PlantView
+				pview.set_selected(pview.get_runtime_instance_id() == _selected_runtime_instance_id)
+	if _decorations_container != null:
+		for child: Node in _decorations_container.get_children():
+			if child is DecorationView:
+				var dview: DecorationView = child as DecorationView
+				dview.set_selected(dview.get_runtime_instance_id() == _selected_decoration_instance_id)
 
 
 func _on_plant_selected(runtime_instance_id: String) -> void:
 	_selected_runtime_instance_id = runtime_instance_id
+	_selected_decoration_instance_id = ""
 
 	_resolve_nodes()
-	if _plants_container != null:
-		for child: Node in _plants_container.get_children():
-			if child is PlantView:
-				var view: PlantView = child as PlantView
-				view.set_selected(view.get_runtime_instance_id() == runtime_instance_id)
+	_sync_selection_highlights()
 
 	if _session != null:
 		var plant_state: PlantState = _session.get_state().get_plants().get_plant(runtime_instance_id)
@@ -510,6 +615,109 @@ func _on_plant_selected(runtime_instance_id: String) -> void:
 	_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
 
 
+func _on_decoration_selected(runtime_instance_id: String) -> void:
+	_selected_decoration_instance_id = runtime_instance_id
+	_selected_runtime_instance_id = ""
+
+	_resolve_nodes()
+	_sync_selection_highlights()
+
+	if _session != null and _session.get_state() != null and _session.get_state().get_decorations() != null:
+		var decor_state: DecorationState = _session.get_state().get_decorations().get_decoration(runtime_instance_id)
+		if decor_state != null:
+			var definition: DecorationDefinition = (
+				_catalog.get_decoration(decor_state.get_definition_id())
+				if _catalog != null
+				else null
+			)
+			_update_decoration_details_panel(decor_state, definition)
+			return
+
+	_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
+
+
+func _clear_selected_plant_fields() -> void:
+	_selected_plant_definition_id = ""
+	_selected_plant_stage = PlantGrowth.Stage.INVALID
+	_selected_plant_seconds_until_next_stage = -1
+	_selected_plant_seconds_until_mature = -1
+	_selected_plant_traits = []
+	_selected_plant_harvest_reward = 0
+	_selected_plant_planted_at = -1
+
+
+func _clear_selected_decoration_fields() -> void:
+	_selected_decoration_definition_id = ""
+	_selected_decoration_traits = []
+	_selected_decoration_price = 0
+	_selected_decoration_placed_at = -1
+
+
+func _update_decoration_details_panel(
+	decor_state: DecorationState,
+	definition: DecorationDefinition
+) -> void:
+	_resolve_nodes()
+	if _no_selection_label == null or _details_content == null:
+		return
+
+	if decor_state == null:
+		_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
+		return
+
+	_clear_selected_plant_fields()
+	_no_selection_label.visible = false
+	_details_content.visible = true
+	if _details_header_label != null:
+		_details_header_label.text = "รายละเอียดของตกแต่ง"
+
+	var def_id: String = decor_state.get_definition_id()
+	_selected_decoration_definition_id = def_id
+	_selected_decoration_traits = (
+		definition.environmental_traits.duplicate()
+		if definition != null
+		else []
+	)
+	_selected_decoration_price = maxi(0, definition.price) if definition != null else 0
+	_selected_decoration_placed_at = decor_state.get_placed_at()
+
+	var thai_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
+
+	if _detail_name_label != null:
+		if not _selected_decoration_traits.is_empty():
+			var trait_names: PackedStringArray = PackedStringArray()
+			for trait_id: String in _selected_decoration_traits:
+				trait_names.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+			_detail_name_label.text = (
+				"ของตกแต่ง: %s (%s) | คุณสมบัติ: %s"
+				% [thai_name, def_id, ", ".join(trait_names)]
+			)
+		else:
+			_detail_name_label.text = "ของตกแต่ง: %s (%s) | ตกแต่งเพื่อความสวยงาม" % [thai_name, def_id]
+
+	if _detail_stage_label != null:
+		if not _selected_decoration_traits.is_empty():
+			_detail_stage_label.text = "สถานะ: จัดวางในสวนแล้ว (เสริมบรรยากาศและดึงดูดผู้มาเยือน)"
+		else:
+			_detail_stage_label.text = "สถานะ: จัดวางในสวนแล้ว (ของตกแต่งเพื่อความสวยงาม)"
+
+	if _detail_reward_label != null:
+		if definition != null:
+			_detail_reward_label.text = "ราคาซื้อ: %d เหรียญ" % definition.price
+		else:
+			_detail_reward_label.text = "ราคาซื้อ: —"
+
+	if _detail_id_label != null:
+		_detail_id_label.text = "รหัสประจำชิ้น: %s" % decor_state.get_runtime_instance_id()
+
+	if _detail_planted_at_label != null:
+		_detail_planted_at_label.text = "จัดวางเมื่อ: %d (Unix UTC)" % decor_state.get_placed_at()
+
+	if _harvest_button != null:
+		_harvest_button.disabled = true
+		_harvest_button.text = "ของตกแต่งไม่ต้องเก็บเกี่ยว"
+
+
 func _update_details_panel(
 	plant_state: PlantState,
 	definition: PlantDefinition,
@@ -521,13 +729,10 @@ func _update_details_panel(
 		return
 
 	if plant_state == null:
-		_selected_plant_definition_id = ""
-		_selected_plant_stage = PlantGrowth.Stage.INVALID
-		_selected_plant_seconds_until_next_stage = -1
-		_selected_plant_seconds_until_mature = -1
-		_selected_plant_traits = []
-		_selected_plant_harvest_reward = 0
-		_selected_plant_planted_at = -1
+		_clear_selected_plant_fields()
+		_clear_selected_decoration_fields()
+		if _details_header_label != null:
+			_details_header_label.text = "รายละเอียดต้นไม้"
 		_no_selection_label.visible = true
 		_details_content.visible = false
 		if _harvest_button != null:
@@ -535,6 +740,9 @@ func _update_details_panel(
 			_harvest_button.text = "ยังไม่พร้อมเก็บเกี่ยว"
 		return
 
+	_clear_selected_decoration_fields()
+	if _details_header_label != null:
+		_details_header_label.text = "รายละเอียดต้นไม้"
 	_no_selection_label.visible = false
 	_details_content.visible = true
 
@@ -633,7 +841,9 @@ func _update_details_panel(
 func _show_blocked_visual() -> void:
 	_resolve_nodes()
 	_clear_plant_views()
+	_clear_decoration_views()
 	_selected_runtime_instance_id = ""
+	_selected_decoration_instance_id = ""
 	_current_visitor_id = ""
 	_current_event_id = ""
 	_eligible_visitor_ids = []
@@ -643,13 +853,8 @@ func _show_blocked_visual() -> void:
 	_last_return_summary = null
 	_last_refresh_utc_seconds = 0
 	_has_refresh_timestamp = false
-	_selected_plant_definition_id = ""
-	_selected_plant_stage = PlantGrowth.Stage.INVALID
-	_selected_plant_seconds_until_next_stage = -1
-	_selected_plant_seconds_until_mature = -1
-	_selected_plant_traits = []
-	_selected_plant_harvest_reward = 0
-	_selected_plant_planted_at = -1
+	_clear_selected_plant_fields()
+	_clear_selected_decoration_fields()
 	_next_time_period = ""
 	_seconds_until_next_time_period = 0
 	_next_weather_state = ""
@@ -687,6 +892,12 @@ func _show_blocked_visual() -> void:
 		_decorate_button.disabled = true
 	if _feedback_area != null:
 		_feedback_area.visible = false
+	if _plants_section_label != null:
+		_plants_section_label.visible = false
+	if _decorations_section_label != null:
+		_decorations_section_label.visible = false
+	if _decorations_container != null:
+		_decorations_container.visible = false
 	if _empty_container != null:
 		_empty_container.visible = false
 	if _plants_scroll != null:
@@ -2878,3 +3089,65 @@ func get_ineligible_catalog_event_display_names_in_garden() -> Array[String]:
 	for eid: String in get_ineligible_catalog_event_ids_in_garden():
 		result.append(get_event_display_name_for_id(eid))
 	return result
+
+
+## Pure query for testing: returns all rendered DecorationView items in deterministic runtime instance ID order.
+func get_decoration_views() -> Array[DecorationView]:
+	_resolve_nodes()
+	var views: Array[DecorationView] = []
+	if _decorations_container != null:
+		for child: Node in _decorations_container.get_children():
+			if child is DecorationView:
+				views.append(child as DecorationView)
+	return views
+
+
+## Pure query for testing: returns DecorationView with matching runtime instance ID, or null if not found.
+func get_decoration_view_by_id(runtime_instance_id: String) -> DecorationView:
+	_resolve_nodes()
+	if _decorations_container != null:
+		for child: Node in _decorations_container.get_children():
+			if child is DecorationView and (child as DecorationView).get_runtime_instance_id() == runtime_instance_id:
+				return child as DecorationView
+	return null
+
+
+## Pure query for testing: returns count of rendered DecorationView items in the garden workspace.
+func get_rendered_decoration_count() -> int:
+	return get_decoration_views().size()
+
+
+## Pure query for testing: returns ephemeral selected decoration runtime instance ID, or "".
+func get_selected_decoration_instance_id() -> String:
+	return _selected_decoration_instance_id if not _is_blocked else ""
+
+
+## Pure query for testing: returns true if a placed decoration is currently selected and startup is not blocked.
+func has_selected_decoration() -> bool:
+	return not _is_blocked and not _selected_decoration_instance_id.is_empty()
+
+
+## Pure query for testing: returns the selected decoration's definition ID, or "" if none selected or blocked.
+func get_selected_decoration_definition_id() -> String:
+	return _selected_decoration_definition_id if not _is_blocked else ""
+
+
+## Pure query for testing: returns environmental traits for the currently selected decoration, or [] if none selected.
+func get_selected_decoration_traits() -> Array[String]:
+	return _selected_decoration_traits.duplicate() if not _is_blocked else []
+
+
+## Pure query for testing: returns the selected decoration's purchase price, or 0 if none selected or blocked.
+func get_selected_decoration_price() -> int:
+	return _selected_decoration_price if not _is_blocked else 0
+
+
+## Pure query for testing: returns the selected decoration's placed_at UTC timestamp, or -1 if none selected or blocked.
+func get_selected_decoration_placed_at() -> int:
+	return _selected_decoration_placed_at if not _is_blocked else -1
+
+
+## Pure query for testing: returns the header label text in DetailsArea.
+func get_details_header_text() -> String:
+	_resolve_nodes()
+	return _details_header_label.text if _details_header_label != null else ""

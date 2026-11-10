@@ -590,6 +590,12 @@ func _test_decoration_shop_water_trait_and_frog_discovery_loop() -> void:
 		"ของตกแต่งในสวน (1 ชิ้น): ตุ่มน้ำดินเผา (1)",
 		"Clay jar displayed in garden HUD"
 	)
+	assert_eq(view_1.get_rendered_decoration_count(), 1, "1 DecorationView card rendered in garden workspace")
+	var dec_view_1: DecorationView = view_1.get_decoration_views()[0]
+	assert_eq(dec_view_1.get_definition_id(), "decoration.clay_jar", "Rendered DecorationView is clay_jar")
+	dec_view_1.get_touch_button().pressed.emit()
+	assert_true(view_1.has_selected_decoration(), "Purchased clay_jar DecorationView can be selected for inspection")
+	assert_true(view_1.get_detail_name_text().contains("ตุ่มน้ำดินเผา"), "Inspection panel shows clay_jar Thai name")
 	assert_true(view_1.get_environment_text().contains("แหล่งน้ำ"), "Water trait active in environment HUD")
 	assert_true(view_1.get_visitor_status_text().contains("กบ"), "Frog now eligible in visitor HUD")
 
@@ -620,6 +626,10 @@ func _test_decoration_shop_water_trait_and_frog_discovery_loop() -> void:
 		"ของตกแต่งในสวน (1 ชิ้น): ตุ่มน้ำดินเผา (1)",
 		"Persisted clay_jar displayed on restart"
 	)
+	assert_eq(view_2.get_rendered_decoration_count(), 1, "Persisted DecorationView card restored on restart")
+	view_2.get_decoration_views()[0].get_touch_button().pressed.emit()
+	assert_true(view_2.has_selected_decoration(), "Restored DecorationView selectable on restart")
+	assert_eq(view_2.get_selected_decoration_definition_id(), "decoration.clay_jar", "Restored DecorationView definition ID matches")
 	assert_true(view_2.get_environment_text().contains("แหล่งน้ำ"), "Water trait recomputed from persisted clay_jar")
 	assert_true(
 		view_2.get_journal_panel().get_entry_text_for_id("visitor.frog").contains("กบ"),
@@ -1340,6 +1350,11 @@ func _test_portrait_layout_bounds_regression() -> void:
 		var dec_confirm_panel: Control = dec_picker.get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel") as Control
 		var journal_modal_panel: Control = journal.get_node_or_null("CenterContainer/JournalModalPanel") as Control
 		var blocked_label: Control = view.get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer/BlockedLabel") as Control
+		var content_area: Control = view.get_node_or_null("MainMargin/LayoutBox/ContentArea") as Control
+		var main_margin: MarginContainer = view.get_node_or_null("MainMargin") as MarginContainer
+		var layout_box: Control = view.get_node_or_null("MainMargin/LayoutBox") as Control
+		var plant_card: PlantView = (load("res://scenes/garden/plant_view.tscn") as PackedScene).instantiate() as PlantView
+		var decor_card: DecorationView = (load("res://scenes/garden/decoration_view.tscn") as PackedScene).instantiate() as DecorationView
 
 		assert_true(picker_panel != null, "PickerPanel exists")
 		assert_true(confirm_panel != null, "ConfirmPanel exists")
@@ -1347,6 +1362,35 @@ func _test_portrait_layout_bounds_regression() -> void:
 		assert_true(dec_confirm_panel != null, "DecorationPicker ConfirmPanel exists")
 		assert_true(journal_modal_panel != null, "JournalModalPanel exists")
 		assert_true(blocked_label != null, "BlockedLabel exists")
+		assert_true(content_area != null, "ContentArea exists")
+		assert_true(main_margin != null, "MainMargin exists")
+		assert_true(layout_box != null, "LayoutBox exists")
+
+		assert_true(
+			content_area.custom_minimum_size.y >= 320.0,
+			"ContentArea guarantees >= 320px vertical garden space at viewport %s" % str(vp_size)
+		)
+		var margin_x: float = float(
+			main_margin.get_theme_constant("margin_left") + main_margin.get_theme_constant("margin_right")
+		)
+		var margin_y: float = float(
+			main_margin.get_theme_constant("margin_top") + main_margin.get_theme_constant("margin_bottom")
+		)
+		var lb_min: Vector2 = layout_box.get_combined_minimum_size()
+		assert_true(
+			lb_min.x + margin_x <= vp_size.x and lb_min.y + margin_y <= vp_size.y,
+			"LayoutBox minimum size %s + margins fits within viewport %s" % [str(lb_min), str(vp_size)]
+		)
+		assert_true(
+			plant_card.custom_minimum_size.x * 2.0 + 16.0 + margin_x <= vp_size.x,
+			"2-column PlantView cards fit within viewport width %s" % str(vp_size)
+		)
+		assert_true(
+			decor_card.custom_minimum_size.x * 2.0 + 16.0 + margin_x <= vp_size.x,
+			"2-column DecorationView cards fit within viewport width %s" % str(vp_size)
+		)
+		plant_card.free()
+		decor_card.free()
 
 		assert_true(
 			picker_panel.custom_minimum_size.x <= vp_size.x and picker_panel.custom_minimum_size.y <= vp_size.y,
