@@ -491,11 +491,12 @@ For example, a watering can may initially be mostly decorative while a pond cont
 
 ### Placement
 
-**Status: PROVISIONAL**
+**Status: LOCKED placement model (Coarse Logical Grid + Zones); exact editing UX & rotation PROVISIONAL**
 
-Placement should be simple and mobile-friendly.
+Placement should be simple and mobile-friendly using a **coarse logical grid organized by garden zones**:
 
-The precise grid/free-placement model, rotation behavior, collision rules, and editing UX remain technical/product details to confirm during prototyping.
+- Players place plants and decorations onto clean touch-friendly grid cells within unlocked zones, preventing accidental overlap while still allowing purposeful grouping (such as placing jasmine beside a wooden bench).
+- Exact grid dimensions, rotation behavior, and drag-vs-tap editing polish remain UX details to confirm during visual prototyping.
 
 ---
 
@@ -711,7 +712,7 @@ This is a design pacing reference. Content should not be hard-locked to calendar
 
 ### First expansion
 
-- A small adjacent garden section or equivalent progression reward becomes available.
+- **Owner Decision:** Reaching **Living Garden** (`45+` establishment points) or the Day 7 First Expansion milestone unlocks **Adjacent Zone 2**, a small neighboring garden section expanding available placement grid space without requiring coin grinding.
 - The player now has enough systems to experiment independently.
 
 Again, this is intended as **experience pacing**, not mandatory consecutive-day attendance.
@@ -1019,11 +1020,11 @@ The following decisions are intentionally not finalized in this document:
 
 1. Final game title.
 2. Game engine and programming stack.
-3. Exact camera perspective and placement model.
+3. Exact camera perspective (placement model **RESOLVED**: Coarse Logical Grid + Zones).
 4. Final portrait vs. landscape confirmation.
 5. Final visual style and production art pipeline.
 6. Final economy numbers and growth timings.
-7. Exact garden progression/unlock curve.
+7. Exact garden progression/unlock curve (First Expansion **RESOLVED**: Adjacent Zone 2 unlocks at Living Garden / 45 pts or Day 7 milestone without coin grind).
 8. Whether optional daily guidance ships in v0.1 or later.
 9. Exact number and type of special events in the MVP.
 10. Final Thai/English launch language plan.

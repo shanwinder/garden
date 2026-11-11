@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_event_def")
 id = "event.morning_butterflies"
+name_key = "event.morning_butterflies.name"
+description_key = "event.morning_butterflies.description"
 weight = 25.0
 required_trait_counts = {
 "flower": 1

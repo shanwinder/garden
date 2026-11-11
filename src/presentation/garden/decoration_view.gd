@@ -27,6 +27,7 @@ var _placed_at: int = -1
 var _price: int = 0
 var _environmental_traits: Array[String] = []
 var _is_selected: bool = false
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
 
 var _name_label: Label = null
 var _role_badge: Label = null
@@ -70,18 +71,29 @@ func bind_decoration_data(
 	definition_id: String,
 	placed_at: int,
 	price: int = 0,
-	environmental_traits: Array[String] = []
+	environmental_traits: Array[String] = [],
+	locale: String = ""
 ) -> void:
+	if not locale.is_empty():
+		_locale = GardenLocalization.normalize_locale(locale)
 	_runtime_instance_id = runtime_instance_id
 	_definition_id = definition_id
-	_display_name = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(
-		definition_id,
-		definition_id
-	)
+	_display_name = GardenLocalization.get_decoration_name(definition_id, _locale)
 	_placed_at = placed_at
 	_price = maxi(0, price)
 	_environmental_traits = environmental_traits.duplicate()
 	_render()
+
+
+func set_locale(locale: String) -> void:
+	_locale = GardenLocalization.normalize_locale(locale)
+	if not _definition_id.is_empty():
+		_display_name = GardenLocalization.get_decoration_name(_definition_id, _locale)
+	_render()
+
+
+func get_locale() -> String:
+	return _locale
 
 
 func get_runtime_instance_id() -> String:
@@ -129,10 +141,7 @@ func is_bound() -> bool:
 
 
 func is_known_decoration_definition() -> bool:
-	return (
-		not _definition_id.is_empty()
-		and DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.has(_definition_id)
-	)
+	return GardenLocalization.is_known_decoration_id(_definition_id)
 
 
 func get_traits_summary_text() -> String:
@@ -140,7 +149,7 @@ func get_traits_summary_text() -> String:
 		return ""
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in _environmental_traits:
-		parts.append(PlantView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
@@ -207,27 +216,35 @@ func _render() -> void:
 	var accent: Color = get_trait_accent_color()
 
 	if _role_badge != null:
-		_role_badge.text = "[ของตกแต่ง]"
+		_role_badge.text = GardenLocalization.translate("ui.decoration_card.role_badge", _locale)
 		_role_badge.modulate = accent
 
 	if _trait_summary_badge != null:
 		if not is_bound():
-			_trait_summary_badge.text = "—"
+			_trait_summary_badge.text = GardenLocalization.translate("ui.common.dash", _locale)
 		elif not _environmental_traits.is_empty():
 			_trait_summary_badge.text = get_traits_summary_text()
 		else:
-			_trait_summary_badge.text = "ตกแต่งสวยงาม"
+			_trait_summary_badge.text = GardenLocalization.translate("ui.decoration_card.cosmetic", _locale)
 		_trait_summary_badge.modulate = accent
 
 	if _name_label != null:
-		_name_label.text = _display_name if not _display_name.is_empty() else "—"
+		_name_label.text = _display_name if not _display_name.is_empty() else GardenLocalization.translate("ui.common.dash", _locale)
 
 	if _id_label != null:
-		var short_id: String = _runtime_instance_id if not _runtime_instance_id.is_empty() else "—"
+		var short_id: String = _runtime_instance_id if not _runtime_instance_id.is_empty() else GardenLocalization.translate("ui.common.dash", _locale)
 		if _price > 0:
-			_id_label.text = "ID: %s | %d เหรียญ" % [short_id, _price]
+			_id_label.text = GardenLocalization.format_key(
+				"ui.decoration_card.id_price",
+				[short_id, _price],
+				_locale
+			)
 		else:
-			_id_label.text = "ID: %s" % short_id
+			_id_label.text = GardenLocalization.format_key(
+				"ui.decoration_card.id_only",
+				[short_id],
+				_locale
+			)
 
 	if _selection_highlight != null:
 		_selection_highlight.visible = _is_selected

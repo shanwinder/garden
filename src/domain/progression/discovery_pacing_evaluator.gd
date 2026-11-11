@@ -22,46 +22,20 @@ const MILESTONE_THEMES: Dictionary = {
 	DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION: "first_expansion",
 }
 
-const MILESTONE_TITLES: Dictionary = {
-	DiscoveryPacingMilestone.MILESTONE_DAY_1_EARLY_PHASE: "วันที่ 1: ก้าวแรกสู่สวนสวย",
-	DiscoveryPacingMilestone.MILESTONE_DAY_2_EARLY_RETURN: "วันที่ 2: การกลับมาเยือน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_3_DEVELOPING_GARDEN: "วันที่ 3: สวนที่ค่อยๆ เติบโต",
-	DiscoveryPacingMilestone.MILESTONE_DAY_4_WEATHER_DISCOVERY: "วันที่ 4: สายฝนและสภาพอากาศ",
-	DiscoveryPacingMilestone.MILESTONE_DAY_5_WATER_HABITAT: "วันที่ 5: แหล่งน้ำฉ่ำเย็น",
-	DiscoveryPacingMilestone.MILESTONE_DAY_6_NIGHT_DISCOVERY: "วันที่ 6: แสงไฟยามราตรี",
-	DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION: "วันที่ 7: สวนแสนสุขขยับขยาย",
-}
-
-const MILESTONE_DESCRIPTIONS: Dictionary = {
-	DiscoveryPacingMilestone.MILESTONE_DAY_1_EARLY_PHASE: "เริ่มต้นทำความรู้จักสวน ปลูกสมุนไพรโตเร็ว เรียนรู้การเก็บเกี่ยว และพบผู้มาเยือนตัวแรกอย่างผีเสื้อ",
-	DiscoveryPacingMilestone.MILESTONE_DAY_2_EARLY_RETURN: "เริ่มสัมผัสองค์ประกอบของน้ำ เปิดโอกาสให้นกแวะเวียนมา และพบรายการใหม่ในสมุดบ้านสวน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_3_DEVELOPING_GARDEN: "จัดวางของตกแต่งอย่างอิสระมากขึ้น จัดวางม้านั่งพักผ่อน และเฝ้าคอยแมวเหมียวแวะมาพักผ่อน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_4_WEATHER_DISCOVERY: "เรียนรู้ว่าสภาพอากาศสร้างความมีชีวิตชีวาให้สวน สายฝนชุ่มฉ่ำชวนให้กบน้อยแวะมาใกล้แหล่งน้ำ",
-	DiscoveryPacingMilestone.MILESTONE_DAY_5_WATER_HABITAT: "สร้างสระน้ำขนาดเล็กในสวน เพิ่มความชุ่มชื้นและเปิดรับเหตุการณ์และสิ่งมีชีวิตทางน้ำที่หลากหลาย",
-	DiscoveryPacingMilestone.MILESTONE_DAY_6_NIGHT_DISCOVERY: "สัมผัสบรรยากาศยามค่ำคืนในสวน หิ่งห้อยส่องแสงระยิบระยับคู่กับแสงโคมไฟสวนยามค่ำคืน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION: "สวนเติบโตจนพร้อมสู่การขยายขอบเขตและได้รับรางวัลความก้าวหน้า พร้อมให้ผู้เล่นทดลองดูแลสวนอย่างอิสระ",
-}
-
-const MILESTONE_FOCUSES: Dictionary = {
-	DiscoveryPacingMilestone.MILESTONE_DAY_1_EARLY_PHASE: "ลองปลูกพืชและเฝ้ามองผู้มาเยือนตัวแรกแวะเวียนมาในสวน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_2_EARLY_RETURN: "จัดวางของตกแต่งเกี่ยวกับน้ำหรือปลูกพืชเพื่อให้มีนกแวะมาเยือน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_3_DEVELOPING_GARDEN: "จัดวางม้านั่งพักผ่อนในสวนเพื่อสร้างบรรยากาศสงบให้แมวแวะมา",
-	DiscoveryPacingMilestone.MILESTONE_DAY_4_WEATHER_DISCOVERY: "เฝ้ารอสภาพอากาศฝนตกและมีแหล่งน้ำเพื่อค้นพบกบน้อยในสวน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_5_WATER_HABITAT: "จัดวางสระน้ำขนาดเล็กเพื่อสร้างถิ่นอาศัยทางน้ำอันอุดมสมบูรณ์",
-	DiscoveryPacingMilestone.MILESTONE_DAY_6_NIGHT_DISCOVERY: "เปิดโคมไฟสวนยามค่ำคืนและเฝ้าดูฝูงหิ่งห้อยส่องแสงในสวน",
-	DiscoveryPacingMilestone.MILESTONE_DAY_7_FIRST_EXPANSION: "ดูแลสวนให้สมบูรณ์และทดลองจัดวางพืชและของตกแต่งตามความพึงพอใจ",
-}
-
 
 ## Constructs a typed DiscoveryPacingMilestone for [param milestone_id] with evaluated [param is_achieved].
-static func create_milestone(milestone_id: String, is_achieved: bool = false) -> DiscoveryPacingMilestone:
+static func create_milestone(
+	milestone_id: String,
+	is_achieved: bool = false,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
+) -> DiscoveryPacingMilestone:
 	var idx: int = DiscoveryPacingMilestone.day_index_for_id(milestone_id)
 	if idx < 0:
 		return null
 	var theme: String = MILESTONE_THEMES.get(milestone_id, "")
-	var title: String = MILESTONE_TITLES.get(milestone_id, "")
-	var desc: String = MILESTONE_DESCRIPTIONS.get(milestone_id, "")
-	var focus: String = MILESTONE_FOCUSES.get(milestone_id, "")
+	var title: String = GardenLocalization.get_pacing_title(milestone_id, locale)
+	var desc: String = GardenLocalization.get_pacing_description(milestone_id, locale)
+	var focus: String = GardenLocalization.get_pacing_focus(milestone_id, locale)
 	return DiscoveryPacingMilestone.new(
 		milestone_id,
 		idx,
@@ -172,20 +146,22 @@ static func is_milestone_achieved(
 static func evaluate_milestone(
 	milestone_id: String,
 	snapshot: GardenSnapshot,
-	journal: JournalState = null
+	journal: JournalState = null,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
 ) -> DiscoveryPacingMilestone:
 	var achieved: bool = is_milestone_achieved(milestone_id, snapshot, journal)
-	return create_milestone(milestone_id, achieved)
+	return create_milestone(milestone_id, achieved, locale)
 
 
 ## Evaluates all 7 canonical pacing milestones in order (Day 1..7).
 static func evaluate_all(
 	snapshot: GardenSnapshot,
-	journal: JournalState = null
+	journal: JournalState = null,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
 ) -> Array[DiscoveryPacingMilestone]:
 	var results: Array[DiscoveryPacingMilestone] = []
 	for mid: String in DiscoveryPacingMilestone.ALL_MILESTONES:
-		results.append(evaluate_milestone(mid, snapshot, journal))
+		results.append(evaluate_milestone(mid, snapshot, journal, locale))
 	return results
 
 
@@ -194,9 +170,10 @@ static func evaluate_all(
 static func evaluate_active_milestone(
 	snapshot: GardenSnapshot,
 	journal: JournalState = null,
-	_day_number: int = 0
+	_day_number: int = 0,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
 ) -> DiscoveryPacingMilestone:
-	var all_m: Array[DiscoveryPacingMilestone] = evaluate_all(snapshot, journal)
+	var all_m: Array[DiscoveryPacingMilestone] = evaluate_all(snapshot, journal, locale)
 	for m: DiscoveryPacingMilestone in all_m:
 		if not m.is_achieved():
 			return m

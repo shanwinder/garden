@@ -52,9 +52,14 @@ func get_target_count() -> int:
 	return _target_count
 
 
-## Returns the localized Thai presentation text.
+## Returns the localized presentation text.
 func get_display_text() -> String:
 	return _display_text
+
+
+## Returns the stable localization key for this suggestion.
+func get_display_text_key() -> String:
+	return GardenLocalization.daily_guidance_text_key(_id)
 
 
 ## Returns true if all fields satisfy domain invariants.

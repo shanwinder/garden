@@ -29,6 +29,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestGameState.new(),
 		TestEconomyState.new(),
 		TestStableContentId.new(),
+		TestGardenLocalization.new(),
 		TestPlantDefinition.new(),
 		TestPlantGrowth.new(),
 		TestPlantState.new(),

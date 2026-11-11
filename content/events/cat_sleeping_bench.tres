@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_event_def")
 id = "event.cat_sleeping_bench"
+name_key = "event.cat_sleeping_bench.name"
+description_key = "event.cat_sleeping_bench.description"
 weight = 20.0
 required_trait_counts = {
 "shade": 1,

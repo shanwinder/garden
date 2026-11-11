@@ -5,5 +5,7 @@
 [resource]
 script = ExtResource("1_decor_def")
 id = "decoration.garden_lamp"
+name_key = "decoration.garden_lamp.name"
+description_key = "decoration.garden_lamp.description"
 price = 30
 environmental_traits = Array[String](["light", "perch"])

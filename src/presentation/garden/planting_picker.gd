@@ -20,30 +20,23 @@ extends Control
 signal planting_requested(definition_id: String)
 signal picker_closed()
 
-const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
-	"dense_vegetation": "พุ่มไม้หนาแน่น",
-	"flower": "ดอกไม้",
-	"food": "พืชอาหาร",
-	"fruit": "ผลไม้",
-	"light": "แสงไฟ",
-	"perch": "กิ่งไม้เกาะพัก",
-	"shade": "ร่มเงา",
-	"shelter": "ที่หลบพัก",
-	"water": "แหล่งน้ำ",
-}
-
 var _catalog: ContentCatalog = null
 var _snapshot: GardenSnapshot = null
 var _journal: JournalState = null
 var _pending_definition_id: String = ""
 var _is_dispatching_confirmation: bool = false
 var _is_enabled: bool = true
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
 var _option_texts_by_id: Dictionary = {}
 
+var _title_label: Label = null
 var _close_button: Button = null
+var _note_label: Label = null
 var _plant_list_container: Container = null
 var _confirmation_overlay: Control = null
+var _confirm_title_label: Label = null
 var _confirm_prompt_label: Label = null
+var _confirm_notice_label: Label = null
 var _confirm_button: Button = null
 var _cancel_button: Button = null
 var _plant_buttons: Array[Button] = []
@@ -52,19 +45,28 @@ var _plant_buttons: Array[Button] = []
 func _ready() -> void:
 	_resolve_nodes()
 	_connect_dialog_signals()
+	_apply_static_texts()
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = false
 
 
 func _resolve_nodes() -> void:
+	if _title_label == null:
+		_title_label = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox/TitleLabel") as Label
 	if _close_button == null:
 		_close_button = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox/CloseButton") as Button
+	if _note_label == null:
+		_note_label = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/NoteLabel") as Label
 	if _plant_list_container == null:
 		_plant_list_container = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/PlantListContainer") as Container
 	if _confirmation_overlay == null:
 		_confirmation_overlay = get_node_or_null("ConfirmationOverlay") as Control
+	if _confirm_title_label == null:
+		_confirm_title_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmTitleLabel") as Label
 	if _confirm_prompt_label == null:
 		_confirm_prompt_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmPromptLabel") as Label
+	if _confirm_notice_label == null:
+		_confirm_notice_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmNoticeLabel") as Label
 	if _confirm_button == null:
 		_confirm_button = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ButtonHBox/ConfirmButton") as Button
 	if _cancel_button == null:
@@ -86,6 +88,7 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 	_catalog = catalog
 	_pending_definition_id = ""
 	_resolve_nodes()
+	_apply_static_texts()
 	_clear_plant_buttons()
 
 	if _confirmation_overlay != null:
@@ -107,6 +110,38 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 		_plant_buttons.append(btn)
 		if _plant_list_container != null:
 			_plant_list_container.add_child(btn)
+
+
+## Sets active display locale ("th" or "en") and refreshes picker labels in-place.
+func set_locale(locale: String) -> void:
+	_locale = GardenLocalization.normalize_locale(locale)
+	_resolve_nodes()
+	_apply_static_texts()
+	_refresh_button_labels()
+	if not _pending_definition_id.is_empty():
+		_update_confirm_prompt_text(_pending_definition_id)
+
+
+## Returns active display locale ("th" or "en").
+func get_locale() -> String:
+	return _locale
+
+
+func _apply_static_texts() -> void:
+	if _title_label != null:
+		_title_label.text = GardenLocalization.translate("ui.planting_picker.title", _locale)
+	if _close_button != null:
+		_close_button.text = GardenLocalization.translate("ui.common.close", _locale)
+	if _note_label != null:
+		_note_label.text = GardenLocalization.translate("ui.planting_picker.note", _locale)
+	if _confirm_title_label != null:
+		_confirm_title_label.text = GardenLocalization.translate("ui.planting_picker.confirm_title", _locale)
+	if _confirm_notice_label != null:
+		_confirm_notice_label.text = GardenLocalization.translate("ui.planting_picker.confirm_notice", _locale)
+	if _cancel_button != null:
+		_cancel_button.text = GardenLocalization.translate("ui.common.cancel", _locale)
+	if _confirm_button != null:
+		_confirm_button.text = GardenLocalization.translate("ui.common.confirm", _locale)
 
 
 ## Updates optional read-only GardenSnapshot and JournalState context and refreshes button labels in-place.
@@ -131,36 +166,30 @@ func _refresh_button_labels() -> void:
 
 
 func _format_plant_button_text(def_id: String) -> String:
-	var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id)
 	var def: PlantDefinition = _catalog.get_plant(def_id) if _catalog != null else null
+	var display_name: String = GardenLocalization.get_plant_name(def_id, _locale, def)
 	if def == null:
-		return "%s (%s)" % [thai_name, def_id]
+		return "%s (%s)" % [display_name, def_id]
 
 	var details: PackedStringArray = PackedStringArray()
 	if def.mature_after_seconds > 0:
-		details.append("โตเต็มที่ %d วินาที" % def.mature_after_seconds)
+		details.append(GardenLocalization.format_key("ui.planting_picker.mature_seconds", [def.mature_after_seconds], _locale))
 	if def.harvest_reward > 0:
-		details.append("รางวัล +%d เหรียญ" % def.harvest_reward)
+		details.append(GardenLocalization.format_key("ui.planting_picker.reward_coins", [def.harvest_reward], _locale))
 	if not def.environmental_traits.is_empty():
-		details.append("คุณสมบัติ: %s" % _format_traits_summary(def))
+		details.append(GardenLocalization.format_key("ui.planting_picker.traits", [_format_traits_summary(def)], _locale))
 	if _snapshot != null:
-		details.append("ปลูกแล้ว %d ต้น" % _snapshot.get_plant_count_for_definition(def_id))
+		details.append(GardenLocalization.format_key("ui.planting_picker.planted_count", [_snapshot.get_plant_count_for_definition(def_id)], _locale))
 
-	if details.is_empty():
-		var base_only: String = "%s (%s)" % [thai_name, def_id]
-		if _journal != null:
-			base_only += (
-				" [ค้นพบแล้ว]"
-				if _journal.has_discovered(def_id)
-				else " [พันธุ์ใหม่]"
-			)
-		return base_only
-	var formatted: String = "%s (%s) — %s" % [thai_name, def_id, " | ".join(details)]
+	var formatted: String = (
+		"%s (%s)" % [display_name, def_id]
+		if details.is_empty()
+		else "%s (%s) — %s" % [display_name, def_id, " | ".join(details)]
+	)
 	if _journal != null:
-		formatted += (
-			" [ค้นพบแล้ว]"
-			if _journal.has_discovered(def_id)
-			else " [พันธุ์ใหม่]"
+		formatted += GardenLocalization.translate(
+			"ui.planting_picker.badge_discovered" if _journal.has_discovered(def_id) else "ui.planting_picker.badge_new",
+			_locale
 		)
 	return formatted
 
@@ -170,7 +199,7 @@ func _format_traits_summary(def: PlantDefinition) -> String:
 		return ""
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in def.environmental_traits:
-		parts.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
@@ -197,39 +226,46 @@ func select_plant_definition(definition_id: String) -> void:
 
 	_pending_definition_id = definition_id
 	_resolve_nodes()
-
-	var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
-	var def: PlantDefinition = _catalog.get_plant(definition_id)
-	if _confirm_prompt_label != null:
-		var prompt_text: String = "เพิ่มต้น%sลงในสวนหรือไม่?" % thai_name
-		if def != null and (def.mature_after_seconds > 0 or def.harvest_reward > 0):
-			var prompt_parts: PackedStringArray = PackedStringArray()
-			prompt_parts.append("โตเต็มที่ %d วินาที" % def.mature_after_seconds)
-			prompt_parts.append("รางวัล +%d เหรียญ" % def.harvest_reward)
-			var traits_summary: String = _format_traits_summary(def)
-			if not traits_summary.is_empty():
-				prompt_parts.append("คุณสมบัติ: %s" % traits_summary)
-			if _snapshot != null:
-				prompt_parts.append(
-					"ปลูกแล้ว %d ต้น"
-					% _snapshot.get_plant_count_for_definition(definition_id)
-				)
-			prompt_text = "เพิ่มต้น%sลงในสวนหรือไม่? (%s)" % [thai_name, " | ".join(prompt_parts)]
-		elif _snapshot != null:
-			prompt_text = (
-				"เพิ่มต้น%sลงในสวนหรือไม่? (ปลูกแล้ว %d ต้น)"
-				% [thai_name, _snapshot.get_plant_count_for_definition(definition_id)]
-			)
-		if _journal != null:
-			prompt_text += (
-				" [ค้นพบแล้ว]"
-				if _journal.has_discovered(definition_id)
-				else " [พันธุ์ใหม่]"
-			)
-		_confirm_prompt_label.text = prompt_text
+	_update_confirm_prompt_text(definition_id)
 
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = true
+
+
+func _update_confirm_prompt_text(definition_id: String) -> void:
+	if _confirm_prompt_label == null:
+		return
+	var def: PlantDefinition = _catalog.get_plant(definition_id) if _catalog != null else null
+	var display_name: String = GardenLocalization.get_plant_name(definition_id, _locale, def)
+	var prompt_text: String = GardenLocalization.format_key("ui.planting_picker.prompt_simple", [display_name], _locale)
+	if def != null and (def.mature_after_seconds > 0 or def.harvest_reward > 0):
+		var prompt_parts: PackedStringArray = PackedStringArray()
+		prompt_parts.append(GardenLocalization.format_key("ui.planting_picker.mature_seconds", [def.mature_after_seconds], _locale))
+		prompt_parts.append(GardenLocalization.format_key("ui.planting_picker.reward_coins", [def.harvest_reward], _locale))
+		var traits_summary: String = _format_traits_summary(def)
+		if not traits_summary.is_empty():
+			prompt_parts.append(GardenLocalization.format_key("ui.planting_picker.traits", [traits_summary], _locale))
+		if _snapshot != null:
+			prompt_parts.append(
+				GardenLocalization.format_key("ui.planting_picker.planted_count", [_snapshot.get_plant_count_for_definition(definition_id)], _locale)
+			)
+		prompt_text = GardenLocalization.format_key(
+			"ui.planting_picker.prompt_details",
+			[display_name, " | ".join(prompt_parts)],
+			_locale
+		)
+	elif _snapshot != null:
+		prompt_text = GardenLocalization.format_key(
+			"ui.planting_picker.prompt_planted_only",
+			[display_name, _snapshot.get_plant_count_for_definition(definition_id)],
+			_locale
+		)
+	if _journal != null:
+		prompt_text += GardenLocalization.translate(
+			"ui.planting_picker.badge_discovered" if _journal.has_discovered(definition_id) else "ui.planting_picker.badge_new",
+			_locale
+		)
+	_confirm_prompt_label.text = prompt_text
 
 
 ## Cancels the pending confirmation prompt without emitting a planting request.
@@ -512,11 +548,11 @@ func is_all_plant_species_planted() -> bool:
 	return total > 0 and get_planted_species_count() >= total
 
 
-## Pure query for testing: returns the localized Thai display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
+## Pure query for testing: returns the localized display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
 func get_plant_display_name_for_id(definition_id: String) -> String:
 	if _catalog == null or not _catalog.has_plant(definition_id):
 		return ""
-	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_plant_name(definition_id, _locale, _catalog.get_plant(definition_id))
 
 
 ## Pure query for testing: returns the count of environmental traits for [param definition_id] in the bound catalog, or 0 if unknown.
@@ -656,28 +692,26 @@ func get_pending_plant_traits_summary() -> String:
 	return get_plant_traits_summary_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
 
 
-## Pure query for testing: returns true if [param definition_id] is in the provisional localized plant display dictionary.
+## Pure query for testing: returns true if [param definition_id] is in the localized plant catalog.
 func is_known_plant_definition(definition_id: String) -> bool:
-	return not definition_id.is_empty() and PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+	return GardenLocalization.is_known_plant_id(definition_id)
 
 
-## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+## Pure query for testing: returns true if [param trait_id] is in the localized trait catalog.
 func is_known_environmental_trait(trait_id: String) -> bool:
-	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+	return GardenLocalization.is_known_trait_id(trait_id)
 
 
-## Pure query for testing: returns the localized Thai display name for [param trait_id], or "" if empty.
+## Pure query for testing: returns the localized display name for [param trait_id], or "" if empty.
 func get_trait_display_name_for_id(trait_id: String) -> String:
-	if trait_id.is_empty():
-		return ""
-	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+	return GardenLocalization.get_trait_name(trait_id, _locale)
 
 
-## Pure query for testing: returns localized Thai display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
+## Pure query for testing: returns localized display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
 func get_plant_trait_display_names_for_id(definition_id: String) -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_plant_traits_for_id(definition_id):
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 

@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_visitor_def")
 id = "visitor.butterfly"
+name_key = "visitor.butterfly.name"
+description_key = "visitor.butterfly.description"
 weight = 30.0
 required_trait_counts = {
 "flower": 1

@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_visitor_def")
 id = "visitor.firefly"
+name_key = "visitor.firefly.name"
+description_key = "visitor.firefly.description"
 weight = 20.0
 required_trait_counts = {
 "dense_vegetation": 1

@@ -58,27 +58,35 @@ theme_override_constants/separation = 8
 
 [node name="HeaderArea" type="HBoxContainer" parent="MainMargin/LayoutBox"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="TitleLabel" type="Label" parent="MainMargin/LayoutBox/HeaderArea"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 34
 text = "สวนของคุณ"
 vertical_alignment = 1
 
 [node name="PlantButton" type="Button" parent="MainMargin/LayoutBox/HeaderArea"]
-custom_minimum_size = Vector2(180, 72)
+custom_minimum_size = Vector2(140, 72)
 layout_mode = 2
 focus_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "ปลูกต้นไม้"
 
 [node name="RefreshButton" type="Button" parent="MainMargin/LayoutBox/HeaderArea"]
-custom_minimum_size = Vector2(180, 72)
+custom_minimum_size = Vector2(120, 72)
 layout_mode = 2
 focus_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "รีเฟรช"
+
+[node name="LanguageButton" type="Button" parent="MainMargin/LayoutBox/HeaderArea"]
+custom_minimum_size = Vector2(104, 72)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "ไทย/EN"
 
 [node name="CurrencyLabel" type="Label" parent="MainMargin/LayoutBox"]
 layout_mode = 2

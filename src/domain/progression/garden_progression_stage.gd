@@ -169,13 +169,14 @@ static func select_guidance(snapshot: GardenSnapshot, journal: JournalState = nu
 	return GUIDANCE_ENJOY_GARDEN
 
 
-## Evaluates [param snapshot], [param journal], optional [param day_number], and optional [param currency]
-## into an immutable GardenProgressionSummary.
+## Evaluates [param snapshot], [param journal], optional [param day_number], optional [param currency],
+## and optional [param locale] into an immutable GardenProgressionSummary.
 static func evaluate(
 	snapshot: GardenSnapshot,
 	journal: JournalState = null,
 	day_number: int = 0,
-	currency: int = 0
+	currency: int = 0,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
 ) -> GardenProgressionSummary:
 	var score: int = compute_score(snapshot, journal)
 	var current_stage: String = stage_for_score(score)
@@ -187,13 +188,15 @@ static func evaluate(
 	var daily_items: Array[DailyGuidanceItem] = DailyGuidanceEvaluator.evaluate_daily_guidance(
 		day_number,
 		snapshot,
-		journal
+		journal,
+		locale
 	)
-	var ftue_step: FtueStep = FtueEvaluator.evaluate(snapshot, journal, currency)
+	var ftue_step: FtueStep = FtueEvaluator.evaluate(snapshot, journal, currency, locale)
 	var pacing_milestone: DiscoveryPacingMilestone = DiscoveryPacingEvaluator.evaluate_active_milestone(
 		snapshot,
 		journal,
-		day_number
+		day_number,
+		locale
 	)
 
 	return GardenProgressionSummary.new(

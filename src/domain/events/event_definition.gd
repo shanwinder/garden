@@ -30,6 +30,8 @@ extends Resource
 const EVENT_NAMESPACE_PREFIX: String = "event."
 
 @export var id: String = ""
+@export var name_key: String = ""
+@export var description_key: String = ""
 @export var weight: float = 0.0
 @export var required_trait_counts: Dictionary = {}
 @export var required_plant_ids: Array[String] = []
@@ -47,6 +49,9 @@ const EVENT_NAMESPACE_PREFIX: String = "event."
 ## Pure query: no mutation, no push_error, no clock/RNG/filesystem access.
 func is_valid() -> bool:
 	if not _is_valid_id(id):
+		return false
+
+	if not _is_valid_optional_key(name_key) or not _is_valid_optional_key(description_key):
 		return false
 
 	if not _is_valid_weight(weight):
@@ -147,3 +152,17 @@ static func _is_valid_required_decoration_ids(decoration_ids: Array[String]) -> 
 			return false
 		seen[decor_id] = true
 	return true
+
+
+## Returns the explicit localization key for this event's name, or derives "<id>.name".
+func get_effective_name_key() -> String:
+	return name_key if not name_key.is_empty() else GardenLocalization.event_name_key(id)
+
+
+## Returns the explicit localization key for this event's description, or derives "<id>.description".
+func get_effective_description_key() -> String:
+	return description_key if not description_key.is_empty() else GardenLocalization.event_description_key(id)
+
+
+static func _is_valid_optional_key(key: String) -> bool:
+	return key.is_empty() or GardenLocalization.is_valid_key(key)

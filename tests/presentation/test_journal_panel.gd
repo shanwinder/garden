@@ -640,9 +640,10 @@ func _test_secret_combination_event_hides_recipe() -> void:
 	var panel: JournalPanel = _instantiate_journal()
 	var catalog: ContentCatalog = _create_full_production_catalog()
 	var secret_id: String = "event.cat_jasmine_night_rest"
-	var secret_name: String = GardenView.PROVISIONAL_EVENT_DISPLAY_NAMES[secret_id]
-	var jasmine_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES["plant.jasmine"]
-	var bench_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES["decoration.bench"]
+	var secret_name: String = GardenLocalization.get_event_name(secret_id)
+	var jasmine_name: String = GardenLocalization.get_plant_name("plant.jasmine")
+	var bench_name: String = GardenLocalization.get_decoration_name("decoration.bench")
+	var secret_clue: String = GardenLocalization.translate("ui.journal.secret_event_clue")
 	var night_utc: int = 3600
 
 	# 1. Bench + 2 jasmine at night: secret is inactive and must not reveal name, ID, or recipe.
@@ -656,12 +657,12 @@ func _test_secret_combination_event_hides_recipe() -> void:
 	assert_false(panel.is_event_active_in_journal(secret_id), "Secret inactive with only 2 jasmine")
 	var hidden_text: String = panel.get_entry_text_for_id(secret_id)
 	assert_true(hidden_text.contains("[???] เหตุการณ์ลับปริศนา"), "Inactive secret shows secret placeholder")
-	assert_true(hidden_text.contains(JournalPanel.SECRET_EVENT_CLUE_TEXT), "Inactive secret shows experimentation hint")
+	assert_true(hidden_text.contains(secret_clue), "Inactive secret shows experimentation hint")
 	assert_false(hidden_text.contains(secret_name), "Inactive secret hides its display name")
 	assert_false(hidden_text.contains(secret_id), "Inactive secret hides its definition ID")
 	assert_false(hidden_text.contains(jasmine_name), "Inactive secret hides required plant")
 	assert_false(hidden_text.contains(bench_name), "Inactive secret hides required decoration")
-	assert_eq(panel.get_event_clue_in_journal(secret_id), JournalPanel.SECRET_EVENT_CLUE_TEXT, "Clue query returns the secret hint, not the recipe")
+	assert_eq(panel.get_event_clue_in_journal(secret_id), secret_clue, "Clue query returns the secret hint, not the recipe")
 	assert_true(
 		panel.get_event_clue_in_journal("event.cat_sleeping_bench").contains(bench_name),
 		"Non-secret event clue still lists its conditions"
@@ -676,6 +677,6 @@ func _test_secret_combination_event_hides_recipe() -> void:
 	var active_text: String = panel.get_entry_text_for_id(secret_id)
 	assert_true(active_text.contains("[เกิดขึ้นได้ในสวน]"), "Active secret shows active marker")
 	assert_true(active_text.contains(secret_name), "Active secret shows its display name")
-	assert_true(active_text.contains(GardenView.PROVISIONAL_EVENT_DESCRIPTIONS[secret_id]), "Active secret shows its description")
+	assert_true(active_text.contains(GardenLocalization.get_event_description(secret_id)), "Active secret shows its description")
 	assert_false(active_text.contains(jasmine_name + " x3"), "Active secret still hides the exact recipe")
 	panel.free()

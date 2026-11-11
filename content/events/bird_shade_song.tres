@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_event_def")
 id = "event.bird_shade_song"
+name_key = "event.bird_shade_song.name"
+description_key = "event.bird_shade_song.description"
 weight = 25.0
 required_trait_counts = {
 "perch": 1,

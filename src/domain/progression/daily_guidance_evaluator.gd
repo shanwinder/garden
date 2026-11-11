@@ -45,18 +45,6 @@ const ALL_DAILY_GUIDANCE_IDS: Array[String] = [
 	GUIDANCE_CHECK_JOURNAL,
 ]
 
-const PROVISIONAL_DISPLAY_TEXTS: Dictionary = {
-	GUIDANCE_HARVEST_PRODUCE: "เก็บเกี่ยวผลผลิต 3 ครั้ง",
-	GUIDANCE_PLANT_FLOWER: "ปลูกไม้ดอก 1 ต้น (มะลิ หรือ ดาวเรือง)",
-	GUIDANCE_PLANT_CROP: "ปลูกพืชสวนครัวหรือสมุนไพร 1 ต้น",
-	GUIDANCE_PLANT_ANY: "ปลูกพันธุ์ไม้ใหม่ในสวน 1 ต้น",
-	GUIDANCE_OBSERVE_VISITOR: "สำรวจสิ่งมีชีวิตผู้มาเยือน 1 ครั้ง",
-	GUIDANCE_OBSERVE_EVENT: "สัมผัสบรรยากาศหรือเหตุการณ์พิเศษในสวน",
-	GUIDANCE_PLACE_DECORATION: "จัดวางของตกแต่งสวน 1 ชิ้น",
-	GUIDANCE_CARE_WATER_HABITAT: "จัดวางหรือรักษาแหล่งน้ำในสวน",
-	GUIDANCE_CHECK_JOURNAL: "เปิดสมุดบ้านสวนเพื่อสำรวจการค้นพบ",
-}
-
 const CATEGORIES: Dictionary = {
 	GUIDANCE_HARVEST_PRODUCE: "harvest",
 	GUIDANCE_PLANT_FLOWER: "planting",
@@ -88,12 +76,15 @@ static func is_valid_guidance_id(guidance_id: String) -> bool:
 
 
 ## Constructs a typed DailyGuidanceItem for [param guidance_id], or null if invalid.
-static func create_item(guidance_id: String) -> DailyGuidanceItem:
+static func create_item(
+	guidance_id: String,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
+) -> DailyGuidanceItem:
 	if not is_valid_guidance_id(guidance_id):
 		return null
 	var category: String = CATEGORIES.get(guidance_id, "general")
 	var count: int = TARGET_COUNTS.get(guidance_id, 1)
-	var text: String = PROVISIONAL_DISPLAY_TEXTS.get(guidance_id, guidance_id)
+	var text: String = GardenLocalization.get_daily_guidance_text(guidance_id, locale)
 	return DailyGuidanceItem.new(guidance_id, category, count, text)
 
 
@@ -102,7 +93,8 @@ static func create_item(guidance_id: String) -> DailyGuidanceItem:
 static func evaluate_daily_guidance(
 	day_number: int,
 	snapshot: GardenSnapshot = null,
-	journal: JournalState = null
+	journal: JournalState = null,
+	locale: String = GardenLocalization.DEFAULT_LOCALE
 ) -> Array[DailyGuidanceItem]:
 	var day_idx: int = posmod(day_number, 1000000)
 
@@ -130,9 +122,9 @@ static func evaluate_daily_guidance(
 	var id_2: String = pool_2[posmod(day_idx + 1, pool_2.size())]
 	var id_3: String = pool_3[posmod(day_idx + 2, pool_3.size())]
 
-	var item_1: DailyGuidanceItem = create_item(id_1)
-	var item_2: DailyGuidanceItem = create_item(id_2)
-	var item_3: DailyGuidanceItem = create_item(id_3)
+	var item_1: DailyGuidanceItem = create_item(id_1, locale)
+	var item_2: DailyGuidanceItem = create_item(id_2, locale)
+	var item_3: DailyGuidanceItem = create_item(id_3, locale)
 
 	var items: Array[DailyGuidanceItem] = []
 	if item_1 != null:

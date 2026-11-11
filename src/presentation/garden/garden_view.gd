@@ -21,77 +21,10 @@ signal harvest_requested(runtime_instance_id: String)
 signal visitor_observation_requested()
 signal event_observation_requested()
 signal decoration_purchase_requested(definition_id: String)
+signal locale_changed(new_locale: String)
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
 const DECORATION_VIEW_SCENE: PackedScene = preload("res://scenes/garden/decoration_view.tscn")
-
-const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
-	"dense_vegetation": "พุ่มไม้หนาแน่น",
-	"flower": "ดอกไม้",
-	"food": "พืชอาหาร",
-	"fruit": "ผลไม้",
-	"light": "แสงไฟ",
-	"perch": "กิ่งไม้เกาะพัก",
-	"shade": "ร่มเงา",
-	"shelter": "ที่หลบพัก",
-	"water": "แหล่งน้ำ",
-}
-
-const PROVISIONAL_VISITOR_DISPLAY_NAMES: Dictionary = {
-	"visitor.bird": "นกกระจอกบ้านสวน",
-	"visitor.butterfly": "ผีเสื้อบ้านสวน",
-	"visitor.cat": "แมวข้างบ้าน",
-	"visitor.firefly": "หิ่งห้อย",
-	"visitor.frog": "กบในสวน",
-}
-
-const PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES: Dictionary = {
-	"morning": "ยามเช้า",
-	"day": "กลางวัน",
-	"evening": "ยามเย็น",
-	"night": "ยามค่ำคืน",
-}
-
-const PROVISIONAL_WEATHER_DISPLAY_NAMES: Dictionary = {
-	"clear": "ท้องฟ้าแจ่มใส",
-	"cloudy": "มีเมฆมาก",
-	"rain": "ฝนตก",
-}
-
-const PROVISIONAL_EVENT_DISPLAY_NAMES: Dictionary = {
-	"event.bird_shade_song": "นกร้องเพลงใต้ร่มไม้",
-	"event.cat_jasmine_night_rest": "แมวพักใต้กลิ่นมะลิยามค่ำ",
-	"event.cat_sleeping_bench": "แมวนอนหลับบนม้านั่ง",
-	"event.firefly_night_glow": "หิ่งห้อยเรืองแสงยามค่ำ",
-	"event.frog_rain_chorus": "กบร้องเพลงกลางสายฝน",
-	"event.morning_butterflies": "ฝูงผีเสื้อยามเช้า",
-}
-
-const PROVISIONAL_EVENT_DESCRIPTIONS: Dictionary = {
-	"event.bird_shade_song": "นกกระจอกส่งเสียงร้องสดใสอยู่บนกิ่งไม้ใต้ร่มเงา",
-	"event.cat_jasmine_night_rest": "แมวข้างบ้านนอนหลับตาพริ้มอยู่ใต้ม้านั่ง ท่ามกลางกลิ่นมะลิหอมอ่อนในคืนสงบ",
-	"event.cat_sleeping_bench": "แมวข้างบ้านขดตัวนอนหลับอย่างสบายใจอยู่บนม้านั่งไม้",
-	"event.firefly_night_glow": "แสงหิ่งห้อยส่องประกายระยิบระยับอยู่ตามพุ่มไม้ยามค่ำคืน",
-	"event.frog_rain_chorus": "กบในสวนส่งเสียงร้องรับสายฝนอยู่ริมแหล่งน้ำ",
-	"event.morning_butterflies": "ฝูงผีเสื้อโบยบินวนเวียนตอมดอกไม้ในแสงแดดอ่อน",
-}
-
-const PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES: Dictionary = {
-	"starting_garden": "สวนเริ่มต้น",
-	"growing_garden": "สวนกำลังเติบโต",
-	"shady_garden": "สวนร่มรื่น",
-	"living_garden": "สวนมีชีวิต",
-	"happy_garden_home": "บ้านสวนแสนสุข",
-}
-
-const PROVISIONAL_GUIDANCE_DISPLAY_NAMES: Dictionary = {
-	"guidance.plant_first": "ลองปลูกต้นไม้ต้นแรกในสวน",
-	"guidance.observe_visitor": "ลองสำรวจผู้มาเยือนที่แวะมาในสวน",
-	"guidance.place_decoration": "ลองเก็บเกี่ยวเหรียญและวางของตกแต่งชิ้นแรก",
-	"guidance.create_water_habitat": "ลองจัดวางตุ่มน้ำหรือบ่อน้ำเล็กเพื่อเพิ่มแหล่งน้ำ",
-	"guidance.discover_more": "ลองปลูกพันธุ์ไม้และสำรวจผู้มาเยือนให้ครบในสมุดบ้านสวน",
-	"guidance.enjoy_garden": "เพลิดเพลินกับบรรยากาศบ้านสวนแสนสุขตามอัธยาศัย",
-}
 
 const TIME_PERIOD_BASE_COLORS: Dictionary = {
 	"morning": Color(0.16, 0.20, 0.14, 1.0),
@@ -136,6 +69,9 @@ var _next_weather_state: String = ""
 var _seconds_until_next_weather_state: int = 0
 var _is_blocked: bool = false
 var _blocked_message: String = ""
+var _blocked_message_key: String = ""
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
+var _active_feedback_kind: String = ""
 var _last_checkpoint_result: PlantingCheckpointResult = null
 var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
 var _last_visitor_selection_result: VisitorSelectionResult = null
@@ -144,8 +80,10 @@ var _last_event_selection_result: EventSelectionResult = null
 var _last_decoration_purchase_checkpoint_result: DecorationPurchaseCheckpointResult = null
 
 var _background_rect: ColorRect = null
+var _title_label: Label = null
 var _refresh_button: Button = null
 var _plant_button: Button = null
+var _language_button: Button = null
 var _currency_label: Label = null
 var _progression_label: Label = null
 var _daily_guidance_label: Label = null
@@ -192,6 +130,7 @@ var _harvest_button: Button = null
 
 func _ready() -> void:
 	_resolve_nodes()
+	_apply_static_texts()
 	if _is_blocked:
 		_show_blocked_visual()
 	elif _session != null:
@@ -202,10 +141,14 @@ func _ready() -> void:
 func _resolve_nodes() -> void:
 	if _background_rect == null:
 		_background_rect = get_node_or_null("Background") as ColorRect
+	if _title_label == null:
+		_title_label = get_node_or_null("MainMargin/LayoutBox/HeaderArea/TitleLabel") as Label
 	if _refresh_button == null:
 		_refresh_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/RefreshButton") as Button
 	if _plant_button == null:
 		_plant_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/PlantButton") as Button
+	if _language_button == null:
+		_language_button = get_node_or_null("MainMargin/LayoutBox/HeaderArea/LanguageButton") as Button
 	if _currency_label == null:
 		_currency_label = get_node_or_null("MainMargin/LayoutBox/CurrencyLabel") as Label
 	if _progression_label == null:
@@ -294,6 +237,8 @@ func _connect_signals() -> void:
 		_refresh_button.pressed.connect(_on_refresh_button_pressed)
 	if _plant_button != null and not _plant_button.pressed.is_connected(open_planting_picker):
 		_plant_button.pressed.connect(open_planting_picker)
+	if _language_button != null and not _language_button.pressed.is_connected(toggle_locale):
+		_language_button.pressed.connect(toggle_locale)
 	if _planting_picker != null and not _planting_picker.planting_requested.is_connected(_on_picker_planting_requested):
 		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
 	if _harvest_button != null and not _harvest_button.pressed.is_connected(_on_harvest_button_pressed):
@@ -322,12 +267,16 @@ func bind_garden(
 	_game_clock = game_clock
 
 	_resolve_nodes()
+	_apply_static_texts()
 	if _planting_picker != null and _catalog != null:
+		_planting_picker.set_locale(_locale)
 		_planting_picker.bind_catalog(_catalog)
 		_planting_picker.set_picker_enabled(true)
 	if _journal_panel != null:
+		_journal_panel.set_locale(_locale)
 		_journal_panel.set_journal_enabled(true)
 	if _decoration_picker != null and _catalog != null:
+		_decoration_picker.set_locale(_locale)
 		_decoration_picker.bind_catalog(_catalog)
 		_decoration_picker.set_picker_enabled(true)
 
@@ -339,22 +288,104 @@ func bind_garden(
 		_decorate_button.disabled = false
 
 	if _session == null or _catalog == null or _game_clock == null:
-		show_blocked_startup("ไม่สามารถเริ่มต้นสวนได้เนื่องจากข้อมูลไม่สมบูรณ์")
+		show_blocked_startup_key("ui.garden.blocked_incomplete_deps")
 		return
 
 	_is_blocked = false
 	_blocked_message = ""
+	_blocked_message_key = ""
 	_has_refresh_timestamp = false
 	_last_refresh_utc_seconds = 0
 	_last_return_summary = null
 	refresh_from_session()
 
 
+## Sets active display locale ("th" or "en") and re-renders GardenView, subviews, pickers, and journal.
+func set_locale(locale: String) -> void:
+	var normalized: String = GardenLocalization.normalize_locale(locale)
+	_locale = normalized
+	_resolve_nodes()
+	_apply_static_texts()
+
+	if _planting_picker != null:
+		_planting_picker.set_locale(_locale)
+	if _decoration_picker != null:
+		_decoration_picker.set_locale(_locale)
+	if _journal_panel != null:
+		_journal_panel.set_locale(_locale)
+
+	if _is_blocked:
+		if not _blocked_message_key.is_empty():
+			_blocked_message = GardenLocalization.translate(_blocked_message_key, _locale)
+		_show_blocked_visual()
+	elif _session != null and _catalog != null and _game_clock != null:
+		_render_current_session_snapshot()
+		_refresh_active_feedback_locale()
+
+	locale_changed.emit(_locale)
+
+
+## Returns active display locale ("th" or "en").
+func get_locale() -> String:
+	return _locale
+
+
+## Toggles active display locale between Thai ("th") and English ("en").
+func toggle_locale() -> void:
+	set_locale(GardenLocalization.other_locale(_locale))
+
+
+## Pure query for testing: returns LanguageButton instance.
+func get_language_button() -> Button:
+	_resolve_nodes()
+	return _language_button
+
+
+func _apply_static_texts() -> void:
+	if _title_label != null:
+		_title_label.text = GardenLocalization.translate("ui.garden.title", _locale)
+	if _plant_button != null:
+		_plant_button.text = GardenLocalization.translate("ui.garden.plant_button", _locale)
+	if _refresh_button != null:
+		_refresh_button.text = GardenLocalization.translate("ui.garden.refresh_button", _locale)
+	if _language_button != null:
+		_language_button.text = GardenLocalization.translate("ui.common.language_button", _locale)
+	if _observe_visitor_button != null:
+		_observe_visitor_button.text = GardenLocalization.translate("ui.garden.observe_visitor_button", _locale)
+	if _observe_event_button != null:
+		_observe_event_button.text = GardenLocalization.translate("ui.garden.observe_event_button", _locale)
+	if _journal_button != null:
+		_journal_button.text = GardenLocalization.translate("ui.garden.journal_button", _locale)
+	if _decorate_button != null:
+		_decorate_button.text = GardenLocalization.translate("ui.garden.decorate_button", _locale)
+	if _plants_section_label != null:
+		_plants_section_label.text = GardenLocalization.translate("ui.garden.plants_section_header", _locale)
+	if _decorations_section_label != null:
+		_decorations_section_label.text = GardenLocalization.translate("ui.garden.decorations_section_header", _locale)
+	if _empty_label != null:
+		_empty_label.text = GardenLocalization.translate("ui.garden.empty_garden", _locale)
+	if _no_selection_label != null:
+		_no_selection_label.text = GardenLocalization.translate("ui.details.no_selection", _locale)
+
+
+## Displays a safe readable state using a localization key when startup failed or session is unavailable.
+func show_blocked_startup_key(reason_key: String) -> void:
+	_blocked_message_key = reason_key if not reason_key.is_empty() else "ui.garden.blocked_default"
+	show_blocked_startup(GardenLocalization.translate(_blocked_message_key, _locale))
+
+
 ## Displays a safe readable state when startup failed or session is unavailable.
 func show_blocked_startup(message: String = "") -> void:
 	_is_blocked = true
-	_blocked_message = message if not message.is_empty() else "ไม่สามารถโหลดสวนได้ในขณะนี้"
+	if message.is_empty():
+		_blocked_message_key = "ui.garden.blocked_default"
+		_blocked_message = GardenLocalization.translate(_blocked_message_key, _locale)
+	else:
+		if not _blocked_message_key.is_empty() and message != GardenLocalization.translate(_blocked_message_key, _locale):
+			_blocked_message_key = ""
+		_blocked_message = message
 	_resolve_nodes()
+	_apply_static_texts()
 	if _plant_button != null:
 		_plant_button.disabled = true
 	if _journal_button != null:
@@ -396,11 +427,21 @@ func refresh_from_session() -> void:
 		_last_refresh_utc_seconds = now_utc
 		_has_refresh_timestamp = true
 
+	_render_snapshot_at(now_utc)
+
+
+func _render_current_session_snapshot() -> void:
+	var now_utc: int = _game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds
+	_render_snapshot_at(now_utc)
+
+
+func _render_snapshot_at(now_utc: int) -> void:
 	# Read authoritative currency balance directly from GameSession (no presentation cache).
 	_resolve_nodes()
+	_apply_static_texts()
 	if _currency_label != null:
 		_currency_label.visible = true
-		_currency_label.text = "เหรียญ: %d" % _session.get_currency()
+		_currency_label.text = GardenLocalization.format_key("ui.garden.currency", [_session.get_currency()], _locale)
 
 	# Authoritative plant and placed decoration collections in deterministic order.
 	var plants: Array[PlantState] = _session.get_state().get_plants().get_all_plants()
@@ -500,7 +541,8 @@ func _render_garden_items(
 			harvest_reward,
 			seconds_until_mature,
 			plant_traits,
-			seconds_until_next_stage
+			seconds_until_next_stage,
+			_locale
 		)
 		view.plant_selected.connect(_on_plant_selected)
 
@@ -540,7 +582,8 @@ func _render_garden_items(
 			decor_def_id,
 			placed_at,
 			decor_price,
-			decor_traits
+			decor_traits,
+			_locale
 		)
 		decor_view.decoration_selected.connect(_on_decoration_selected)
 
@@ -669,7 +712,7 @@ func _update_decoration_details_panel(
 	_no_selection_label.visible = false
 	_details_content.visible = true
 	if _details_header_label != null:
-		_details_header_label.text = "รายละเอียดของตกแต่ง"
+		_details_header_label.text = GardenLocalization.translate("ui.details.header_decoration", _locale)
 
 	var def_id: String = decor_state.get_definition_id()
 	_selected_decoration_definition_id = def_id
@@ -681,41 +724,46 @@ func _update_decoration_details_panel(
 	_selected_decoration_price = maxi(0, definition.price) if definition != null else 0
 	_selected_decoration_placed_at = decor_state.get_placed_at()
 
-	var thai_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
+	var display_name: String = GardenLocalization.get_decoration_name(def_id, _locale, definition)
 
 	if _detail_name_label != null:
 		if not _selected_decoration_traits.is_empty():
 			var trait_names: PackedStringArray = PackedStringArray()
 			for trait_id: String in _selected_decoration_traits:
-				trait_names.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
-			_detail_name_label.text = (
-				"ของตกแต่ง: %s (%s) | คุณสมบัติ: %s"
-				% [thai_name, def_id, ", ".join(trait_names)]
+				trait_names.append(GardenLocalization.get_trait_name(trait_id, _locale))
+			_detail_name_label.text = GardenLocalization.format_key(
+				"ui.details.decoration_name_traits",
+				[display_name, def_id, ", ".join(trait_names)],
+				_locale
 			)
 		else:
-			_detail_name_label.text = "ของตกแต่ง: %s (%s) | ตกแต่งเพื่อความสวยงาม" % [thai_name, def_id]
+			_detail_name_label.text = GardenLocalization.format_key(
+				"ui.details.decoration_name_cosmetic",
+				[display_name, def_id],
+				_locale
+			)
 
 	if _detail_stage_label != null:
 		if not _selected_decoration_traits.is_empty():
-			_detail_stage_label.text = "สถานะ: จัดวางในสวนแล้ว (เสริมบรรยากาศและดึงดูดผู้มาเยือน)"
+			_detail_stage_label.text = GardenLocalization.translate("ui.details.decoration_status_traits", _locale)
 		else:
-			_detail_stage_label.text = "สถานะ: จัดวางในสวนแล้ว (ของตกแต่งเพื่อความสวยงาม)"
+			_detail_stage_label.text = GardenLocalization.translate("ui.details.decoration_status_cosmetic", _locale)
 
 	if _detail_reward_label != null:
 		if definition != null:
-			_detail_reward_label.text = "ราคาซื้อ: %d เหรียญ" % definition.price
+			_detail_reward_label.text = GardenLocalization.format_key("ui.details.decoration_price_coins", [definition.price], _locale)
 		else:
-			_detail_reward_label.text = "ราคาซื้อ: —"
+			_detail_reward_label.text = GardenLocalization.translate("ui.details.decoration_price_none", _locale)
 
 	if _detail_id_label != null:
-		_detail_id_label.text = "รหัสประจำชิ้น: %s" % decor_state.get_runtime_instance_id()
+		_detail_id_label.text = GardenLocalization.format_key("ui.details.decoration_instance_id", [decor_state.get_runtime_instance_id()], _locale)
 
 	if _detail_planted_at_label != null:
-		_detail_planted_at_label.text = "จัดวางเมื่อ: %d (Unix UTC)" % decor_state.get_placed_at()
+		_detail_planted_at_label.text = GardenLocalization.format_key("ui.details.placed_at", [decor_state.get_placed_at()], _locale)
 
 	if _harvest_button != null:
 		_harvest_button.disabled = true
-		_harvest_button.text = "ของตกแต่งไม่ต้องเก็บเกี่ยว"
+		_harvest_button.text = GardenLocalization.translate("ui.details.decoration_no_harvest", _locale)
 
 
 func _update_details_panel(
@@ -732,17 +780,17 @@ func _update_details_panel(
 		_clear_selected_plant_fields()
 		_clear_selected_decoration_fields()
 		if _details_header_label != null:
-			_details_header_label.text = "รายละเอียดต้นไม้"
+			_details_header_label.text = GardenLocalization.translate("ui.details.header_plant", _locale)
 		_no_selection_label.visible = true
 		_details_content.visible = false
 		if _harvest_button != null:
 			_harvest_button.disabled = true
-			_harvest_button.text = "ยังไม่พร้อมเก็บเกี่ยว"
+			_harvest_button.text = GardenLocalization.translate("ui.details.harvest_not_ready", _locale)
 		return
 
 	_clear_selected_decoration_fields()
 	if _details_header_label != null:
-		_details_header_label.text = "รายละเอียดต้นไม้"
+		_details_header_label.text = GardenLocalization.translate("ui.details.header_plant", _locale)
 	_no_selection_label.visible = false
 	_details_content.visible = true
 
@@ -771,58 +819,53 @@ func _update_details_panel(
 	_selected_plant_planted_at = plant_state.get_planted_at()
 
 	var def_id: String = plant_state.get_definition_id()
-	var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id)
+	var display_name: String = GardenLocalization.get_plant_name(def_id, _locale, definition)
 
 	if _detail_name_label != null:
 		if not _selected_plant_traits.is_empty():
 			var trait_names: PackedStringArray = PackedStringArray()
 			for trait_id: String in _selected_plant_traits:
-				trait_names.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
-			_detail_name_label.text = (
-				"พืช: %s (%s) | คุณสมบัติ: %s"
-				% [thai_name, def_id, ", ".join(trait_names)]
+				trait_names.append(GardenLocalization.get_trait_name(trait_id, _locale))
+			_detail_name_label.text = GardenLocalization.format_key(
+				"ui.details.plant_name_traits",
+				[display_name, def_id, ", ".join(trait_names)],
+				_locale
 			)
 		else:
-			_detail_name_label.text = "พืช: %s (%s)" % [thai_name, def_id]
+			_detail_name_label.text = GardenLocalization.format_key(
+				"ui.details.plant_name_only",
+				[display_name, def_id],
+				_locale
+			)
 
 	if _detail_stage_label != null:
-		var stage_text: String = ""
-		match stage:
-			PlantGrowth.Stage.PLANTED:
-				stage_text = "เพาะเมล็ด (PLANTED)"
-			PlantGrowth.Stage.SPROUT:
-				stage_text = "ต้นกล้า (SPROUT)"
-			PlantGrowth.Stage.GROWING:
-				stage_text = "กำลังโต (GROWING)"
-			PlantGrowth.Stage.MATURE:
-				stage_text = "โตเต็มที่ (MATURE)"
-			_:
-				stage_text = "ไม่ทราบสถานะ (INVALID)"
+		var stage_text: String = GardenLocalization.get_plant_stage_detail(stage, _locale)
 		if stage == PlantGrowth.Stage.MATURE:
-			_detail_stage_label.text = "ระยะ: %s — พร้อมเก็บเกี่ยวแล้ว" % stage_text
+			_detail_stage_label.text = GardenLocalization.format_key("ui.details.stage_mature_ready", [stage_text], _locale)
 		elif stage != PlantGrowth.Stage.INVALID and _selected_plant_seconds_until_mature > 0:
-			_detail_stage_label.text = (
-				"ระยะ: %s — โตเต็มที่ในอีก %d วินาที (ระยะถัดไปในอีก %d วินาที)"
-				% [
+			_detail_stage_label.text = GardenLocalization.format_key(
+				"ui.details.stage_countdown",
+				[
 					stage_text,
 					_selected_plant_seconds_until_mature,
 					_selected_plant_seconds_until_next_stage,
-				]
+				],
+				_locale
 			)
 		else:
-			_detail_stage_label.text = "ระยะ: %s" % stage_text
+			_detail_stage_label.text = GardenLocalization.format_key("ui.details.stage_only", [stage_text], _locale)
 
 	if _detail_reward_label != null:
 		if definition != null and definition.harvest_reward > 0:
-			_detail_reward_label.text = "รางวัลเก็บเกี่ยว: %d เหรียญ" % definition.harvest_reward
+			_detail_reward_label.text = GardenLocalization.format_key("ui.details.reward_coins", [definition.harvest_reward], _locale)
 		else:
-			_detail_reward_label.text = "รางวัลเก็บเกี่ยว: —"
+			_detail_reward_label.text = GardenLocalization.translate("ui.details.reward_none", _locale)
 
 	if _detail_id_label != null:
-		_detail_id_label.text = "รหัสประจำต้น: %s" % plant_state.get_runtime_instance_id()
+		_detail_id_label.text = GardenLocalization.format_key("ui.details.plant_instance_id", [plant_state.get_runtime_instance_id()], _locale)
 
 	if _detail_planted_at_label != null:
-		_detail_planted_at_label.text = "ปลูกเมื่อ: %d (Unix UTC)" % plant_state.get_planted_at()
+		_detail_planted_at_label.text = GardenLocalization.format_key("ui.details.planted_at", [plant_state.get_planted_at()], _locale)
 
 	if _harvest_button != null:
 		var can_harvest: bool = (
@@ -833,9 +876,9 @@ func _update_details_panel(
 		)
 		_harvest_button.disabled = not can_harvest
 		if can_harvest:
-			_harvest_button.text = "เก็บเกี่ยว (+%d เหรียญ)" % definition.harvest_reward
+			_harvest_button.text = GardenLocalization.format_key("ui.details.harvest_ready", [definition.harvest_reward], _locale)
 		else:
-			_harvest_button.text = "ยังไม่พร้อมเก็บเกี่ยว"
+			_harvest_button.text = GardenLocalization.translate("ui.details.harvest_not_ready", _locale)
 
 
 func _show_blocked_visual() -> void:
@@ -905,7 +948,7 @@ func _show_blocked_visual() -> void:
 	if _blocked_container != null:
 		_blocked_container.visible = true
 	if _blocked_label != null:
-		_blocked_label.text = _blocked_message if not _blocked_message.is_empty() else "ไม่สามารถโหลดสวนได้ในขณะนี้"
+		_blocked_label.text = _blocked_message if not _blocked_message.is_empty() else GardenLocalization.translate("ui.garden.blocked_default", _locale)
 
 	_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
 
@@ -930,29 +973,28 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 
 	var day_number: int = int(now_utc / 86400) if now_utc >= 0 else 0
 	var currency: int = _session.get_currency() if _session != null else 0
-	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal, day_number, currency)
+	_last_progression_summary = GardenProgressionStage.evaluate(_last_snapshot, journal, day_number, currency, _locale)
 	if _progression_label != null and _last_progression_summary != null:
 		_progression_label.visible = true
 		var stage_id: String = _last_progression_summary.get_stage_id()
-		var stage_name: String = PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(stage_id, stage_id)
+		var stage_name: String = GardenLocalization.get_progression_stage_name(stage_id, _locale)
 		var score: int = _last_progression_summary.get_establishment_score()
 		var guidance_id: String = _last_progression_summary.get_guidance_id()
-		var guidance_text: String = PROVISIONAL_GUIDANCE_DISPLAY_NAMES.get(guidance_id, guidance_id)
+		var guidance_text: String = GardenLocalization.get_guidance_text(guidance_id, _locale)
 		if _last_progression_summary.is_max_stage():
-			_progression_label.text = (
-				"ระดับสวน: %s (%d แต้ม, สูงสุดแล้ว) | วันนี้ทำอะไรดี: %s"
-				% [stage_name, score, guidance_text]
+			_progression_label.text = GardenLocalization.format_key(
+				"ui.garden.progression_max",
+				[stage_name, score, guidance_text],
+				_locale
 			)
 		else:
 			var next_stage_id: String = _last_progression_summary.get_next_stage_id()
-			var next_stage_name: String = PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(
-				next_stage_id,
-				next_stage_id
-			)
+			var next_stage_name: String = GardenLocalization.get_progression_stage_name(next_stage_id, _locale)
 			var points_remaining: int = _last_progression_summary.get_points_to_next_stage()
-			_progression_label.text = (
-				"ระดับสวน: %s (%d แต้ม, อีก %d แต้มสู่%s) | วันนี้ทำอะไรดี: %s"
-				% [stage_name, score, points_remaining, next_stage_name, guidance_text]
+			_progression_label.text = GardenLocalization.format_key(
+				"ui.garden.progression_next",
+				[stage_name, score, points_remaining, next_stage_name, guidance_text],
+				_locale
 			)
 
 	if _daily_guidance_label != null:
@@ -962,7 +1004,7 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 			var parts: PackedStringArray = PackedStringArray()
 			for i: int in range(daily_items.size()):
 				parts.append("%d. %s" % [i + 1, daily_items[i].get_display_text()])
-			_daily_guidance_label.text = "กิจกรรมแนะนำวันนี้: %s" % " • ".join(parts)
+			_daily_guidance_label.text = GardenLocalization.format_key("ui.garden.daily_guidance", [" • ".join(parts)], _locale)
 		else:
 			_daily_guidance_label.visible = false
 
@@ -970,7 +1012,11 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 		if _last_progression_summary != null and _last_progression_summary.is_ftue_active():
 			_ftue_label.visible = true
 			var ftue_step: FtueStep = _last_progression_summary.get_ftue_step()
-			_ftue_label.text = "%s: %s" % [ftue_step.get_title(), ftue_step.get_instruction()]
+			_ftue_label.text = GardenLocalization.format_key(
+				"ui.garden.ftue_banner",
+				[ftue_step.get_title(), ftue_step.get_instruction()],
+				_locale
+			)
 		else:
 			_ftue_label.visible = false
 
@@ -978,12 +1024,16 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 		if _last_progression_summary != null and _last_progression_summary.has_discovery_pacing_milestone():
 			_discovery_pacing_label.visible = true
 			var pacing: DiscoveryPacingMilestone = _last_progression_summary.get_discovery_pacing_milestone()
-			var status_suffix: String = " (สำเร็จแล้ว)" if pacing.is_achieved() else ""
-			_discovery_pacing_label.text = "เป้าหมายการค้นพบ: %s%s - %s" % [
-				pacing.get_title(),
-				status_suffix,
-				pacing.get_recommended_focus()
-			]
+			var status_suffix: String = (
+				GardenLocalization.translate("ui.garden.discovery_pacing_achieved_suffix", _locale)
+				if pacing.is_achieved()
+				else ""
+			)
+			_discovery_pacing_label.text = GardenLocalization.format_key(
+				"ui.garden.discovery_pacing",
+				[pacing.get_title(), status_suffix, pacing.get_recommended_focus()],
+				_locale
+			)
 		else:
 			_discovery_pacing_label.visible = false
 
@@ -1004,17 +1054,19 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 
 	if _atmosphere_label != null:
 		_atmosphere_label.visible = true
-		var time_name: String = PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(time_period, time_period)
-		var weather_name: String = PROVISIONAL_WEATHER_DISPLAY_NAMES.get(weather_state, weather_state)
-		var events_summary: String = "สงบเงียบ"
+		var time_name: String = GardenLocalization.get_time_period_name(time_period, _locale)
+		var weather_name: String = GardenLocalization.get_weather_name(weather_state, _locale)
+		var events_summary: String = GardenLocalization.translate("ui.garden.atmosphere_calm", _locale)
 		if not _eligible_event_ids.is_empty():
 			var event_names: PackedStringArray = PackedStringArray()
 			for eid: String in _eligible_event_ids:
-				event_names.append(PROVISIONAL_EVENT_DISPLAY_NAMES.get(eid, eid))
+				var edef: EventDefinition = _catalog.get_event(eid) if _catalog != null else null
+				event_names.append(GardenLocalization.get_event_name(eid, _locale, edef))
 			events_summary = ", ".join(event_names)
-		_atmosphere_label.text = (
-			"บรรยากาศสวน: %s | สภาพอากาศ: %s | เหตุการณ์ในสวน: %s"
-			% [time_name, weather_name, events_summary]
+		_atmosphere_label.text = GardenLocalization.format_key(
+			"ui.garden.atmosphere",
+			[time_name, weather_name, events_summary],
+			_locale
 		)
 
 	if _background_rect != null:
@@ -1024,14 +1076,14 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 		_environment_label.visible = true
 		var active_traits: Array[String] = _last_snapshot.get_active_traits()
 		if active_traits.is_empty():
-			_environment_label.text = "สภาพแวดล้อมสวน: ยังไม่มี"
+			_environment_label.text = GardenLocalization.translate("ui.garden.environment_empty", _locale)
 		else:
 			var trait_parts: PackedStringArray = PackedStringArray()
 			for trait_id: String in active_traits:
-				var trait_name: String = PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+				var trait_name: String = GardenLocalization.get_trait_name(trait_id, _locale)
 				var count: int = _last_snapshot.get_trait_count(trait_id)
 				trait_parts.append("%s (%d)" % [trait_name, count])
-			_environment_label.text = "สภาพแวดล้อมสวน: %s" % ", ".join(trait_parts)
+			_environment_label.text = GardenLocalization.format_key("ui.garden.environment_traits", [", ".join(trait_parts)], _locale)
 
 	var eligible_visitors: Array[VisitorDefinition] = VisitorEligibility.filter_eligible_visitors(
 		_catalog.get_all_visitors(),
@@ -1056,18 +1108,21 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 
 	if _visitor_status_label != null:
 		if not _current_visitor_id.is_empty():
-			var visitor_name: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(
-				_current_visitor_id,
-				_current_visitor_id
+			var vdef: VisitorDefinition = _catalog.get_visitor(_current_visitor_id) if _catalog != null else null
+			var visitor_name: String = GardenLocalization.get_visitor_name(_current_visitor_id, _locale, vdef)
+			_visitor_status_label.text = GardenLocalization.format_key(
+				"ui.garden.visitor_active",
+				[visitor_name, _current_visitor_id],
+				_locale
 			)
-			_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [visitor_name, _current_visitor_id]
 		elif not _eligible_visitor_ids.is_empty():
 			var names: PackedStringArray = PackedStringArray()
 			for vid: String in _eligible_visitor_ids:
-				names.append(PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid))
-			_visitor_status_label.text = "ผู้มาเยือนที่อาจพบ: %s" % ", ".join(names)
+				var vdef: VisitorDefinition = _catalog.get_visitor(vid) if _catalog != null else null
+				names.append(GardenLocalization.get_visitor_name(vid, _locale, vdef))
+			_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_possible", [", ".join(names)], _locale)
 		else:
-			_visitor_status_label.text = "ผู้มาเยือน: ยังไม่มีผู้มาเยือน"
+			_visitor_status_label.text = GardenLocalization.translate("ui.garden.visitor_none", _locale)
 
 	if _decoration_row != null:
 		_decoration_row.visible = true
@@ -1076,18 +1131,18 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 	if _decoration_status_label != null:
 		var total_decor: int = _last_snapshot.get_total_decoration_count()
 		if total_decor <= 0:
-			_decoration_status_label.text = "ของตกแต่งในสวน: ยังไม่มี"
+			_decoration_status_label.text = GardenLocalization.translate("ui.garden.decorations_status_empty", _locale)
 		else:
 			var decor_parts: PackedStringArray = PackedStringArray()
 			for decor_id: String in _last_snapshot.get_present_decoration_definition_ids():
-				var decor_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(
-					decor_id,
-					decor_id
-				)
+				var ddef: DecorationDefinition = _catalog.get_decoration(decor_id) if _catalog != null else null
+				var decor_name: String = GardenLocalization.get_decoration_name(decor_id, _locale, ddef)
 				var d_count: int = _last_snapshot.get_decoration_count_for_definition(decor_id)
 				decor_parts.append("%s (%d)" % [decor_name, d_count])
-			_decoration_status_label.text = (
-				"ของตกแต่งในสวน (%d ชิ้น): %s" % [total_decor, ", ".join(decor_parts)]
+			_decoration_status_label.text = GardenLocalization.format_key(
+				"ui.garden.decorations_status",
+				[total_decor, ", ".join(decor_parts)],
+				_locale
 			)
 
 
@@ -1100,7 +1155,7 @@ func _update_journal_ui() -> void:
 		else null
 	)
 	if _journal_panel != null:
-		_journal_panel.bind_journal(journal, _catalog, decorations, _last_snapshot)
+		_journal_panel.bind_journal(journal, _catalog, decorations, _last_snapshot, _locale)
 
 	if _journal_row != null:
 		_journal_row.visible = true
@@ -1109,7 +1164,7 @@ func _update_journal_ui() -> void:
 
 	if _journal_status_label != null:
 		if _catalog == null:
-			_journal_status_label.text = "สมุดบ้านสวน: ค้นพบแล้ว 0 / 0 รายการ"
+			_journal_status_label.text = GardenLocalization.translate("ui.garden.journal_status_empty", _locale)
 			return
 
 		var total_plants: int = _catalog.get_plant_count()
@@ -1127,9 +1182,10 @@ func _update_journal_ui() -> void:
 					disc_visitors += 1
 
 		var disc_total: int = disc_plants + disc_visitors
-		_journal_status_label.text = (
-			"สมุดบ้านสวน: ค้นพบแล้ว %d / %d รายการ (พืช %d/%d, ผู้มาเยือน %d/%d)"
-			% [disc_total, total_entries, disc_plants, total_plants, disc_visitors, total_visitors]
+		_journal_status_label.text = GardenLocalization.format_key(
+			"ui.garden.journal_status",
+			[disc_total, total_entries, disc_plants, total_plants, disc_visitors, total_visitors],
+			_locale
 		)
 
 
@@ -1232,10 +1288,11 @@ func show_planting_result(result: PlantingCheckpointResult) -> void:
 	if _feedback_area == null or _feedback_label == null or result == null:
 		return
 
+	_active_feedback_kind = "planting"
 	_feedback_area.visible = true
 	match result.get_status():
 		PlantingCheckpointResult.Status.NOT_READY:
-			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการปลูกต้นไม้"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_not_ready", _locale)
 		PlantingCheckpointResult.Status.PLANTING_REJECTED:
 			var reason_str: String = ""
 			var reg_result: PlantRegistrationResult = result.get_registration_result()
@@ -1254,15 +1311,15 @@ func show_planting_result(result: PlantingCheckpointResult) -> void:
 					_:
 						reason_str = "UNKNOWN"
 			if not reason_str.is_empty():
-				_feedback_label.text = "ไม่สามารถเพิ่มต้นไม้ได้ (%s)" % reason_str
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.planting_rejected_reason", [reason_str], _locale)
 			else:
-				_feedback_label.text = "ไม่สามารถเพิ่มต้นไม้ได้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_rejected", _locale)
 		PlantingCheckpointResult.Status.REGISTERED_SAVED:
-			_feedback_label.text = "เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_saved", _locale)
 		PlantingCheckpointResult.Status.REGISTERED_SAVE_FAILED:
-			_feedback_label.text = "เพิ่มต้นไม้แล้ว แต่ยังบันทึกไม่สำเร็จ"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_save_failed", _locale)
 		_:
-			_feedback_label.text = "สถานะการปลูกไม่ระบุ"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_unknown", _locale)
 
 
 ## Pure query for testing: returns child PlantingPicker instance.
@@ -1315,10 +1372,11 @@ func show_harvest_result(result: HarvestCheckpointResult) -> void:
 	if _feedback_area == null or _feedback_label == null or result == null:
 		return
 
+	_active_feedback_kind = "harvest"
 	_feedback_area.visible = true
 	match result.get_status():
 		HarvestCheckpointResult.Status.NOT_READY:
-			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการเก็บเกี่ยว"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_not_ready", _locale)
 		HarvestCheckpointResult.Status.HARVEST_REJECTED:
 			var reason_str: String = ""
 			var harvest_res: PlantHarvestResult = result.get_harvest_result()
@@ -1341,21 +1399,15 @@ func show_harvest_result(result: HarvestCheckpointResult) -> void:
 					_:
 						reason_str = "UNKNOWN"
 			if not reason_str.is_empty():
-				_feedback_label.text = "ไม่สามารถเก็บเกี่ยวได้ (%s)" % reason_str
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_rejected_reason", [reason_str], _locale)
 			else:
-				_feedback_label.text = "ไม่สามารถเก็บเกี่ยวได้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_rejected", _locale)
 		HarvestCheckpointResult.Status.HARVESTED_SAVED:
-			_feedback_label.text = (
-				"เก็บเกี่ยวสำเร็จ (+%d เหรียญ) และบันทึกเรียบร้อยแล้ว"
-				% result.get_reward_granted()
-			)
+			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_saved", [result.get_reward_granted()], _locale)
 		HarvestCheckpointResult.Status.HARVESTED_SAVE_FAILED:
-			_feedback_label.text = (
-				"เก็บเกี่ยวสำเร็จ (+%d เหรียญ) แต่ยังบันทึกไม่สำเร็จ"
-				% result.get_reward_granted()
-			)
+			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_save_failed", [result.get_reward_granted()], _locale)
 		_:
-			_feedback_label.text = "สถานะการเก็บเกี่ยวไม่ระบุ"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_unknown", _locale)
 
 
 ## Pure query for testing: returns currency HUD Label instance.
@@ -1408,23 +1460,25 @@ func show_visitor_result(result: VisitorSelectionResult) -> void:
 	if result == null:
 		return
 
+	_active_feedback_kind = "visitor"
 	if _feedback_area != null and _feedback_label != null:
 		_feedback_area.visible = true
 		match result.get_status():
 			VisitorSelectionResult.Status.SELECTED:
 				var vid: String = result.get_selected_visitor_id()
 				_current_visitor_id = vid
-				var vname: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid)
-				_feedback_label.text = "พบผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+				var vdef: VisitorDefinition = _catalog.get_visitor(vid) if _catalog != null else null
+				var vname: String = GardenLocalization.get_visitor_name(vid, _locale, vdef)
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed", [vname, vid], _locale)
 				if _visitor_status_label != null:
-					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname, vid], _locale)
 			VisitorSelectionResult.Status.NO_ELIGIBLE_VISITORS:
 				_current_visitor_id = ""
-				_feedback_label.text = "ยังไม่มีผู้มาเยือนที่ตรงกับสภาพแวดล้อมสวนในขณะนี้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_none_eligible", _locale)
 			VisitorSelectionResult.Status.INVALID_INPUT, VisitorSelectionResult.Status.SELECTION_FAILED:
-				_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการสำรวจผู้มาเยือน"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
-				_feedback_label.text = "สถานะผู้มาเยือนไม่ระบุ"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
 
 
 ## Pure query for testing: returns environment summary text.
@@ -1478,6 +1532,7 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 	if result == null:
 		return
 
+	_active_feedback_kind = "visitor_obs"
 	_last_visitor_selection_result = result.get_selection_result()
 	if _feedback_area != null and _feedback_label != null:
 		_feedback_area.visible = true
@@ -1485,36 +1540,29 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 			VisitorObservationCheckpointResult.Status.OBSERVED_SAVED:
 				var vid: String = result.get_selected_visitor_id()
 				_current_visitor_id = vid
-				var vname: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid)
+				var vdef: VisitorDefinition = _catalog.get_visitor(vid) if _catalog != null else null
+				var vname: String = GardenLocalization.get_visitor_name(vid, _locale, vdef)
 				if result.is_first_discovery():
-					_feedback_label.text = (
-						"พบผู้มาเยือนในสวน: %s (%s) — บันทึกการค้นพบใหม่ลงสมุดบ้านสวนแล้ว"
-						% [vname, vid]
-					)
+					_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_first", [vname, vid], _locale)
 				else:
-					_feedback_label.text = (
-						"พบผู้มาเยือนในสวน: %s (%s) — บันทึกลงสมุดบ้านสวนแล้ว"
-						% [vname, vid]
-					)
+					_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_saved", [vname, vid], _locale)
 				if _visitor_status_label != null:
-					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname, vid]
+					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname, vid], _locale)
 			VisitorObservationCheckpointResult.Status.OBSERVED_SAVE_FAILED:
 				var vid_fail: String = result.get_selected_visitor_id()
 				_current_visitor_id = vid_fail
-				var vname_fail: String = PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid_fail, vid_fail)
-				_feedback_label.text = (
-					"พบผู้มาเยือนในสวน: %s (%s) แต่ยังบันทึกไม่สำเร็จ"
-					% [vname_fail, vid_fail]
-				)
+				var vdef_fail: VisitorDefinition = _catalog.get_visitor(vid_fail) if _catalog != null else null
+				var vname_fail: String = GardenLocalization.get_visitor_name(vid_fail, _locale, vdef_fail)
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_save_failed", [vname_fail, vid_fail], _locale)
 				if _visitor_status_label != null:
-					_visitor_status_label.text = "ผู้มาเยือนในสวน: %s (%s)" % [vname_fail, vid_fail]
+					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname_fail, vid_fail], _locale)
 			VisitorObservationCheckpointResult.Status.NO_ELIGIBLE_VISITORS:
 				_current_visitor_id = ""
-				_feedback_label.text = "ยังไม่มีผู้มาเยือนที่ตรงกับสภาพแวดล้อมสวนในขณะนี้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_none_eligible", _locale)
 			VisitorObservationCheckpointResult.Status.NOT_READY, VisitorObservationCheckpointResult.Status.OBSERVATION_REJECTED:
-				_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการสำรวจผู้มาเยือน"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
-				_feedback_label.text = "สถานะผู้มาเยือนไม่ระบุ"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
 
 
 ## Opens the journal modal panel.
@@ -1589,17 +1637,18 @@ func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult)
 	if _feedback_area == null or _feedback_label == null or result == null:
 		return
 
+	_active_feedback_kind = "decoration"
 	_feedback_area.visible = true
 	match result.get_status():
 		DecorationPurchaseCheckpointResult.Status.NOT_READY:
-			_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการซื้อของตกแต่ง"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_not_ready", _locale)
 		DecorationPurchaseCheckpointResult.Status.PURCHASE_REJECTED:
 			var reason_str: String = ""
 			var purchase_res: DecorationPurchaseResult = result.get_purchase_result()
 			if purchase_res != null:
 				match purchase_res.get_status():
 					DecorationPurchaseResult.INSUFFICIENT_CURRENCY:
-						_feedback_label.text = "เหรียญไม่เพียงพอสำหรับการซื้อของตกแต่ง (INSUFFICIENT_CURRENCY)"
+						_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_insufficient_currency", _locale)
 						return
 					DecorationPurchaseResult.INVALID_INPUT:
 						reason_str = "INVALID_INPUT"
@@ -1618,21 +1667,15 @@ func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult)
 					_:
 						reason_str = "UNKNOWN"
 			if not reason_str.is_empty():
-				_feedback_label.text = "ไม่สามารถซื้อของตกแต่งได้ (%s)" % reason_str
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_rejected_reason", [reason_str], _locale)
 			else:
-				_feedback_label.text = "ไม่สามารถซื้อของตกแต่งได้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_rejected", _locale)
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVED:
-			_feedback_label.text = (
-				"ซื้อและวางของตกแต่งสำเร็จ (-%d เหรียญ) และบันทึกเรียบร้อยแล้ว"
-				% result.get_price_spent()
-			)
+			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_saved", [result.get_price_spent()], _locale)
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVE_FAILED:
-			_feedback_label.text = (
-				"ซื้อและวางของตกแต่งสำเร็จ (-%d เหรียญ) แต่ยังบันทึกไม่สำเร็จ"
-				% result.get_price_spent()
-			)
+			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_save_failed", [result.get_price_spent()], _locale)
 		_:
-			_feedback_label.text = "สถานะการซื้อของตกแต่งไม่ระบุ"
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_unknown", _locale)
 
 
 ## Pure query for testing: returns child DecorationPicker instance.
@@ -1912,32 +1955,30 @@ func show_return_summary(summary: GardenReturnSummary) -> void:
 	if not summary.has_meaningful_changes():
 		return
 
+	_active_feedback_kind = "return"
 	_feedback_area.visible = true
 	if summary.has_plant_growth_changes():
 		var grown_count: int = summary.get_advanced_plant_count()
 		var newly_mature_count: int = summary.get_newly_matured_plant_count()
 		if newly_mature_count > 0:
-			_feedback_label.text = (
-				"ต้นไม้ในสวนเติบโตขึ้นระหว่างที่คุณไม่อยู่ (เติบโต %d ต้น, พร้อมเก็บเกี่ยว %d ต้น)"
-				% [grown_count, summary.get_ready_to_harvest_count()]
+			_feedback_label.text = GardenLocalization.format_key(
+				"ui.feedback.return_plants_ready",
+				[grown_count, summary.get_ready_to_harvest_count()],
+				_locale
 			)
 		else:
-			_feedback_label.text = (
-				"ต้นไม้ในสวนเติบโตขึ้นระหว่างที่คุณไม่อยู่ (%d ต้น)"
-				% grown_count
+			_feedback_label.text = GardenLocalization.format_key(
+				"ui.feedback.return_plants_grew",
+				[grown_count],
+				_locale
 			)
 	else:
-		var time_name: String = PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(
-			summary.get_current_time_period(),
-			summary.get_current_time_period()
-		)
-		var weather_name: String = PROVISIONAL_WEATHER_DISPLAY_NAMES.get(
-			summary.get_current_weather_state(),
-			summary.get_current_weather_state()
-		)
-		_feedback_label.text = (
-			"บรรยากาศในสวนเปลี่ยนไประหว่างที่คุณไม่อยู่ (%s, %s)"
-			% [time_name, weather_name]
+		var time_name: String = GardenLocalization.get_time_period_name(summary.get_current_time_period(), _locale)
+		var weather_name: String = GardenLocalization.get_weather_name(summary.get_current_weather_state(), _locale)
+		_feedback_label.text = GardenLocalization.format_key(
+			"ui.feedback.return_atmosphere",
+			[time_name, weather_name],
+			_locale
 		)
 
 
@@ -1964,32 +2005,61 @@ func _on_observe_event_button_pressed() -> void:
 	event_observation_requested.emit()
 
 
-## Displays calm Thai user feedback and ephemeral active event state from an EventSelectionResult.
+## Displays calm user feedback and ephemeral active event state from an EventSelectionResult.
 func show_event_result(result: EventSelectionResult) -> void:
 	_last_event_selection_result = result
 	_resolve_nodes()
 	if result == null:
 		return
 
+	_active_feedback_kind = "event"
 	if _feedback_area != null and _feedback_label != null:
 		_feedback_area.visible = true
 		match result.get_status():
 			EventSelectionResult.Status.SELECTED:
 				var eid: String = result.get_selected_event_id()
 				_current_event_id = eid
-				var ename: String = PROVISIONAL_EVENT_DISPLAY_NAMES.get(eid, eid)
-				var edesc: String = PROVISIONAL_EVENT_DESCRIPTIONS.get(eid, "")
+				var edef: EventDefinition = _catalog.get_event(eid) if _catalog != null else null
+				var ename: String = GardenLocalization.get_event_name(eid, _locale, edef)
+				var edesc: String = GardenLocalization.get_event_description(eid, _locale, edef)
 				if not edesc.is_empty():
-					_feedback_label.text = "ชมเหตุการณ์ในสวน: %s (%s) — %s" % [ename, eid, edesc]
+					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected_desc", [ename, eid, edesc], _locale)
 				else:
-					_feedback_label.text = "ชมเหตุการณ์ในสวน: %s (%s)" % [ename, eid]
+					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected", [ename, eid], _locale)
 			EventSelectionResult.Status.NO_ELIGIBLE_EVENTS:
 				_current_event_id = ""
-				_feedback_label.text = "ยังไม่มีเหตุการณ์พิเศษที่เกิดขึ้นในสวนขณะนี้"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_none_eligible", _locale)
 			EventSelectionResult.Status.INVALID_INPUT, EventSelectionResult.Status.SELECTION_FAILED:
-				_feedback_label.text = "ระบบยังไม่พร้อมสำหรับการชมเหตุการณ์ในสวน"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_not_ready", _locale)
 			_:
-				_feedback_label.text = "สถานะเหตุการณ์ในสวนไม่ระบุ"
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_unknown", _locale)
+
+
+func _refresh_active_feedback_locale() -> void:
+	if _feedback_area == null or not _feedback_area.visible:
+		return
+	match _active_feedback_kind:
+		"planting":
+			if _last_checkpoint_result != null:
+				show_planting_result(_last_checkpoint_result)
+		"harvest":
+			if _last_harvest_checkpoint_result != null:
+				show_harvest_result(_last_harvest_checkpoint_result)
+		"visitor":
+			if _last_visitor_selection_result != null:
+				show_visitor_result(_last_visitor_selection_result)
+		"visitor_obs":
+			if _last_visitor_observation_checkpoint_result != null:
+				show_visitor_observation_result(_last_visitor_observation_checkpoint_result)
+		"decoration":
+			if _last_decoration_purchase_checkpoint_result != null:
+				show_decoration_purchase_result(_last_decoration_purchase_checkpoint_result)
+		"event":
+			if _last_event_selection_result != null:
+				show_event_result(_last_event_selection_result)
+		"return":
+			if _last_return_summary != null:
+				show_return_summary(_last_return_summary)
 
 
 ## Pure query for testing: returns ObserveEventButton instance.
@@ -2549,86 +2619,90 @@ func has_last_decoration_purchase_checkpoint_result() -> bool:
 	return not _is_blocked and _last_decoration_purchase_checkpoint_result != null
 
 
-## Pure query for testing: returns the localized Thai display name for the currently selected plant, or "" if none selected or blocked.
+## Pure query for testing: returns the localized display name for the currently selected plant, or "" if none selected or blocked.
 func get_selected_plant_display_name() -> String:
 	if _is_blocked or _selected_runtime_instance_id.is_empty() or _selected_plant_definition_id.is_empty():
 		return ""
-	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(_selected_plant_definition_id, _selected_plant_definition_id)
+	var pdef: PlantDefinition = _catalog.get_plant(_selected_plant_definition_id) if _catalog != null else null
+	return GardenLocalization.get_plant_name(_selected_plant_definition_id, _locale, pdef)
 
 
-## Pure query for testing: returns the localized Thai display name for the current active visitor in the garden HUD, or "" if none active or blocked.
+## Pure query for testing: returns the localized display name for the current active visitor in the garden HUD, or "" if none active or blocked.
 func get_current_visitor_display_name() -> String:
 	if _is_blocked or _current_visitor_id.is_empty():
 		return ""
-	return PROVISIONAL_VISITOR_DISPLAY_NAMES.get(_current_visitor_id, _current_visitor_id)
+	var vdef: VisitorDefinition = _catalog.get_visitor(_current_visitor_id) if _catalog != null else null
+	return GardenLocalization.get_visitor_name(_current_visitor_id, _locale, vdef)
 
 
-## Pure query for testing: returns the localized Thai display name for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
+## Pure query for testing: returns the localized display name for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
 func get_current_event_display_name() -> String:
 	if _is_blocked or _current_event_id.is_empty():
 		return ""
-	return PROVISIONAL_EVENT_DISPLAY_NAMES.get(_current_event_id, _current_event_id)
+	var edef: EventDefinition = _catalog.get_event(_current_event_id) if _catalog != null else null
+	return GardenLocalization.get_event_name(_current_event_id, _locale, edef)
 
 
-## Pure query for testing: returns the localized Thai description for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
+## Pure query for testing: returns the localized description for the current active ambient/special event in the garden HUD, or "" if none active or blocked.
 func get_current_event_description() -> String:
 	if _is_blocked or _current_event_id.is_empty():
 		return ""
-	return PROVISIONAL_EVENT_DESCRIPTIONS.get(_current_event_id, "")
+	var edef: EventDefinition = _catalog.get_event(_current_event_id) if _catalog != null else null
+	return GardenLocalization.get_event_description(_current_event_id, _locale, edef)
 
 
-## Pure query for testing: returns the localized Thai display name for the current time period from the latest snapshot, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the current time period from the latest snapshot, or "" if blocked/unavailable.
 func get_current_time_period_display_name() -> String:
 	var tp: String = get_current_time_period()
 	if _is_blocked or tp.is_empty():
 		return ""
-	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(tp, tp)
+	return GardenLocalization.get_time_period_name(tp, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the current weather state from the latest snapshot, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the current weather state from the latest snapshot, or "" if blocked/unavailable.
 func get_current_weather_display_name() -> String:
 	var ws: String = get_current_weather_state()
 	if _is_blocked or ws.is_empty():
 		return ""
-	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(ws, ws)
+	return GardenLocalization.get_weather_name(ws, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the next time period from the latest refresh, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the next time period from the latest refresh, or "" if blocked/unavailable.
 func get_next_time_period_display_name() -> String:
 	if _is_blocked or _next_time_period.is_empty():
 		return ""
-	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(_next_time_period, _next_time_period)
+	return GardenLocalization.get_time_period_name(_next_time_period, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the next weather state from the latest refresh, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the next weather state from the latest refresh, or "" if blocked/unavailable.
 func get_next_weather_display_name() -> String:
 	if _is_blocked or _next_weather_state.is_empty():
 		return ""
-	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(_next_weather_state, _next_weather_state)
+	return GardenLocalization.get_weather_name(_next_weather_state, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the current progression stage from the latest refresh, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the current progression stage from the latest refresh, or "" if blocked/unavailable.
 func get_current_progression_stage_display_name() -> String:
 	var st_id: String = get_current_progression_stage_id()
 	if _is_blocked or st_id.is_empty():
 		return ""
-	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(st_id, st_id)
+	return GardenLocalization.get_progression_stage_name(st_id, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the next progression stage from the latest refresh, or "" if at max stage or blocked/unavailable.
+## Pure query for testing: returns the localized display name for the next progression stage from the latest refresh, or "" if at max stage or blocked/unavailable.
 func get_next_progression_stage_display_name() -> String:
 	var next_id: String = get_next_progression_stage_id()
 	if _is_blocked or next_id.is_empty():
 		return ""
-	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(next_id, next_id)
+	return GardenLocalization.get_progression_stage_name(next_id, _locale)
 
 
-## Pure query for testing: returns the localized Thai display name for the current optional gentle guidance prompt from the latest refresh, or "" if blocked/unavailable.
+## Pure query for testing: returns the localized display name for the current optional gentle guidance prompt from the latest refresh, or "" if blocked/unavailable.
 func get_current_guidance_display_name() -> String:
 	var gid: String = get_current_guidance_id()
 	if _is_blocked or gid.is_empty():
 		return ""
-	return PROVISIONAL_GUIDANCE_DISPLAY_NAMES.get(gid, gid)
+	return GardenLocalization.get_guidance_text(gid, _locale)
 
 
 ## Pure query for testing: returns true if a plant is currently selected, startup is not blocked, and the selected plant is at PLANTED stage.
@@ -2651,192 +2725,167 @@ func is_selected_plant_mature_stage() -> bool:
 	return not _is_blocked and not _selected_runtime_instance_id.is_empty() and _selected_plant_stage == PlantGrowth.Stage.MATURE
 
 
-## Pure query for testing: returns localized Thai display name for [param trait_id], or "" if empty.
+## Pure query for testing: returns localized display name for [param trait_id], or "" if empty.
 func get_trait_display_name_for_id(trait_id: String) -> String:
-	if trait_id.is_empty():
-		return ""
-	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+	return GardenLocalization.get_trait_name(trait_id, _locale)
 
 
-## Pure query for testing: returns localized Thai display name for [param visitor_id], or "" if empty.
+## Pure query for testing: returns localized display name for [param visitor_id], or "" if empty.
 func get_visitor_display_name_for_id(visitor_id: String) -> String:
-	if visitor_id.is_empty():
-		return ""
-	return PROVISIONAL_VISITOR_DISPLAY_NAMES.get(visitor_id, visitor_id)
+	var vdef: VisitorDefinition = _catalog.get_visitor(visitor_id) if _catalog != null else null
+	return GardenLocalization.get_visitor_name(visitor_id, _locale, vdef)
 
 
-## Pure query for testing: returns localized Thai display name for [param event_id], or "" if empty.
+## Pure query for testing: returns localized display name for [param event_id], or "" if empty.
 func get_event_display_name_for_id(event_id: String) -> String:
-	if event_id.is_empty():
-		return ""
-	return PROVISIONAL_EVENT_DISPLAY_NAMES.get(event_id, event_id)
+	var edef: EventDefinition = _catalog.get_event(event_id) if _catalog != null else null
+	return GardenLocalization.get_event_name(event_id, _locale, edef)
 
 
-## Pure query for testing: returns localized Thai description for [param event_id], or "" if empty/unknown.
+## Pure query for testing: returns localized description for [param event_id], or "" if empty/unknown.
 func get_event_description_for_id(event_id: String) -> String:
-	if event_id.is_empty():
-		return ""
-	return PROVISIONAL_EVENT_DESCRIPTIONS.get(event_id, "")
+	var edef: EventDefinition = _catalog.get_event(event_id) if _catalog != null else null
+	return GardenLocalization.get_event_description(event_id, _locale, edef)
 
 
-## Pure query for testing: returns localized Thai display name for [param time_period], or "" if empty.
+## Pure query for testing: returns localized display name for [param time_period], or "" if empty.
 func get_time_period_display_name_for_id(time_period: String) -> String:
-	if time_period.is_empty():
-		return ""
-	return PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(time_period, time_period)
+	return GardenLocalization.get_time_period_name(time_period, _locale)
 
 
-## Pure query for testing: returns localized Thai display name for [param weather_state], or "" if empty.
+## Pure query for testing: returns localized display name for [param weather_state], or "" if empty.
 func get_weather_display_name_for_id(weather_state: String) -> String:
-	if weather_state.is_empty():
-		return ""
-	return PROVISIONAL_WEATHER_DISPLAY_NAMES.get(weather_state, weather_state)
+	return GardenLocalization.get_weather_name(weather_state, _locale)
 
 
-## Pure query for testing: returns localized Thai display name for [param stage_id], or "" if empty.
+## Pure query for testing: returns localized display name for [param stage_id], or "" if empty.
 func get_progression_stage_display_name_for_id(stage_id: String) -> String:
-	if stage_id.is_empty():
-		return ""
-	return PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.get(stage_id, stage_id)
+	return GardenLocalization.get_progression_stage_name(stage_id, _locale)
 
 
-## Pure query for testing: returns localized Thai display name for [param guidance_id], or "" if empty.
+## Pure query for testing: returns localized display name for [param guidance_id], or "" if empty.
 func get_guidance_display_name_for_id(guidance_id: String) -> String:
-	if guidance_id.is_empty():
-		return ""
-	return PROVISIONAL_GUIDANCE_DISPLAY_NAMES.get(guidance_id, guidance_id)
+	return GardenLocalization.get_guidance_text(guidance_id, _locale)
 
 
-## Pure query for testing: returns localized Thai display names for all active environmental traits in the latest snapshot, or [] if blocked/empty.
+## Pure query for testing: returns localized display names for all active environmental traits in the latest snapshot, or [] if blocked/empty.
 func get_active_environmental_trait_display_names() -> Array[String]:
 	if _is_blocked or _last_snapshot == null:
 		return []
 	var result: Array[String] = []
 	for trait_id: String in _last_snapshot.get_active_traits():
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for environmental traits on the currently selected plant, or [] if none selected or blocked.
+## Pure query for testing: returns localized display names for environmental traits on the currently selected plant, or [] if none selected or blocked.
 func get_selected_plant_trait_display_names() -> Array[String]:
 	if _is_blocked or _selected_runtime_instance_id.is_empty():
 		return []
 	var result: Array[String] = []
 	for trait_id: String in _selected_plant_traits:
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for eligible visitors from the latest refresh, or [] if blocked/empty.
+## Pure query for testing: returns localized display names for eligible visitors from the latest refresh, or [] if blocked/empty.
 func get_eligible_visitor_display_names() -> Array[String]:
 	if _is_blocked:
 		return []
 	var result: Array[String] = []
 	for vid: String in _eligible_visitor_ids:
-		result.append(PROVISIONAL_VISITOR_DISPLAY_NAMES.get(vid, vid))
+		result.append(get_visitor_display_name_for_id(vid))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for eligible ambient/special events from the latest refresh, or [] if blocked/empty.
+## Pure query for testing: returns localized display names for eligible ambient/special events from the latest refresh, or [] if blocked/empty.
 func get_eligible_event_display_names() -> Array[String]:
 	if _is_blocked:
 		return []
 	var result: Array[String] = []
 	for eid: String in _eligible_event_ids:
-		result.append(PROVISIONAL_EVENT_DISPLAY_NAMES.get(eid, eid))
+		result.append(get_event_display_name_for_id(eid))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for distinct planted plant species in the latest snapshot, or [] if blocked/empty.
+## Pure query for testing: returns localized display names for distinct planted plant species in the latest snapshot, or [] if blocked/empty.
 func get_present_plant_display_names() -> Array[String]:
 	var result: Array[String] = []
 	for def_id: String in get_present_plant_definition_ids():
-		result.append(PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id))
+		result.append(get_plant_display_name_for_id(def_id))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for distinct placed decoration species in the latest snapshot, or [] if blocked/empty.
+## Pure query for testing: returns localized display names for distinct placed decoration species in the latest snapshot, or [] if blocked/empty.
 func get_present_decoration_display_names() -> Array[String]:
 	var result: Array[String] = []
 	for def_id: String in get_present_decoration_definition_ids():
-		result.append(DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id))
+		result.append(get_decoration_display_name_for_id(def_id))
 	return result
 
 
-## Pure query for testing: returns localized Thai display name for plant [param definition_id], or "" if empty.
+## Pure query for testing: returns localized display name for plant [param definition_id], or "" if empty.
 func get_plant_display_name_for_id(definition_id: String) -> String:
-	if definition_id.is_empty():
-		return ""
-	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+	var pdef: PlantDefinition = _catalog.get_plant(definition_id) if _catalog != null else null
+	return GardenLocalization.get_plant_name(definition_id, _locale, pdef)
 
 
-## Pure query for testing: returns localized Thai display name for decoration [param definition_id], or "" if empty.
+## Pure query for testing: returns localized display name for decoration [param definition_id], or "" if empty.
 func get_decoration_display_name_for_id(definition_id: String) -> String:
-	if definition_id.is_empty():
-		return ""
-	return DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+	var ddef: DecorationDefinition = _catalog.get_decoration(definition_id) if _catalog != null else null
+	return GardenLocalization.get_decoration_name(definition_id, _locale, ddef)
 
 
-## Pure query for testing: returns localized Thai growth stage display name for the currently selected plant, or "" if none selected or blocked.
+## Pure query for testing: returns localized growth stage display name for the currently selected plant, or "" if none selected or blocked.
 func get_selected_plant_stage_display_name() -> String:
 	if _is_blocked or _selected_runtime_instance_id.is_empty():
 		return ""
-	match _selected_plant_stage:
-		PlantGrowth.Stage.PLANTED:
-			return "เพาะเมล็ด"
-		PlantGrowth.Stage.SPROUT:
-			return "ต้นกล้า"
-		PlantGrowth.Stage.GROWING:
-			return "กำลังโต"
-		PlantGrowth.Stage.MATURE:
-			return "โตเต็มที่"
-		_:
-			return "ไม่ทราบสถานะ"
+	return GardenLocalization.get_plant_stage_name(_selected_plant_stage, _locale)
 
 
-## Pure query for testing: returns true if [param visitor_id] is in the provisional localized visitor display dictionary.
+## Pure query for testing: returns true if [param visitor_id] is in the localized visitor catalog.
 func is_known_visitor_id(visitor_id: String) -> bool:
-	return not visitor_id.is_empty() and PROVISIONAL_VISITOR_DISPLAY_NAMES.has(visitor_id)
+	return GardenLocalization.is_known_visitor_id(visitor_id)
 
 
-## Pure query for testing: returns true if [param event_id] is in the provisional localized event display dictionary.
+## Pure query for testing: returns true if [param event_id] is in the localized event catalog.
 func is_known_event_id(event_id: String) -> bool:
-	return not event_id.is_empty() and PROVISIONAL_EVENT_DISPLAY_NAMES.has(event_id)
+	return GardenLocalization.is_known_event_id(event_id)
 
 
-## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+## Pure query for testing: returns true if [param trait_id] is in the localized trait catalog.
 func is_known_environmental_trait(trait_id: String) -> bool:
-	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+	return GardenLocalization.is_known_trait_id(trait_id)
 
 
-## Pure query for testing: returns true if [param time_period] is in the provisional localized time-of-day display dictionary.
+## Pure query for testing: returns true if [param time_period] is in the localized time-of-day catalog.
 func is_known_time_period_id(time_period: String) -> bool:
-	return not time_period.is_empty() and PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.has(time_period)
+	return GardenLocalization.is_known_time_period_id(time_period)
 
 
-## Pure query for testing: returns true if [param weather_state] is in the provisional localized weather display dictionary.
+## Pure query for testing: returns true if [param weather_state] is in the localized weather catalog.
 func is_known_weather_state_id(weather_state: String) -> bool:
-	return not weather_state.is_empty() and PROVISIONAL_WEATHER_DISPLAY_NAMES.has(weather_state)
+	return GardenLocalization.is_known_weather_state_id(weather_state)
 
 
-## Pure query for testing: returns true if [param stage_id] is in the provisional localized progression stage display dictionary.
+## Pure query for testing: returns true if [param stage_id] is in the localized progression stage catalog.
 func is_known_progression_stage_id(stage_id: String) -> bool:
-	return not stage_id.is_empty() and PROVISIONAL_PROGRESSION_STAGE_DISPLAY_NAMES.has(stage_id)
+	return GardenLocalization.is_known_progression_stage_id(stage_id)
 
 
-## Pure query for testing: returns true if [param guidance_id] is in the provisional localized gentle guidance display dictionary.
+## Pure query for testing: returns true if [param guidance_id] is in the localized gentle guidance catalog.
 func is_known_guidance_id(guidance_id: String) -> bool:
-	return not guidance_id.is_empty() and PROVISIONAL_GUIDANCE_DISPLAY_NAMES.has(guidance_id)
+	return GardenLocalization.is_known_guidance_id(guidance_id)
 
 
-## Pure query for testing: returns true if [param definition_id] is in the provisional localized plant display dictionary.
+## Pure query for testing: returns true if [param definition_id] is in the localized plant catalog.
 func is_known_plant_definition_id(definition_id: String) -> bool:
-	return not definition_id.is_empty() and PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+	return GardenLocalization.is_known_plant_id(definition_id)
 
 
-## Pure query for testing: returns true if [param definition_id] is in the provisional localized decoration display dictionary.
+## Pure query for testing: returns true if [param definition_id] is in the localized decoration catalog.
 func is_known_decoration_definition_id(definition_id: String) -> bool:
-	return not definition_id.is_empty() and DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.has(definition_id)
+	return GardenLocalization.is_known_decoration_id(definition_id)
 
 
 ## Pure query for testing: returns true if startup is not blocked and [param definition_id] exists as a plant definition in the bound catalog.

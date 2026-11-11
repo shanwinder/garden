@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_visitor_def")
 id = "visitor.bird"
+name_key = "visitor.bird.name"
+description_key = "visitor.bird.description"
 weight = 25.0
 required_trait_counts = {
 "fruit": 1

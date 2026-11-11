@@ -21,29 +21,6 @@ extends Control
 signal decoration_purchase_requested(definition_id: String)
 signal picker_closed()
 
-const PROVISIONAL_DECORATION_DISPLAY_NAMES: Dictionary = {
-	"decoration.bench": "ม้านั่งไม้ในสวน",
-	"decoration.clay_jar": "ตุ่มน้ำดินเผา",
-	"decoration.garden_lamp": "โคมไฟในสวน",
-	"decoration.plant_pot": "กระถางดินเผา",
-	"decoration.small_pond": "บ่อน้ำเล็ก",
-	"decoration.small_table": "โต๊ะไม้เล็ก",
-	"decoration.watering_can": "บัวรดน้ำสังกะสี",
-	"decoration.wooden_fence": "รั้วไม้ระแนง",
-}
-
-const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
-	"dense_vegetation": "พุ่มไม้หนาแน่น",
-	"flower": "ดอกไม้",
-	"food": "พืชอาหาร",
-	"fruit": "ผลไม้",
-	"light": "แสงไฟ",
-	"perch": "กิ่งไม้เกาะพัก",
-	"shade": "ร่มเงา",
-	"shelter": "ที่หลบพัก",
-	"water": "แหล่งน้ำ",
-}
-
 var _catalog: ContentCatalog = null
 var _snapshot: GardenSnapshot = null
 var _available_currency: int = -1
@@ -51,12 +28,17 @@ var _has_currency_context: bool = false
 var _pending_definition_id: String = ""
 var _is_dispatching_confirmation: bool = false
 var _is_enabled: bool = true
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
 var _option_texts_by_id: Dictionary = {}
 
+var _title_label: Label = null
 var _close_button: Button = null
+var _note_label: Label = null
 var _decoration_list_container: Container = null
 var _confirmation_overlay: Control = null
+var _confirm_title_label: Label = null
 var _confirm_prompt_label: Label = null
+var _confirm_notice_label: Label = null
 var _confirm_button: Button = null
 var _cancel_button: Button = null
 var _decoration_buttons: Array[Button] = []
@@ -65,19 +47,28 @@ var _decoration_buttons: Array[Button] = []
 func _ready() -> void:
 	_resolve_nodes()
 	_connect_dialog_signals()
+	_apply_static_texts()
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = false
 
 
 func _resolve_nodes() -> void:
+	if _title_label == null:
+		_title_label = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox/TitleLabel") as Label
 	if _close_button == null:
 		_close_button = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox/CloseButton") as Button
+	if _note_label == null:
+		_note_label = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/NoteLabel") as Label
 	if _decoration_list_container == null:
 		_decoration_list_container = get_node_or_null("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/DecorationListContainer") as Container
 	if _confirmation_overlay == null:
 		_confirmation_overlay = get_node_or_null("ConfirmationOverlay") as Control
+	if _confirm_title_label == null:
+		_confirm_title_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmTitleLabel") as Label
 	if _confirm_prompt_label == null:
 		_confirm_prompt_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmPromptLabel") as Label
+	if _confirm_notice_label == null:
+		_confirm_notice_label = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ConfirmNoticeLabel") as Label
 	if _confirm_button == null:
 		_confirm_button = get_node_or_null("ConfirmationOverlay/ConfirmCenter/ConfirmPanel/MarginContainer/VBoxContainer/ButtonHBox/ConfirmButton") as Button
 	if _cancel_button == null:
@@ -99,6 +90,7 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 	_catalog = catalog
 	_pending_definition_id = ""
 	_resolve_nodes()
+	_apply_static_texts()
 	_clear_decoration_buttons()
 
 	if _confirmation_overlay != null:
@@ -120,6 +112,38 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 		_decoration_buttons.append(btn)
 		if _decoration_list_container != null:
 			_decoration_list_container.add_child(btn)
+
+
+## Sets active display locale ("th" or "en") and refreshes decoration shop labels in-place.
+func set_locale(locale: String) -> void:
+	_locale = GardenLocalization.normalize_locale(locale)
+	_resolve_nodes()
+	_apply_static_texts()
+	_refresh_button_labels()
+	if not _pending_definition_id.is_empty():
+		_update_confirm_prompt_text(_pending_definition_id)
+
+
+## Returns active display locale ("th" or "en").
+func get_locale() -> String:
+	return _locale
+
+
+func _apply_static_texts() -> void:
+	if _title_label != null:
+		_title_label.text = GardenLocalization.translate("ui.decoration_picker.title", _locale)
+	if _close_button != null:
+		_close_button.text = GardenLocalization.translate("ui.common.close", _locale)
+	if _note_label != null:
+		_note_label.text = GardenLocalization.translate("ui.decoration_picker.note", _locale)
+	if _confirm_title_label != null:
+		_confirm_title_label.text = GardenLocalization.translate("ui.decoration_picker.confirm_title", _locale)
+	if _confirm_notice_label != null:
+		_confirm_notice_label.text = GardenLocalization.translate("ui.decoration_picker.confirm_notice", _locale)
+	if _cancel_button != null:
+		_cancel_button.text = GardenLocalization.translate("ui.common.cancel", _locale)
+	if _confirm_button != null:
+		_confirm_button.text = GardenLocalization.translate("ui.common.confirm", _locale)
 
 
 ## Updates optional read-only shop context (available currency and GardenSnapshot) and refreshes labels in-place.
@@ -146,25 +170,32 @@ func _refresh_button_labels() -> void:
 
 func _format_decoration_button_text(def_id: String) -> String:
 	var def: DecorationDefinition = _catalog.get_decoration(def_id) if _catalog != null else null
-	var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
+	var display_name: String = GardenLocalization.get_decoration_name(def_id, _locale, def)
 	var price_val: int = def.price if def != null else 0
 	var traits_summary: String = _format_traits_summary(def)
-	var text: String = "%s (%s) — %d เหรียญ | %s" % [thai_name, def_id, price_val, traits_summary]
+	var text: String = GardenLocalization.format_key(
+		"ui.decoration_picker.option_base",
+		[display_name, def_id, price_val, traits_summary],
+		_locale
+	)
 	if _snapshot != null:
 		var placed_count: int = _snapshot.get_decoration_count_for_definition(def_id)
-		text += " | วางแล้ว %d ชิ้น" % placed_count
-		text += " [จัดวางแล้ว]" if placed_count > 0 else " [ของตกแต่งใหม่]"
+		text += GardenLocalization.format_key("ui.decoration_picker.placed_count_suffix", [placed_count], _locale)
+		text += GardenLocalization.translate(
+			"ui.decoration_picker.badge_placed" if placed_count > 0 else "ui.decoration_picker.badge_new",
+			_locale
+		)
 	if _has_currency_context and _available_currency < price_val:
-		text += " [เหรียญไม่พอ]"
+		text += GardenLocalization.translate("ui.decoration_picker.badge_insufficient", _locale)
 	return text
 
 
 func _format_traits_summary(def: DecorationDefinition) -> String:
 	if def == null or def.environmental_traits.is_empty():
-		return "ตกแต่งสวยงาม"
+		return GardenLocalization.translate("ui.decoration_picker.cosmetic", _locale)
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in def.environmental_traits:
-		parts.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
@@ -191,38 +222,41 @@ func select_decoration_definition(definition_id: String) -> void:
 
 	_pending_definition_id = definition_id
 	_resolve_nodes()
-
-	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
-	var price_val: int = def.price if def != null else 0
-	var thai_name: String = PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
-	var traits_summary: String = _format_traits_summary(def)
-	if _confirm_prompt_label != null:
-		var prompt_parts: PackedStringArray = PackedStringArray()
-		prompt_parts.append("%d เหรียญ" % price_val)
-		if _has_currency_context:
-			prompt_parts.append("เหรียญที่มี: %d เหรียญ" % _available_currency)
-		prompt_parts.append("คุณสมบัติ: %s" % traits_summary)
-		if _snapshot != null:
-			prompt_parts.append(
-				"วางแล้ว %d ชิ้น"
-				% _snapshot.get_decoration_count_for_definition(definition_id)
-			)
-		var prompt_text: String = (
-			"ซื้อและวาง%s (%s) ลงในสวนหรือไม่?"
-			% [thai_name, " | ".join(prompt_parts)]
-		)
-		if _snapshot != null:
-			prompt_text += (
-				" [จัดวางแล้ว]"
-				if _snapshot.get_decoration_count_for_definition(definition_id) > 0
-				else " [ของตกแต่งใหม่]"
-			)
-		if _has_currency_context and _available_currency < price_val:
-			prompt_text += " [เหรียญไม่พอ]"
-		_confirm_prompt_label.text = prompt_text
+	_update_confirm_prompt_text(definition_id)
 
 	if _confirmation_overlay != null:
 		_confirmation_overlay.visible = true
+
+
+func _update_confirm_prompt_text(definition_id: String) -> void:
+	if _confirm_prompt_label == null:
+		return
+	var def: DecorationDefinition = _catalog.get_decoration(definition_id)
+	var price_val: int = def.price if def != null else 0
+	var display_name: String = GardenLocalization.get_decoration_name(definition_id, _locale, def)
+	var traits_summary: String = _format_traits_summary(def)
+	var prompt_parts: PackedStringArray = PackedStringArray()
+	prompt_parts.append(GardenLocalization.format_key("ui.decoration_picker.price_coins", [price_val], _locale))
+	if _has_currency_context:
+		prompt_parts.append(GardenLocalization.format_key("ui.decoration_picker.available_coins", [_available_currency], _locale))
+	prompt_parts.append(GardenLocalization.format_key("ui.decoration_picker.traits", [traits_summary], _locale))
+	if _snapshot != null:
+		prompt_parts.append(
+			GardenLocalization.format_key("ui.decoration_picker.placed_count", [_snapshot.get_decoration_count_for_definition(definition_id)], _locale)
+		)
+	var prompt_text: String = GardenLocalization.format_key(
+		"ui.decoration_picker.prompt_details",
+		[display_name, " | ".join(prompt_parts)],
+		_locale
+	)
+	if _snapshot != null:
+		prompt_text += GardenLocalization.translate(
+			"ui.decoration_picker.badge_placed" if _snapshot.get_decoration_count_for_definition(definition_id) > 0 else "ui.decoration_picker.badge_new",
+			_locale
+		)
+	if _has_currency_context and _available_currency < price_val:
+		prompt_text += GardenLocalization.translate("ui.decoration_picker.badge_insufficient", _locale)
+	_confirm_prompt_label.text = prompt_text
 
 
 ## Cancels the pending confirmation prompt without emitting a purchase request.
@@ -503,11 +537,11 @@ func is_all_decorations_affordable() -> bool:
 	return total > 0 and get_affordable_decoration_count() >= total
 
 
-## Pure query for testing: returns the localized Thai display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
+## Pure query for testing: returns the localized display name for [param definition_id] if present in the bound catalog, or "" if unknown/unbound.
 func get_decoration_display_name_for_id(definition_id: String) -> String:
 	if _catalog == null or not _catalog.has_decoration(definition_id):
 		return ""
-	return PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_decoration_name(definition_id, _locale, _catalog.get_decoration(definition_id))
 
 
 ## Pure query for testing: returns the count of environmental traits for [param definition_id] in the bound catalog, or 0 if unknown.
@@ -637,28 +671,26 @@ func get_pending_decoration_traits_summary() -> String:
 	return get_decoration_traits_summary_for_id(_pending_definition_id) if not _pending_definition_id.is_empty() else ""
 
 
-## Pure query for testing: returns true if [param definition_id] is in the provisional localized decoration display dictionary.
+## Pure query for testing: returns true if [param definition_id] is in the localized decoration catalog.
 func is_known_decoration_definition(definition_id: String) -> bool:
-	return not definition_id.is_empty() and PROVISIONAL_DECORATION_DISPLAY_NAMES.has(definition_id)
+	return GardenLocalization.is_known_decoration_id(definition_id)
 
 
-## Pure query for testing: returns true if [param trait_id] is in the provisional localized trait display dictionary.
+## Pure query for testing: returns true if [param trait_id] is in the localized trait catalog.
 func is_known_environmental_trait(trait_id: String) -> bool:
-	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+	return GardenLocalization.is_known_trait_id(trait_id)
 
 
-## Pure query for testing: returns the localized Thai display name for [param trait_id], or "" if empty.
+## Pure query for testing: returns the localized display name for [param trait_id], or "" if empty.
 func get_trait_display_name_for_id(trait_id: String) -> String:
-	if trait_id.is_empty():
-		return ""
-	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+	return GardenLocalization.get_trait_name(trait_id, _locale)
 
 
-## Pure query for testing: returns localized Thai display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
+## Pure query for testing: returns localized display names for environmental traits of [param definition_id] in the bound catalog, or [] if unknown/unbound.
 func get_decoration_trait_display_names_for_id(definition_id: String) -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_decoration_traits_for_id(definition_id):
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 

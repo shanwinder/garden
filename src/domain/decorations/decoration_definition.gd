@@ -23,6 +23,8 @@ extends Resource
 const DECORATION_NAMESPACE_PREFIX: String = "decoration."
 
 @export var id: String = ""
+@export var name_key: String = ""
+@export var description_key: String = ""
 @export var price: int = 0
 @export var environmental_traits: Array[String] = []
 
@@ -33,6 +35,9 @@ func is_valid() -> bool:
 	if not _is_valid_id(id):
 		return false
 
+	if not _is_valid_optional_key(name_key) or not _is_valid_optional_key(description_key):
+		return false
+
 	if not _is_valid_price(price):
 		return false
 
@@ -40,6 +45,16 @@ func is_valid() -> bool:
 		return false
 
 	return true
+
+
+## Returns the explicit localization key for this decoration's name, or derives "<id>.name".
+func get_effective_name_key() -> String:
+	return name_key if not name_key.is_empty() else GardenLocalization.decoration_name_key(id)
+
+
+## Returns the explicit localization key for this decoration's description, or derives "<id>.description".
+func get_effective_description_key() -> String:
+	return description_key if not description_key.is_empty() else GardenLocalization.decoration_description_key(id)
 
 
 ## Returns true if this decoration definition includes the exact [param trait_id].
@@ -63,3 +78,7 @@ static func _is_valid_id(definition_id: String) -> bool:
 
 static func _is_valid_price(value: int) -> bool:
 	return value >= 0
+
+
+static func _is_valid_optional_key(key: String) -> bool:
+	return key.is_empty() or GardenLocalization.is_valid_key(key)

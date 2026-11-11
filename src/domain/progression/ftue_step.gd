@@ -72,6 +72,16 @@ func get_instruction() -> String:
 	return _instruction
 
 
+## Returns the stable localization key for this FTUE step's title.
+func get_title_key() -> String:
+	return GardenLocalization.ftue_title_key(_step_id)
+
+
+## Returns the stable localization key for this FTUE step's instruction.
+func get_instruction_key() -> String:
+	return GardenLocalization.ftue_instruction_key(_step_id)
+
+
 ## Returns true if the FTUE sequence has reached completion.
 func is_completed() -> bool:
 	return _step_id == STEP_COMPLETED

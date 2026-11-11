@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_visitor_def")
 id = "visitor.cat"
+name_key = "visitor.cat.name"
+description_key = "visitor.cat.description"
 weight = 15.0
 required_trait_counts = {
 "shade": 1

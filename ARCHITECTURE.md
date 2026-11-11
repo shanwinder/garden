@@ -751,20 +751,21 @@ The exact weather schedule and probabilities are tuning data and remain outside 
 
 ## 19. Placement Architecture
 
-**Status: PROVISIONAL; exact placement UX TBD**
+**Status: LOCKED placement model (Coarse Logical Grid + Zones); exact grid dimensions & drag/tap editing UX PROVISIONAL**
 
-The game design has not yet locked free placement versus grid/slot placement.
+Per owner decision, the garden uses a **Coarse Logical Grid + Zones** model (`zone_id`, integer `grid_x`, `grid_y`):
 
-Therefore persistent placement data must remain independent from raw screen coordinates.
+- Persistent placement data must remain independent from raw screen coordinates.
+- Each placed plant or decoration references a stable zone identifier (such as `"zone.main"` and, upon First Expansion, `"zone.adjacent_1"`) plus non-negative integer grid coordinates `(grid_x, grid_y)` inside that zone.
+- Adjacent Zone 2 (**First Expansion**) unlocks automatically via garden establishment progression upon reaching `Living Garden` (`living_garden`, 45+ pts) or the Day 7 First Expansion discovery pacing milestone, without requiring coin grinding.
 
 ### Rules
 
 - Never save viewport pixels such as `x=742, y=1683` as the only authoritative placement if those values depend on device resolution.
-- Use garden-local logical coordinates, stable slot IDs, grid coordinates, or another resolution-independent representation.
-- Presentation converts logical placement into the current rendered layout.
-- Placement validation belongs in application/domain logic where possible, not only in drag visual code.
-
-The exact placement model should be decided by a focused prototype before large amounts of content depend on it.
+- Use zone-scoped integer grid coordinates (`zone_id`, `grid_x`, `grid_y`) or another resolution-independent logical representation.
+- Presentation converts logical grid coordinates into the current rendered layout across portrait aspect ratios (`1080x1920`, `720x1600`, `1080x2400`).
+- Cell occupancy, zone unlock eligibility, and placement bounds validation belong in application/domain logic, not only in drag/tap visual code.
+- Any future migration from Save Schema V3 (which currently omits placement fields) to a spatial schema version must assign deterministic default positions for existing items without losing player data.
 
 ---
 
@@ -1253,7 +1254,7 @@ Milestone 8 establishes the initial portrait garden presentation hierarchy (exte
 ```text
 Main (res://scenes/app/main.tscn — MainScreen)
 └── GardenView (res://scenes/garden/garden_view.tscn — GardenView)
-    ├── HeaderArea (TitleLabel, PlantButton, RefreshButton)
+    ├── HeaderArea (TitleLabel, PlantButton, RefreshButton, LanguageButton)
     ├── CurrencyLabel (Authoritative Coin HUD display)
     ├── ProgressionLabel (Derived GardenProgressionStage & Optional Gentle Guidance HUD)
     ├── DailyGuidanceLabel (Optional Daily Guidance HUD)
@@ -1400,6 +1401,12 @@ description_key = "plant.holy_basil.description"
 The MVP may begin with one language during development, but architecture should not make localization unnecessarily expensive later.
 
 Save data must never depend on translated display text.
+
+#### Implementation Status
+
+- **Centralized localization service**: `GardenLocalization` (`src/domain/localization/garden_localization.gd`) paired with canonical translation catalogs `GardenLocalizationTh` (`src/domain/localization/garden_localization_th.gd`, `"th"` default) and `GardenLocalizationEn` (`src/domain/localization/garden_localization_en.gd`, `"en"`) replaces all previously scattered `PROVISIONAL_*` dictionaries and hardcoded UI literals across domain progression evaluators (`DailyGuidanceEvaluator`, `FtueEvaluator`, `DiscoveryPacingEvaluator`, `GardenProgressionStage`) and presentation (`MainScreen`, `GardenView`, `PlantView`, `DecorationView`, `PlantingPicker`, `DecorationPicker`, `JournalPanel`).
+- **Content definition localization keys**: `PlantDefinition`, `DecorationDefinition`, `VisitorDefinition`, and `EventDefinition` expose optional validated `@export var name_key` and `@export var description_key` properties (with `get_effective_name_key()` / `get_effective_description_key()` fallbacks), explicitly populated across all 24 production `.tres` content resources (`<id>.name` and `<id>.description`).
+- **Runtime switching without save coupling**: `GardenView` provides `set_locale("th" | "en")`, `toggle_locale()`, and `HeaderArea/LanguageButton` to re-render the HUD, plant/decoration cards, inspection details, pickers, journal, active feedback banners, and startup blocked diagnostics live while keeping Save Schema V3 strictly ID-based and free of translated text.
 
 ---
 
@@ -1839,7 +1846,7 @@ Before considering a non-trivial feature implementation acceptable, verify:
 
 The following decisions are intentionally not finalized yet:
 
-1. Exact placement model: free placement, grid, slots, or hybrid.
+1. ~~Exact placement model: free placement, grid, slots, or hybrid.~~ **RESOLVED (Owner Decision):** Coarse Logical Grid + Zones (`zone_id`, integer `grid_x`, `grid_y`) with First Expansion unlocking Adjacent Zone 2 at `Living Garden` (45 pts) / Day 7 milestone without coin grind. See Section 19 for rules.
 2. ~~Exact automated test framework/harness implementation.~~ **RESOLVED (Task 0.4B):** Native GDScript headless runner with no third-party addon. See Section 34 for details.
 3. Exact Android minimum/target SDK levels.
 4. Exact content localization languages for first release.

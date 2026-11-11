@@ -15,27 +15,6 @@ extends PanelContainer
 
 signal plant_selected(runtime_instance_id: String)
 
-## Provisional display-only labels for approved plant definitions (presentation text only).
-const PROVISIONAL_PLANT_DISPLAY_NAMES: Dictionary = {
-	"plant.holy_basil": "กะเพรา",
-	"plant.chili": "พริก",
-	"plant.jasmine": "มะลิ",
-	"plant.marigold": "ดาวเรือง",
-	"plant.banana": "กล้วย",
-}
-
-const PROVISIONAL_TRAIT_DISPLAY_NAMES: Dictionary = {
-	"dense_vegetation": "พุ่มไม้หนาแน่น",
-	"flower": "ดอกไม้",
-	"food": "พืชอาหาร",
-	"fruit": "ผลไม้",
-	"light": "แสงไฟ",
-	"perch": "กิ่งไม้เกาะพัก",
-	"shade": "ร่มเงา",
-	"shelter": "ที่หลบพัก",
-	"water": "แหล่งน้ำ",
-}
-
 const STAGE_ACCENT_PLANTED: Color = Color(0.82, 0.74, 0.58, 1.0)
 const STAGE_ACCENT_SPROUT: Color = Color(0.62, 0.88, 0.64, 1.0)
 const STAGE_ACCENT_GROWING: Color = Color(0.48, 0.86, 0.56, 1.0)
@@ -52,6 +31,7 @@ var _seconds_until_next_stage: int = -1
 var _seconds_until_mature: int = -1
 var _environmental_traits: Array[String] = []
 var _is_selected: bool = false
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
 
 var _name_label: Label = null
 var _stage_label: Label = null
@@ -94,11 +74,14 @@ func bind_plant_data(
 	harvest_reward: int = 0,
 	seconds_until_mature: int = -1,
 	environmental_traits: Array[String] = [],
-	seconds_until_next_stage: int = -1
+	seconds_until_next_stage: int = -1,
+	locale: String = ""
 ) -> void:
+	if not locale.is_empty():
+		_locale = GardenLocalization.normalize_locale(locale)
 	_runtime_instance_id = runtime_instance_id
 	_definition_id = definition_id
-	_display_name = PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+	_display_name = GardenLocalization.get_plant_name(definition_id, _locale)
 	_stage = stage
 	_planted_at = planted_at
 	_harvest_reward = maxi(0, harvest_reward)
@@ -110,6 +93,19 @@ func bind_plant_data(
 		else seconds_until_next_stage
 	)
 	_render()
+
+
+## Sets active display locale ("th" or "en") and re-renders this plant card.
+func set_locale(locale: String) -> void:
+	_locale = GardenLocalization.normalize_locale(locale)
+	if not _definition_id.is_empty():
+		_display_name = GardenLocalization.get_plant_name(_definition_id, _locale)
+	_render()
+
+
+## Returns active display locale ("th" or "en").
+func get_locale() -> String:
+	return _locale
 
 
 ## Pure query for the bound runtime instance ID.
@@ -166,13 +162,13 @@ func get_environmental_traits() -> Array[String]:
 	return _environmental_traits.duplicate()
 
 
-## Pure query returning localized Thai environmental traits summary, or "" if empty.
+## Pure query returning localized environmental traits summary, or "" if empty.
 func get_traits_summary_text() -> String:
 	if _environmental_traits.is_empty():
 		return ""
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in _environmental_traits:
-		parts.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
@@ -291,9 +287,9 @@ func has_planted_timestamp() -> bool:
 	return _planted_at > 0
 
 
-## Pure query returning true if the bound definition_id is in the provisional localized plant display dictionary.
+## Pure query returning true if the bound definition_id is in the localized plant catalog.
 func is_known_plant_definition() -> bool:
-	return not _definition_id.is_empty() and PROVISIONAL_PLANT_DISPLAY_NAMES.has(_definition_id)
+	return GardenLocalization.is_known_plant_id(_definition_id)
 
 
 ## Pure query returning true if the selection highlight node is currently visible.
@@ -302,9 +298,9 @@ func is_selection_highlight_visible() -> bool:
 	return _selection_highlight != null and _selection_highlight.visible
 
 
-## Pure query returning true if [param trait_id] is in the provisional localized trait display dictionary.
+## Pure query returning true if [param trait_id] is in the localized trait catalog.
 func is_known_environmental_trait(trait_id: String) -> bool:
-	return not trait_id.is_empty() and PROVISIONAL_TRAIT_DISPLAY_NAMES.has(trait_id)
+	return GardenLocalization.is_known_trait_id(trait_id)
 
 
 ## Pure query returning true if the touch button is present and not disabled.
@@ -339,51 +335,37 @@ func has_stage_badge_text() -> bool:
 	return not get_stage_badge_text().is_empty()
 
 
-## Pure query returning the localized Thai display name for [param trait_id], or "" if empty.
+## Pure query returning the localized display name for [param trait_id], or "" if empty.
 func get_trait_display_name_for_id(trait_id: String) -> String:
-	if trait_id.is_empty():
-		return ""
-	return PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+	return GardenLocalization.get_trait_name(trait_id, _locale)
 
 
-## Pure query returning the localized Thai display name for [param definition_id], or "" if empty.
+## Pure query returning the localized display name for [param definition_id], or "" if empty.
 func get_plant_display_name_for_id(definition_id: String) -> String:
-	if definition_id.is_empty():
-		return ""
-	return PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_plant_name(definition_id, _locale)
 
 
-## Pure query returning true if [param definition_id] is in the provisional localized plant display dictionary.
+## Pure query returning true if [param definition_id] is in the localized plant catalog.
 func is_known_plant_definition_id(definition_id: String) -> bool:
-	return not definition_id.is_empty() and PROVISIONAL_PLANT_DISPLAY_NAMES.has(definition_id)
+	return GardenLocalization.is_known_plant_id(definition_id)
 
 
-## Pure query returning localized Thai display names for all bound environmental traits in order.
+## Pure query returning localized display names for all bound environmental traits in order.
 func get_bound_trait_display_names() -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in _environmental_traits:
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
-## Pure query returning the canonical localized Thai display name for the bound growth stage.
+## Pure query returning the canonical localized display name for the bound growth stage.
 func get_stage_display_name() -> String:
 	return get_stage_display_name_for_stage(_stage)
 
 
-## Pure query returning the canonical localized Thai display name for [param stage].
+## Pure query returning the canonical localized display name for [param stage].
 func get_stage_display_name_for_stage(stage: PlantGrowth.Stage) -> String:
-	match stage:
-		PlantGrowth.Stage.PLANTED:
-			return "เพาะเมล็ด"
-		PlantGrowth.Stage.SPROUT:
-			return "ต้นกล้า"
-		PlantGrowth.Stage.GROWING:
-			return "กำลังโต"
-		PlantGrowth.Stage.MATURE:
-			return "โตเต็มที่"
-		_:
-			return "ไม่ทราบสถานะ"
+	return GardenLocalization.get_plant_stage_name(stage, _locale)
 
 
 ## Pure query returning the stage-aware visual accent color for [param stage].
@@ -461,11 +443,11 @@ func has_unknown_environmental_trait() -> bool:
 	return get_unknown_bound_trait_count() > 0
 
 
-## Pure query returning localized Thai display names for bound environmental traits that are in the provisional localized trait display dictionary in order.
+## Pure query returning localized display names for bound environmental traits that are in the localized trait catalog in order.
 func get_known_bound_trait_display_names() -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_known_bound_trait_ids():
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
@@ -484,11 +466,11 @@ func is_stage_mature_for_stage(stage: PlantGrowth.Stage) -> bool:
 	return stage == PlantGrowth.Stage.MATURE
 
 
-## Pure query returning fallback display names for bound environmental traits that are NOT in the provisional localized trait display dictionary in order.
+## Pure query returning fallback display names for bound environmental traits that are NOT in the localized trait catalog in order.
 func get_unknown_bound_trait_display_names() -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_unknown_bound_trait_ids():
-		result.append(PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
@@ -522,32 +504,24 @@ func has_known_trait_display_name_for_id(trait_id: String) -> bool:
 	return is_known_environmental_trait(trait_id) and not get_trait_display_name_for_id(trait_id).is_empty()
 
 
-## Pure query returning deterministic sorted environmental trait IDs from the provisional localized trait display dictionary.
+## Pure query returning deterministic sorted environmental trait IDs from the localized trait catalog.
 func get_known_trait_ids_in_dictionary() -> Array[String]:
-	var result: Array[String] = []
-	for key: Variant in PROVISIONAL_TRAIT_DISPLAY_NAMES.keys():
-		result.append(String(key))
-	result.sort()
-	return result
+	return GardenLocalization.get_known_trait_ids()
 
 
-## Pure query returning deterministic sorted plant definition IDs from the provisional localized plant display dictionary.
+## Pure query returning deterministic sorted plant definition IDs from the localized plant catalog.
 func get_known_plant_definition_ids_in_dictionary() -> Array[String]:
-	var result: Array[String] = []
-	for key: Variant in PROVISIONAL_PLANT_DISPLAY_NAMES.keys():
-		result.append(String(key))
-	result.sort()
-	return result
+	return GardenLocalization.get_known_plant_ids()
 
 
-## Pure query returning count of environmental traits in the provisional localized trait display dictionary.
+## Pure query returning count of environmental traits in the localized trait catalog.
 func get_known_trait_count_in_dictionary() -> int:
-	return PROVISIONAL_TRAIT_DISPLAY_NAMES.size()
+	return GardenLocalization.get_known_trait_ids().size()
 
 
-## Pure query returning count of plant definitions in the provisional localized plant display dictionary.
+## Pure query returning count of plant definitions in the localized plant catalog.
 func get_known_plant_definition_count_in_dictionary() -> int:
-	return PROVISIONAL_PLANT_DISPLAY_NAMES.size()
+	return GardenLocalization.get_known_plant_ids().size()
 
 
 ## Pure query for the rendered plant name label text.
@@ -594,55 +568,50 @@ func _render() -> void:
 	if _name_label == null:
 		return
 
-	_name_label.text = _display_name if not _display_name.is_empty() else "—"
+	_name_label.text = _display_name if not _display_name.is_empty() else GardenLocalization.translate("ui.common.dash", _locale)
 	if _runtime_instance_id.is_empty():
 		_id_label.text = ""
 	else:
 		var traits_summary: String = get_traits_summary_text()
 		if not traits_summary.is_empty():
-			_id_label.text = "ID: %s | คุณสมบัติ: %s" % [_runtime_instance_id, traits_summary]
+			_id_label.text = GardenLocalization.format_key(
+				"ui.plant_card.id_traits",
+				[_runtime_instance_id, traits_summary],
+				_locale
+			)
 		else:
-			_id_label.text = "ID: %s" % _runtime_instance_id
+			_id_label.text = GardenLocalization.format_key(
+				"ui.plant_card.id_only",
+				[_runtime_instance_id],
+				_locale
+			)
 
 	if _stage_badge != null:
 		_stage_badge.add_theme_color_override("font_color", get_stage_accent_color())
 
+	var stage_prefix: String = GardenLocalization.plant_stage_prefix(_stage)
 	match _stage:
-		PlantGrowth.Stage.PLANTED:
-			_stage_label.text = "เพาะเมล็ด"
+		PlantGrowth.Stage.PLANTED, PlantGrowth.Stage.SPROUT, PlantGrowth.Stage.GROWING:
+			_stage_label.text = GardenLocalization.translate("%s.name" % stage_prefix, _locale)
 			_stage_badge.text = (
-				"[เมล็ด • อีก %ds]" % _seconds_until_mature
+				GardenLocalization.format_key("%s.badge_countdown" % stage_prefix, [_seconds_until_mature], _locale)
 				if _seconds_until_mature > 0
-				else "[เมล็ด]"
-			)
-		PlantGrowth.Stage.SPROUT:
-			_stage_label.text = "ต้นกล้า"
-			_stage_badge.text = (
-				"[ต้นกล้า • อีก %ds]" % _seconds_until_mature
-				if _seconds_until_mature > 0
-				else "[ต้นกล้า]"
-			)
-		PlantGrowth.Stage.GROWING:
-			_stage_label.text = "กำลังโต"
-			_stage_badge.text = (
-				"[กำลังโต • อีก %ds]" % _seconds_until_mature
-				if _seconds_until_mature > 0
-				else "[กำลังโต]"
+				else GardenLocalization.translate("%s.badge" % stage_prefix, _locale)
 			)
 		PlantGrowth.Stage.MATURE:
 			_stage_label.text = (
-				"โตเต็มที่ (+%d เหรียญ)" % _harvest_reward
+				GardenLocalization.format_key("plant_stage.mature.label_reward", [_harvest_reward], _locale)
 				if _harvest_reward > 0
-				else "โตเต็มที่"
+				else GardenLocalization.translate("plant_stage.mature.name", _locale)
 			)
 			_stage_badge.text = (
-				"[พร้อมเก็บ +%d]" % _harvest_reward
+				GardenLocalization.format_key("plant_stage.mature.badge_reward", [_harvest_reward], _locale)
 				if _harvest_reward > 0
-				else "[โตเต็มที่]"
+				else GardenLocalization.translate("plant_stage.mature.badge", _locale)
 			)
 		_:
-			_stage_label.text = "ไม่ทราบสถานะ"
-			_stage_badge.text = "[ข้อมูลไม่สมบูรณ์]"
+			_stage_label.text = GardenLocalization.translate("plant_stage.invalid.name", _locale)
+			_stage_badge.text = GardenLocalization.translate("plant_stage.invalid.badge", _locale)
 
 	_update_selection_visual()
 

@@ -21,6 +21,8 @@ extends Resource
 const PLANT_NAMESPACE_PREFIX: String = "plant."
 
 @export var id: String = ""
+@export var name_key: String = ""
+@export var description_key: String = ""
 @export var sprout_after_seconds: int = 0
 @export var growing_after_seconds: int = 0
 @export var mature_after_seconds: int = 0
@@ -32,6 +34,9 @@ const PLANT_NAMESPACE_PREFIX: String = "plant."
 ## Pure query: no mutation, no push_error, no clock/RNG/filesystem access.
 func is_valid() -> bool:
 	if not _is_valid_id(id):
+		return false
+
+	if not _is_valid_optional_key(name_key) or not _is_valid_optional_key(description_key):
 		return false
 
 	if not _is_valid_growth_thresholds(
@@ -46,6 +51,16 @@ func is_valid() -> bool:
 		return false
 
 	return true
+
+
+## Returns the explicit localization key for this plant's name, or derives "<id>.name".
+func get_effective_name_key() -> String:
+	return name_key if not name_key.is_empty() else GardenLocalization.plant_name_key(id)
+
+
+## Returns the explicit localization key for this plant's description, or derives "<id>.description".
+func get_effective_description_key() -> String:
+	return description_key if not description_key.is_empty() else GardenLocalization.plant_description_key(id)
 
 
 ## Returns true if this plant definition includes the exact [param trait_id].
@@ -82,3 +97,7 @@ static func _is_valid_growth_thresholds(sprout: int, growing: int, mature: int) 
 
 static func _is_valid_harvest_reward(reward: int) -> bool:
 	return reward >= 0
+
+
+static func _is_valid_optional_key(key: String) -> bool:
+	return key.is_empty() or GardenLocalization.is_valid_key(key)

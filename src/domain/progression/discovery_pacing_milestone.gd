@@ -92,9 +92,24 @@ func get_description() -> String:
 	return _description
 
 
-## Returns the localized Thai recommended discovery focus.
+## Returns the localized recommended discovery focus.
 func get_recommended_focus() -> String:
 	return _recommended_focus
+
+
+## Returns the stable localization key for this milestone's title.
+func get_title_key() -> String:
+	return GardenLocalization.pacing_title_key(_milestone_id)
+
+
+## Returns the stable localization key for this milestone's description.
+func get_description_key() -> String:
+	return GardenLocalization.pacing_description_key(_milestone_id)
+
+
+## Returns the stable localization key for this milestone's recommended focus.
+func get_recommended_focus_key() -> String:
+	return GardenLocalization.pacing_focus_key(_milestone_id)
 
 
 ## Returns true if the garden has fulfilled this milestone's discovery criteria.

@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1_visitor_def")
 id = "visitor.frog"
+name_key = "visitor.frog.name"
+description_key = "visitor.frog.description"
 weight = 10.0
 required_trait_counts = {
 "water": 1

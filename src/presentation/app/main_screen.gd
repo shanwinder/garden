@@ -101,17 +101,17 @@ func _bind_dependencies() -> void:
 		return
 
 	if app == null:
-		_garden_view.show_blocked_startup("ไม่พบบริการหลักของระบบ (AppRoot)")
+		_garden_view.show_blocked_startup_key("ui.startup.missing_app_root")
 		return
 
 	# Check startup readiness.
 	if not app.has_active_session():
-		var blocked_reason: String = _determine_blocked_reason(app)
-		_garden_view.show_blocked_startup(blocked_reason)
+		var blocked_reason_key: String = _determine_blocked_reason_key(app)
+		_garden_view.show_blocked_startup_key(blocked_reason_key)
 		return
 
 	if not app.has_content_catalog() or app.game_clock == null:
-		_garden_view.show_blocked_startup("ข้อมูลพืชหรือระบบเวลาไม่พร้อมใช้งาน")
+		_garden_view.show_blocked_startup_key("ui.startup.catalog_or_clock_unavailable")
 		return
 
 	# Bind authoritative dependencies to GardenView.
@@ -262,26 +262,26 @@ func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
 
 
 
-func _determine_blocked_reason(app: AppRoot) -> String:
+func _determine_blocked_reason_key(app: AppRoot) -> String:
 	var content_status: AppRoot.ContentBootstrapStatus = app.get_content_bootstrap_status()
 	if content_status == AppRoot.ContentBootstrapStatus.LOAD_FAILED:
-		return "ไม่สามารถโหลดข้อมูลพันธุ์ไม้ได้"
+		return "ui.startup.content_load_failed"
 	elif content_status == AppRoot.ContentBootstrapStatus.INVALID_DEFINITIONS:
-		return "ข้อมูลพันธุ์ไม้ไม่ถูกต้องหรือขาดหาย"
+		return "ui.startup.content_invalid_definitions"
 
 	var validation_result: PlantSaveContentValidationResult = app.get_saved_content_validation_result()
 	if validation_result != null and not validation_result.is_compatible():
-		return "ข้อมูลบันทึกมีพันธุ์ไม้ที่ไม่รองรับในเวอร์ชันนี้"
+		return "ui.startup.save_incompatible"
 
 	var load_result: LocalSaveLoadResult = app.get_startup_load_result()
 	if load_result != null:
 		match load_result.get_status():
 			LocalSaveLoadResult.INVALID_DATA:
-				return "ข้อมูลบันทึกเสียหาย ไม่สามารถเปิดสวนได้"
+				return "ui.startup.save_corrupt"
 			LocalSaveLoadResult.IO_ERROR:
-				return "เกิดข้อผิดพลาดในการอ่านไฟล์บันทึก"
+				return "ui.startup.save_io_error"
 
-	return "ไม่สามารถโหลดสวนได้ในขณะนี้"
+	return "ui.startup.blocked_generic"
 
 
 ## Pure query for testing: returns child GardenView.

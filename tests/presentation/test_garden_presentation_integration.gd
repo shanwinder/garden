@@ -102,6 +102,7 @@ func run_tests() -> void:
 	_test_save_failure_recovered_by_lifecycle_pause_and_restart()
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
+	_test_localization_thai_english_switching_e2e()
 	_test_portrait_layout_bounds_regression()
 	_test_file_hygiene()
 
@@ -1417,7 +1418,137 @@ func _test_portrait_layout_bounds_regression() -> void:
 			"BlockedLabel custom_minimum_size.x fits within viewport %s" % str(vp_size)
 		)
 
+		# Also verify English locale static sizing stays within bounds at this portrait viewport.
+		view.set_locale("en")
+		var lb_min_en: Vector2 = layout_box.get_combined_minimum_size()
+		assert_true(
+			lb_min_en.x + margin_x <= vp_size.x and lb_min_en.y + margin_y <= vp_size.y,
+			"LayoutBox English minimum size %s + margins fits within viewport %s" % [str(lb_min_en), str(vp_size)]
+		)
+
 		main_screen.free()
+
+
+func _test_localization_thai_english_switching_e2e() -> void:
+	describe("E2E: Live Thai/English localization switching updates HUD, cards, pickers, journal, feedback, blocked diagnostics, and leaves save data locale-independent")
+	_cleanup_test_files()
+	var repo: LocalSaveRepository = LocalSaveRepository.new(TEST_PRIMARY, TEST_TEMP, TEST_BACKUP, TEST_CORRUPT)
+	var clock: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([0.0], [1, 2, 3, 4, 5, 6, 7, 8])
+
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+
+	# 1. Default locale is Thai ("th")
+	assert_eq(view.get_locale(), "th", "Default locale is Thai")
+	assert_eq(view.get_plant_button().text, "ปลูกต้นไม้", "Thai plant button")
+	assert_eq(view.get_currency_text(), "เหรียญ: 0", "Thai currency HUD")
+
+	# Plant mature jasmine + buy clay jar + observe frog/butterfly
+	var picker: PlantingPicker = view.get_planting_picker()
+	view.get_plant_button().pressed.emit()
+	picker.select_plant_definition("plant.jasmine")
+	assert_true(picker.get_confirm_prompt_text().contains("มะลิ"), "Thai picker confirm prompt")
+	picker.confirm_planting()
+	assert_true(view.get_feedback_text().contains("เพิ่มต้นไม้และบันทึกเรียบร้อยแล้ว"), "Thai planting feedback")
+
+	# 2. Switch to English via LanguageButton press -> live re-render across all views & active feedback!
+	view.get_language_button().pressed.emit()
+	assert_eq(view.get_locale(), "en", "LanguageButton toggles to 'en'")
+	assert_eq(view.get_plant_button().text, "Plant", "English plant button")
+	assert_eq(view.get_refresh_button().text, "Refresh", "English refresh button")
+	assert_eq(view.get_journal_button().text, "Journal", "English journal button")
+	assert_eq(view.get_decorate_button().text, "Decorate", "English decorate button")
+	assert_eq(view.get_currency_text(), "Coins: 0", "English currency HUD")
+	assert_eq(view.get_feedback_text(), "Plant added and saved", "Active planting feedback re-rendered in English")
+	assert_true(view.get_progression_text().contains("Garden Stage: "), "English progression stage HUD")
+	assert_true(view.get_daily_guidance_text().contains("Today's Suggestions:"), "English daily guidance HUD")
+	assert_true(view.get_ftue_text().contains("First Steps:"), "English FTUE HUD")
+	assert_true(view.get_discovery_pacing_text().contains("Discovery Goal:"), "English pacing HUD")
+	assert_true(view.get_atmosphere_text().contains("Atmosphere:"), "English atmosphere HUD")
+
+	# PlantView card and DetailsArea in English
+	var pview: PlantView = view.get_plant_views()[0]
+	assert_eq(pview.get_display_name(), "Jasmine", "PlantView renders English name")
+	assert_eq(pview.get_stage_label_text(), "Planted", "PlantView renders English stage")
+	pview.simulate_selection_input()
+	assert_eq(view.get_details_header_text(), "Plant Details", "Details header in English")
+	assert_true(view.get_detail_name_text().contains("Jasmine"), "Details name in English")
+
+	# Advance clock so jasmine matures, harvest & earn coins, buy bench decoration -> inspect in English
+	clock.set_utc_seconds(1000 + 3600)
+	view.refresh_from_session()
+	assert_eq(view.get_plant_views()[0].get_stage_label_text(), "Mature (+25 coins)", "Mature PlantView in English")
+	view.get_harvest_button().pressed.emit()
+	assert_eq(view.get_currency_text(), "Coins: 25", "Harvest updated English currency HUD")
+	assert_eq(view.get_feedback_text(), "Harvested (+25 coins) and saved", "English harvest feedback")
+
+	var dec_picker: DecorationPicker = view.get_decoration_picker()
+	view.open_decoration_picker()
+	assert_true(
+		dec_picker.get_decoration_option_text_for_id("decoration.bench").contains("Wooden Garden Bench"),
+		"DecorationPicker renders English item names"
+	)
+	dec_picker.select_decoration_definition("decoration.bench")
+	assert_true(dec_picker.get_confirm_prompt_text().contains("Buy and place Wooden Garden Bench"), "DecorationPicker confirm prompt in English")
+	# Toggling back to Thai while confirmation overlay is open updates confirm prompt live!
+	view.toggle_locale()
+	assert_eq(view.get_locale(), "th", "Toggled back to 'th'")
+	assert_true(dec_picker.get_confirm_prompt_text().contains("ม้านั่งไม้ในสวน"), "Open DecorationPicker confirm prompt updates live to Thai")
+	assert_eq(view.get_feedback_text(), "เก็บเกี่ยวสำเร็จ (+25 เหรียญ) และบันทึกเรียบร้อยแล้ว", "Feedback banner updates live back to Thai")
+	view.toggle_locale()
+	assert_eq(view.get_locale(), "en", "Toggled back to 'en'")
+	dec_picker.confirm_purchase()
+
+	var dview: DecorationView = view.get_decoration_views()[0]
+	assert_eq(dview.get_display_name(), "Wooden Garden Bench", "DecorationView renders English name")
+	assert_eq(dview.get_role_badge_text(), "[Decoration]", "DecorationView renders English role badge")
+	dview.get_touch_button().pressed.emit()
+	assert_eq(view.get_details_header_text(), "Decoration Details", "Decoration details header in English")
+	assert_eq(view.get_harvest_button().text, "Decorations are not harvested", "Decoration harvest disabled message in English")
+
+	# JournalPanel in English (including secret event clue!)
+	var journal: JournalPanel = view.get_journal_panel()
+	view.open_journal_panel()
+	assert_true(journal.get_summary_text().contains("discovered"), "Journal summary in English")
+	assert_true(journal.get_entry_text_for_id("plant.jasmine").contains("[Discovered] Jasmine"), "Journal plant entry in English")
+	assert_true(journal.get_entry_text_for_id("decoration.bench").contains("[Placed] Wooden Garden Bench"), "Journal decoration entry in English")
+	assert_true(
+		journal.get_entry_text_for_id("event.cat_jasmine_night_rest").contains("[???] Secret Garden Mystery"),
+		"Journal secret event mystery placeholder in English"
+	)
+
+	# 3. Save Schema V3 payload remains 100% locale-independent (no display text persisted!)
+	var raw_json: String = FileAccess.get_file_as_string(TEST_PRIMARY)
+	assert_false(raw_json.contains("Jasmine"), "Save file never stores English display text")
+	assert_false(raw_json.contains("มะลิ"), "Save file never stores Thai display text")
+	assert_true(raw_json.contains("plant.jasmine"), "Save file stores stable IDs")
+	assert_true(raw_json.contains("decoration.bench"), "Save file stores stable decoration IDs")
+
+	main_screen.free()
+	app.free()
+
+	# 4. Blocked startup diagnostic re-translates when locale toggles
+	var corrupt_repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	corrupt_repo.forced_load_result = LocalSaveLoadResult.invalid_data()
+	var blocked_app: AppRoot = AppRoot.new(
+		corrupt_repo,
+		PlantContentLoader.new(),
+		FakeGameClock.new(1000, 0),
+		FakeRandomSource.new([], [])
+	)
+	blocked_app.bootstrap_session()
+	var blocked_main: MainScreen = _instantiate_bound_main_screen(blocked_app)
+	var blocked_view: GardenView = blocked_main.get_garden_view()
+	assert_eq(blocked_view.get_blocked_message(), "ข้อมูลบันทึกเสียหาย ไม่สามารถเปิดสวนได้", "Blocked startup defaults to Thai")
+	blocked_view.toggle_locale()
+	assert_eq(blocked_view.get_blocked_message(), "Save data is corrupted; unable to open garden", "Blocked startup translates to English on toggle")
+	blocked_main.free()
+	blocked_app.free()
+	_cleanup_test_files()
 
 
 func _test_file_hygiene() -> void:

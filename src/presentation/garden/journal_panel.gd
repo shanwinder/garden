@@ -15,16 +15,14 @@ extends Control
 
 signal journal_closed()
 
-## Clue shown for secret combination events instead of their exact recipe
-## (GAME_DESIGN.md Section 12: encourage experimentation without listing the combination).
-const SECRET_EVENT_CLUE_TEXT: String = "ความลับของสวน ลองผสมพันธุ์ไม้ ของตกแต่ง และช่วงเวลาในแบบที่ยังไม่เคยลอง"
-
 var _journal: JournalState = null
 var _catalog: ContentCatalog = null
 var _decorations: DecorationCollectionState = null
 var _snapshot: GardenSnapshot = null
 var _is_enabled: bool = true
+var _locale: String = GardenLocalization.DEFAULT_LOCALE
 
+var _title_label: Label = null
 var _close_button: Button = null
 var _summary_label: Label = null
 var _entries_container: Container = null
@@ -44,9 +42,12 @@ var _active_event_count: int = 0
 func _ready() -> void:
 	_resolve_nodes()
 	_connect_signals()
+	_apply_static_texts()
 
 
 func _resolve_nodes() -> void:
+	if _title_label == null:
+		_title_label = get_node_or_null("CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/HeaderHBox/TitleLabel") as Label
 	if _close_button == null:
 		_close_button = get_node_or_null("CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/HeaderHBox/CloseButton") as Button
 	if _summary_label == null:
@@ -61,19 +62,46 @@ func _connect_signals() -> void:
 		_close_button.pressed.connect(close_journal)
 
 
+## Sets active display locale ("th" or "en") and rebuilds journal entries in-place.
+func set_locale(locale: String) -> void:
+	_locale = GardenLocalization.normalize_locale(locale)
+	_resolve_nodes()
+	_apply_static_texts()
+	if _catalog != null:
+		bind_journal(_journal, _catalog, _decorations, _snapshot, _locale)
+	elif _summary_label != null:
+		_summary_label.text = GardenLocalization.translate("ui.journal.summary_empty", _locale)
+
+
+## Returns active display locale ("th" or "en").
+func get_locale() -> String:
+	return _locale
+
+
+func _apply_static_texts() -> void:
+	if _title_label != null:
+		_title_label.text = GardenLocalization.translate("ui.journal.title", _locale)
+	if _close_button != null:
+		_close_button.text = GardenLocalization.translate("ui.common.close", _locale)
+
+
 ## Binds JournalState, ContentCatalog, and optional DecorationCollectionState / GardenSnapshot,
 ## rendering plant, visitor, decoration, and ambient event entries in deterministic catalog order.
 func bind_journal(
 	journal: JournalState,
 	catalog: ContentCatalog,
 	decorations: DecorationCollectionState = null,
-	snapshot: GardenSnapshot = null
+	snapshot: GardenSnapshot = null,
+	locale: String = ""
 ) -> void:
+	if not locale.is_empty():
+		_locale = GardenLocalization.normalize_locale(locale)
 	_journal = journal
 	_catalog = catalog
 	_decorations = decorations
 	_snapshot = snapshot
 	_resolve_nodes()
+	_apply_static_texts()
 	_clear_entries()
 
 	_entry_texts_by_id.clear()
@@ -89,7 +117,7 @@ func bind_journal(
 
 	if _catalog == null:
 		if _summary_label != null:
-			_summary_label.text = "ค้นพบแล้ว 0 / 0 รายการ"
+			_summary_label.text = GardenLocalization.translate("ui.journal.summary_empty", _locale)
 		return
 
 	var plants: Array[PlantDefinition] = _catalog.get_all_plants()
@@ -100,7 +128,7 @@ func bind_journal(
 	_total_decoration_count = catalog_decorations.size()
 	_total_event_count = catalog_events.size()
 
-	_add_section_header("หมวดพันธุ์ไม้ (%d ชนิด)" % plants.size())
+	_add_section_header(GardenLocalization.format_key("ui.journal.section_plants", [plants.size()], _locale))
 	for plant_def: PlantDefinition in plants:
 		var def_id: String = plant_def.id
 		var record: DiscoveryRecord = _journal.get_record(def_id) if _journal != null else null
@@ -110,16 +138,16 @@ func bind_journal(
 		if is_disc:
 			_discovered_count += 1
 			_discovered_plant_count += 1
-			var thai_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(def_id, def_id)
+			var plant_name: String = GardenLocalization.get_plant_name(def_id, _locale, plant_def)
 			var planted_line: String = (
-				" | กำลังปลูกในสวน: %d ต้น" % _count_planted_plant(def_id)
+				GardenLocalization.format_key("ui.journal.plant_in_garden_suffix", [_count_planted_plant(def_id)], _locale)
 				if _snapshot != null
 				else ""
 			)
-			entry_text = (
-				"[ค้นพบแล้ว] %s (%s)\nพบครั้งแรกเมื่อ: %d | จำนวนครั้งที่ปลูก/พบ: %d ครั้ง%s\nโตเต็มที่ใน: %d วินาที | รางวัลเก็บเกี่ยว: %d เหรียญ | คุณสมบัติ: %s"
-				% [
-					thai_name,
+			entry_text = GardenLocalization.format_key(
+				"ui.journal.plant_discovered",
+				[
+					plant_name,
 					def_id,
 					record.get_first_seen_at(),
 					record.get_times_seen(),
@@ -127,17 +155,19 @@ func bind_journal(
 					plant_def.mature_after_seconds,
 					plant_def.harvest_reward,
 					plant_traits,
-				]
+				],
+				_locale
 			)
 		else:
-			entry_text = (
-				"[???] พันธุ์ไม้ปริศนา\nคำใบ้: ลองปลูกพันธุ์ไม้ชนิดใหม่ในสวน (คุณสมบัติ: %s)"
-				% plant_traits
+			entry_text = GardenLocalization.format_key(
+				"ui.journal.plant_undiscovered",
+				[plant_traits],
+				_locale
 			)
 		_entry_texts_by_id[def_id] = entry_text
 		_add_entry_label(entry_text, is_disc)
 
-	_add_section_header("หมวดผู้มาเยือน (%d ชนิด)" % visitors.size())
+	_add_section_header(GardenLocalization.format_key("ui.journal.section_visitors", [visitors.size()], _locale))
 	for visitor_def: VisitorDefinition in visitors:
 		var def_id: String = visitor_def.id
 		var record: DiscoveryRecord = _journal.get_record(def_id) if _journal != null else null
@@ -153,108 +183,114 @@ func bind_journal(
 		if is_disc:
 			_discovered_count += 1
 			_discovered_visitor_count += 1
-			var v_name: String = GardenView.PROVISIONAL_VISITOR_DISPLAY_NAMES.get(def_id, def_id)
+			var v_name: String = GardenLocalization.get_visitor_name(def_id, _locale, visitor_def)
 			var status_suffix: String = ""
 			if _snapshot != null:
-				status_suffix = (
-					" | สถานะในสวน: มีโอกาสพบในขณะนี้"
-					if is_eligible_now
-					else " | สถานะในสวน: ยังไม่ตรงเงื่อนไขในขณะนี้"
+				status_suffix = GardenLocalization.translate(
+					"ui.journal.visitor_status_eligible" if is_eligible_now else "ui.journal.visitor_status_ineligible",
+					_locale
 				)
-			entry_text = (
-				"[ค้นพบแล้ว] %s (%s)\nพบครั้งแรกเมื่อ: %d | จำนวนครั้งที่พบ: %d ครั้ง%s\nสภาพแวดล้อมที่ชอบ: %s"
-				% [
+			entry_text = GardenLocalization.format_key(
+				"ui.journal.visitor_discovered",
+				[
 					v_name,
 					def_id,
 					record.get_first_seen_at(),
 					record.get_times_seen(),
 					status_suffix,
 					clue_text,
-				]
+				],
+				_locale
 			)
 		else:
 			var eligible_hint: String = (
-				"\nสถานะในสวน: สภาพแวดล้อมพร้อมแล้ว ลองสำรวจผู้มาเยือนในสวน"
+				GardenLocalization.translate("ui.journal.visitor_eligible_hint", _locale)
 				if is_eligible_now
 				else ""
 			)
-			entry_text = (
-				"[???] ผู้มาเยือนปริศนา\nคำใบ้สภาพแวดล้อมที่ชอบ: %s%s"
-				% [clue_text, eligible_hint]
+			entry_text = GardenLocalization.format_key(
+				"ui.journal.visitor_undiscovered",
+				[clue_text, eligible_hint],
+				_locale
 			)
 		_entry_texts_by_id[def_id] = entry_text
 		_add_entry_label(entry_text, is_disc)
 
 	if not catalog_decorations.is_empty():
-		_add_section_header("หมวดของตกแต่งสวน (%d ชนิด)" % catalog_decorations.size())
+		_add_section_header(GardenLocalization.format_key("ui.journal.section_decorations", [catalog_decorations.size()], _locale))
 		for decor_def: DecorationDefinition in catalog_decorations:
 			var def_id: String = decor_def.id
 			var placed_count: int = _count_placed_decoration(def_id)
 			var is_placed: bool = placed_count > 0
-			var d_name: String = DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(def_id, def_id)
+			var d_name: String = GardenLocalization.get_decoration_name(def_id, _locale, decor_def)
 			var trait_text: String = _format_decoration_traits(decor_def)
 			var entry_text: String = ""
 			if is_placed:
 				_placed_decoration_count += 1
-				entry_text = (
-					"[จัดวางแล้ว] %s (%s)\nจำนวนที่วางในสวน: %d ชิ้น | ราคา: %d เหรียญ | คุณสมบัติ: %s"
-					% [d_name, def_id, placed_count, decor_def.price, trait_text]
+				entry_text = GardenLocalization.format_key(
+					"ui.journal.decoration_placed",
+					[d_name, def_id, placed_count, decor_def.price, trait_text],
+					_locale
 				)
 			else:
-				entry_text = (
-					"[ยังไม่ได้จัดวาง] %s (%s)\nราคา: %d เหรียญ | คุณสมบัติ: %s"
-					% [d_name, def_id, decor_def.price, trait_text]
+				entry_text = GardenLocalization.format_key(
+					"ui.journal.decoration_unplaced",
+					[d_name, def_id, decor_def.price, trait_text],
+					_locale
 				)
 			_entry_texts_by_id[def_id] = entry_text
 			_add_entry_label(entry_text, is_placed)
 
 	if not catalog_events.is_empty():
-		_add_section_header("หมวดเหตุการณ์พิเศษในสวน (%d เหตุการณ์)" % catalog_events.size())
+		_add_section_header(GardenLocalization.format_key("ui.journal.section_events", [catalog_events.size()], _locale))
 		for event_def: EventDefinition in catalog_events:
 			var def_id: String = event_def.id
 			var is_active: bool = (
 				_snapshot != null
 				and EventEligibility.is_eligible(event_def, _snapshot)
 			)
-			var e_name: String = GardenView.PROVISIONAL_EVENT_DISPLAY_NAMES.get(def_id, def_id)
-			var e_desc: String = GardenView.PROVISIONAL_EVENT_DESCRIPTIONS.get(def_id, "")
+			var e_name: String = GardenLocalization.get_event_name(def_id, _locale, event_def)
+			var e_desc: String = GardenLocalization.get_event_description(def_id, _locale, event_def)
 			var clue_text: String = _format_event_clue(event_def)
 			var entry_text: String = ""
 			if is_active:
 				_active_event_count += 1
-				entry_text = (
-					"[เกิดขึ้นได้ในสวน] %s (%s)\n%s\nเงื่อนไข: %s"
-					% [e_name, def_id, e_desc, clue_text]
+				entry_text = GardenLocalization.format_key(
+					"ui.journal.event_active",
+					[e_name, def_id, e_desc, clue_text],
+					_locale
 				)
 			elif event_def.is_secret:
 				# Secret combination events stay unnamed until their combination is present,
 				# so the journal hints that more exists without listing the recipe.
-				entry_text = "[???] เหตุการณ์ลับปริศนา\nคำใบ้: %s" % clue_text
+				entry_text = GardenLocalization.format_key("ui.journal.event_secret_hidden", [clue_text], _locale)
 			else:
-				entry_text = (
-					"[???] เหตุการณ์พิเศษปริศนา (%s)\nคำใบ้เงื่อนไข: %s"
-					% [e_name, clue_text]
-				)
+				entry_text = GardenLocalization.format_key("ui.journal.event_undiscovered", [e_name, clue_text], _locale)
 			_entry_texts_by_id[def_id] = entry_text
 			_add_entry_label(entry_text, is_active)
 
 	if _summary_label != null:
-		var base_summary: String = (
-			"ค้นพบแล้ว %d / %d รายการ (พืช %d/%d, ผู้มาเยือน %d/%d)"
-			% [
+		var base_summary: String = GardenLocalization.format_key(
+			"ui.journal.summary_base",
+			[
 				_discovered_count,
 				_total_catalog_count,
 				_discovered_plant_count,
 				plants.size(),
 				_discovered_visitor_count,
 				visitors.size(),
-			]
+			],
+			_locale
 		)
 		var extra_parts: PackedStringArray = PackedStringArray()
 		if _total_decoration_count > 0:
-			extra_parts.append("ของตกแต่ง %d/%d" % [_placed_decoration_count, _total_decoration_count])
+			extra_parts.append(
+				GardenLocalization.format_key("ui.journal.summary_decorations", [_placed_decoration_count, _total_decoration_count], _locale)
+			)
 		if _total_event_count > 0:
-			extra_parts.append("เหตุการณ์ %d/%d" % [_active_event_count, _total_event_count])
+			extra_parts.append(
+				GardenLocalization.format_key("ui.journal.summary_events", [_active_event_count, _total_event_count], _locale)
+			)
 		if not extra_parts.is_empty():
 			base_summary += " | " + " | ".join(extra_parts)
 		_summary_label.text = base_summary
@@ -280,91 +316,96 @@ func _count_placed_decoration(definition_id: String) -> int:
 
 func _format_plant_traits(plant_def: PlantDefinition) -> String:
 	if plant_def == null or plant_def.environmental_traits.is_empty():
-		return "พืชสวนครัว"
+		return GardenLocalization.translate("ui.journal.fallback_plant_trait", _locale)
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in plant_def.environmental_traits:
-		parts.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
 func _format_decoration_traits(decor_def: DecorationDefinition) -> String:
 	if decor_def == null or decor_def.environmental_traits.is_empty():
-		return "ตกแต่งสวยงาม"
+		return GardenLocalization.translate("ui.journal.fallback_decoration_trait", _locale)
 	var parts: PackedStringArray = PackedStringArray()
 	for trait_id: String in decor_def.environmental_traits:
-		parts.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		parts.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return ", ".join(parts)
 
 
 func _format_event_clue(event_def: EventDefinition) -> String:
 	if event_def == null:
-		return "สวนที่มีบรรยากาศเหมาะสม"
+		return GardenLocalization.translate("ui.journal.fallback_event_clue", _locale)
 	if event_def.is_secret:
-		return SECRET_EVENT_CLUE_TEXT
+		return GardenLocalization.translate("ui.journal.secret_event_clue", _locale)
 	var parts: PackedStringArray = PackedStringArray()
 	if not event_def.required_trait_counts.is_empty():
 		var trait_keys: Array = event_def.required_trait_counts.keys()
 		trait_keys.sort()
 		for raw_key: Variant in trait_keys:
 			var trait_id: String = str(raw_key)
-			var trait_name: String = GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+			var trait_name: String = GardenLocalization.get_trait_name(trait_id, _locale)
 			var count: int = int(event_def.required_trait_counts[raw_key])
 			parts.append("%s (%d)" % [trait_name, count])
 	for decor_id: String in event_def.required_decoration_ids:
-		parts.append(DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(decor_id, decor_id))
+		var decor_def: DecorationDefinition = _catalog.get_decoration(decor_id) if _catalog != null else null
+		parts.append(GardenLocalization.get_decoration_name(decor_id, _locale, decor_def))
 	for plant_id: String in event_def.required_plant_ids:
-		parts.append(PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(plant_id, plant_id))
+		var p_def: PlantDefinition = _catalog.get_plant(plant_id) if _catalog != null else null
+		parts.append(GardenLocalization.get_plant_name(plant_id, _locale, p_def))
 	if not event_def.required_plant_counts.is_empty():
 		var plant_count_keys: Array = event_def.required_plant_counts.keys()
 		plant_count_keys.sort()
 		for raw_plant_key: Variant in plant_count_keys:
 			var counted_plant_id: String = str(raw_plant_key)
-			var plant_name: String = PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(counted_plant_id, counted_plant_id)
+			var cp_def: PlantDefinition = _catalog.get_plant(counted_plant_id) if _catalog != null else null
+			var plant_name: String = GardenLocalization.get_plant_name(counted_plant_id, _locale, cp_def)
 			parts.append("%s x%d" % [plant_name, int(event_def.required_plant_counts[raw_plant_key])])
 	if not event_def.allowed_time_periods.is_empty():
 		var t_names: PackedStringArray = PackedStringArray()
 		for tp: String in event_def.allowed_time_periods:
-			t_names.append(GardenView.PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(tp, tp))
-		parts.append("ช่วงเวลา: %s" % ", ".join(t_names))
+			t_names.append(GardenLocalization.get_time_period_name(tp, _locale))
+		parts.append(GardenLocalization.format_key("ui.journal.clue_time_period", [", ".join(t_names)], _locale))
 	if not event_def.allowed_weather_states.is_empty():
 		var w_names: PackedStringArray = PackedStringArray()
 		for ws: String in event_def.allowed_weather_states:
-			w_names.append(GardenView.PROVISIONAL_WEATHER_DISPLAY_NAMES.get(ws, ws))
-		parts.append("สภาพอากาศ: %s" % ", ".join(w_names))
+			w_names.append(GardenLocalization.get_weather_name(ws, _locale))
+		parts.append(GardenLocalization.format_key("ui.journal.clue_weather", [", ".join(w_names)], _locale))
 	if parts.is_empty():
-		return "สวนที่มีบรรยากาศเหมาะสม"
+		return GardenLocalization.translate("ui.journal.fallback_event_clue", _locale)
 	return " | ".join(parts)
 
 
 func _format_visitor_clue(visitor_def: VisitorDefinition) -> String:
 	if visitor_def == null:
-		return "สวนที่มีต้นไม้ร่มรื่น"
+		return GardenLocalization.translate("ui.journal.fallback_visitor_clue", _locale)
 	var trait_parts: PackedStringArray = PackedStringArray()
 	if not visitor_def.required_trait_counts.is_empty():
 		var trait_keys: Array = visitor_def.required_trait_counts.keys()
 		trait_keys.sort()
 		for raw_key: Variant in trait_keys:
 			var trait_id: String = str(raw_key)
-			var trait_name: String = GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id)
+			var trait_name: String = GardenLocalization.get_trait_name(trait_id, _locale)
 			var count: int = int(visitor_def.required_trait_counts[raw_key])
 			trait_parts.append("%s (%d)" % [trait_name, count])
 	var extra_parts: PackedStringArray = PackedStringArray()
 	for decor_id: String in visitor_def.required_decoration_ids:
-		extra_parts.append(DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(decor_id, decor_id))
+		var decor_def: DecorationDefinition = _catalog.get_decoration(decor_id) if _catalog != null else null
+		extra_parts.append(GardenLocalization.get_decoration_name(decor_id, _locale, decor_def))
 	for plant_id: String in visitor_def.required_plant_ids:
-		extra_parts.append(PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(plant_id, plant_id))
+		var p_def: PlantDefinition = _catalog.get_plant(plant_id) if _catalog != null else null
+		extra_parts.append(GardenLocalization.get_plant_name(plant_id, _locale, p_def))
 	if not visitor_def.allowed_time_periods.is_empty():
 		var t_names: PackedStringArray = PackedStringArray()
 		for tp: String in visitor_def.allowed_time_periods:
-			t_names.append(GardenView.PROVISIONAL_TIME_PERIOD_DISPLAY_NAMES.get(tp, tp))
-		extra_parts.append("ช่วงเวลา: %s" % ", ".join(t_names))
+			t_names.append(GardenLocalization.get_time_period_name(tp, _locale))
+		extra_parts.append(GardenLocalization.format_key("ui.journal.clue_time_period", [", ".join(t_names)], _locale))
 	if not visitor_def.allowed_weather_states.is_empty():
 		var w_names: PackedStringArray = PackedStringArray()
 		for ws: String in visitor_def.allowed_weather_states:
-			w_names.append(GardenView.PROVISIONAL_WEATHER_DISPLAY_NAMES.get(ws, ws))
-		extra_parts.append("สภาพอากาศ: %s" % ", ".join(w_names))
+			w_names.append(GardenLocalization.get_weather_name(ws, _locale))
+		extra_parts.append(GardenLocalization.format_key("ui.journal.clue_weather", [", ".join(w_names)], _locale))
 	if trait_parts.is_empty() and extra_parts.is_empty():
-		return "สวนที่มีต้นไม้ร่มรื่น"
+		return GardenLocalization.translate("ui.journal.fallback_visitor_clue", _locale)
 	if extra_parts.is_empty():
 		return ", ".join(trait_parts)
 	var all_parts: PackedStringArray = PackedStringArray()
@@ -956,39 +997,39 @@ func is_plant_currently_planted_in_journal(definition_id: String) -> bool:
 	return has_plant_in_journal_catalog(definition_id) and _count_planted_plant(definition_id) > 0
 
 
-## Pure query for testing: returns localized Thai display name for a plant [param definition_id] in the bound catalog, or "" if not in catalog.
+## Pure query for testing: returns localized display name for a plant [param definition_id] in the bound catalog, or "" if not in catalog.
 func get_plant_display_name_in_journal(definition_id: String) -> String:
 	if not has_plant_in_journal_catalog(definition_id):
 		return ""
-	return PlantView.PROVISIONAL_PLANT_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_plant_name(definition_id, _locale, _catalog.get_plant(definition_id))
 
 
-## Pure query for testing: returns localized Thai display name for a visitor [param definition_id] in the bound catalog, or "" if not in catalog.
+## Pure query for testing: returns localized display name for a visitor [param definition_id] in the bound catalog, or "" if not in catalog.
 func get_visitor_display_name_in_journal(definition_id: String) -> String:
 	if not has_visitor_in_journal_catalog(definition_id):
 		return ""
-	return GardenView.PROVISIONAL_VISITOR_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_visitor_name(definition_id, _locale, _catalog.get_visitor(definition_id))
 
 
-## Pure query for testing: returns localized Thai display name for a decoration [param definition_id] in the bound catalog, or "" if not in catalog.
+## Pure query for testing: returns localized display name for a decoration [param definition_id] in the bound catalog, or "" if not in catalog.
 func get_decoration_display_name_in_journal(definition_id: String) -> String:
 	if not has_decoration_in_journal_catalog(definition_id):
 		return ""
-	return DecorationPicker.PROVISIONAL_DECORATION_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_decoration_name(definition_id, _locale, _catalog.get_decoration(definition_id))
 
 
-## Pure query for testing: returns localized Thai display name for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
+## Pure query for testing: returns localized display name for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
 func get_event_display_name_in_journal(definition_id: String) -> String:
 	if not has_event_in_journal_catalog(definition_id):
 		return ""
-	return GardenView.PROVISIONAL_EVENT_DISPLAY_NAMES.get(definition_id, definition_id)
+	return GardenLocalization.get_event_name(definition_id, _locale, _catalog.get_event(definition_id))
 
 
-## Pure query for testing: returns localized Thai description for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
+## Pure query for testing: returns localized description for an ambient event [param definition_id] in the bound catalog, or "" if not in catalog.
 func get_event_description_in_journal(definition_id: String) -> String:
 	if not has_event_in_journal_catalog(definition_id):
 		return ""
-	return GardenView.PROVISIONAL_EVENT_DESCRIPTIONS.get(definition_id, "")
+	return GardenLocalization.get_event_description(definition_id, _locale, _catalog.get_event(definition_id))
 
 
 ## Pure query for testing: returns true if the rendered summary label text is non-empty.
@@ -1090,19 +1131,19 @@ func get_decoration_traits_in_journal(definition_id: String) -> Array[String]:
 	return def.environmental_traits.duplicate() if def != null else []
 
 
-## Pure query for testing: returns localized Thai display names for environmental traits of a plant [param definition_id] in the bound catalog, or [] if not in catalog.
+## Pure query for testing: returns localized display names for environmental traits of a plant [param definition_id] in the bound catalog, or [] if not in catalog.
 func get_plant_trait_display_names_in_journal(definition_id: String) -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_plant_traits_in_journal(definition_id):
-		result.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
-## Pure query for testing: returns localized Thai display names for environmental traits of a decoration [param definition_id] in the bound catalog, or [] if not in catalog.
+## Pure query for testing: returns localized display names for environmental traits of a decoration [param definition_id] in the bound catalog, or [] if not in catalog.
 func get_decoration_trait_display_names_in_journal(definition_id: String) -> Array[String]:
 	var result: Array[String] = []
 	for trait_id: String in get_decoration_traits_in_journal(definition_id):
-		result.append(GardenView.PROVISIONAL_TRAIT_DISPLAY_NAMES.get(trait_id, trait_id))
+		result.append(GardenLocalization.get_trait_name(trait_id, _locale))
 	return result
 
 
