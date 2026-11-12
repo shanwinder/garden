@@ -1,6 +1,6 @@
 # Garden — Agent Instructions (`AGENTS.md`)
 
-This file orients AI coding agents working in `/Applications/garden`. It **references** the repository's authoritative documents without duplicating or modifying their rules.
+This file orients AI coding agents working in the Garden repository root (`.`). It **references** the repository's authoritative documents without duplicating or modifying their rules. Use project-relative paths (e.g., `./`, `res://`, `.agents/skills/...`) rather than machine-specific absolute paths in commands, scripts, and documentation.
 
 ## 1. Document Authority & Precedence
 
@@ -24,7 +24,7 @@ When a real conflict or a task-blocking **TBD** decision is encountered, **stop 
 - **Layer Separation:** Keep strict boundaries across `src/domain/`, `src/application/`, `src/infrastructure/`, `src/presentation/`, and `content/` (`.tres` definitions identified by `StableContentId`, localized via `GardenLocalization`). Never query the SceneTree as domain logic.
 - **Deterministic Time & Randomness:** Domain/application logic must receive timestamps/RNG explicitly via `GameClock` and `RandomSource` (and `FakeGameClock` / `FakeRandomSource` in tests). Plant growth (`PlantGrowth`) and weather/progression are timestamp-derived ($O(1)$, negative elapsed time clamped to 0). Never add per-plant `Timer`s or `_process` polling loops.
 - **Versioned Persistence:** Preserve the JSON Save Schema V3 contract (`GameStateCodec`, `LocalSaveRepository`), exact decimal-string int64 wire encoding, sequential migrations (`v1 -> v2 -> v3`), and safe write rotation. Never silently break saves or reset progress.
-- **Master Visual Style & Asset Contract:** Preserve the Owner-approved **Balanced Storybook Hybrid** (gouache clarity on gameplay entities + watercolor atmospheric softness; everyday Thai home-garden grounding; no pixel art, no heavy black comic outlines, no glossy 3D, no chibi mascots). Follow `ASSET_PIPELINE.md` (1:1 `1080 × 1920` PNG exports, straight alpha sRGB, bottom-center Option A pivot for grounded sprites, `CanvasItem` Linear filtering, committed `.import` sidecars, no unapproved `assets/` clutter).
+- **Master Visual Style & Asset Contract:** Preserve the Owner-approved **Balanced Storybook Hybrid** (gouache clarity on gameplay entities + watercolor atmospheric softness; everyday Thai home-garden grounding; no pixel art, no heavy black comic outlines, no glossy 3D, no chibi mascots). Follow `ASSET_PIPELINE.md` (export individual sprite PNGs at 1:1 with their intended pixel footprint on the `1080 × 1920` reference canvas so `Sprite2D.scale = Vector2(1, 1)`—typically ≤ `512 × 512` for ordinary gameplay sprites, reserving `1080 × 1920` for full-canvas backgrounds only; straight alpha sRGB; bottom-center Option A pivot for grounded sprites; `CanvasItem` Linear filtering; committed `.import` sidecars; no unapproved `assets/` clutter).
 - **No Unapproved Dependencies or Architecture Drift:** Do not add third-party Godot addons/plugins, extra autoloads, or architectural changes without explicit owner approval (`PROJECT_RULES.md` §3, §9; `ARCHITECTURE.md` §38, §46).
 
 ## 3. Project-Scoped Agent Skills (`.agents/skills/`)
@@ -33,9 +33,9 @@ Eight project-scoped skills from `awesome-gamedev-agent-skills` are installed un
 
 **Garden's authoritative documents always override generic skill defaults:**
 
-- **`create-game-assets`:** Ignore generic `64×64` pixel-art / `nearest`-filter examples in its templates (`assets/asset-manifest.json`). Use Garden's `VISUAL_STYLE_BIBLE.md` + `ASSET_PIPELINE.md` (Linear filtering, Lossless provisional baseline, 4 px transparent gutter, 1:1 canvas scale). Never auto-write uncurated generation outputs into `assets/`.
-- **`godot-ui-control` & `game-ui-ux`:** Ignore `1920×1080` landscape defaults and `tr()` localization assumptions. Garden targets **1080×1920 portrait**, touch-first interaction, and centralized `GardenLocalization` (`"th"` / `"en"`). Inspect `project.godot` before assuming `window/stretch/*` settings.
-- **`godot-gdscript`, `godot-resources`, `godot-animation`, `godot-gdscript-headless-testing`:** Note that `godot-nodes-scenes` is not installed locally (skip references to `../godot-nodes-scenes/scripts/check_godot_project.py`). Use `res://tests/run_tests.gd` instead of creating a parallel test runner.
+- **`create-game-assets`:** Ignore generic `64×64` pixel-art / `nearest`-filter examples in its templates (`assets/asset-manifest.json`). Use Garden's `VISUAL_STYLE_BIBLE.md` + `ASSET_PIPELINE.md` (Linear filtering, Lossless provisional baseline, 4 px transparent gutter, 1:1 on-canvas pixel footprint per sprite rather than fixed `1080 × 1920` per sprite). Run QA scripts with project-relative paths (e.g., `python3 .agents/skills/create-game-assets/scripts/asset_report.py`) and never auto-write uncurated generation outputs into `assets/`.
+- **`godot-ui-control` & `game-ui-ux`:** Ignore `1920×1080` landscape defaults and `tr()` localization assumptions. Garden targets **1080×1920 portrait** reference canvas, touch-first interaction, and centralized `GardenLocalization` (`"th"` / `"en"`). Inspect `project.godot` before assuming `window/stretch/*` settings.
+- **`godot-gdscript`, `godot-resources`, `godot-animation`, `godot-gdscript-headless-testing`:** Note that `godot-nodes-scenes` is not installed locally (skip references to `../godot-nodes-scenes/scripts/check_godot_project.py`). Use `res://tests/run_tests.gd` instead of creating a parallel test runner, and invoke helper scripts via project-relative paths from the repository root (e.g., `.agents/skills/godot-gdscript/assets/check_scripts_compile.gd`).
 
 ## 4. Canonical Verification & Git Discipline
 
