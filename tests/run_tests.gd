@@ -85,6 +85,7 @@ func _register_suites() -> Array[TestSuiteBase]:
 		TestDecorationView.new(),
 		TestJournalPanel.new(),
 		TestGardenView.new(),
+		TestGardenDiorama.new(),
 		TestGardenPresentationIntegration.new(),
 	]
 

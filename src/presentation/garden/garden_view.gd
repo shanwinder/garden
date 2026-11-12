@@ -117,6 +117,7 @@ var _journal_panel: JournalPanel = null
 var _decoration_picker: DecorationPicker = null
 
 var _zones_section_label: Label = null
+var _garden_diorama: GardenDiorama = null
 var _zone_tabs_row: Control = null
 var _zone_main_button: Button = null
 var _zone_adjacent_button: Button = null
@@ -210,6 +211,8 @@ func _resolve_nodes() -> void:
 		_journal_panel = get_node_or_null("JournalPanel") as JournalPanel
 	if _decoration_picker == null:
 		_decoration_picker = get_node_or_null("DecorationPicker") as DecorationPicker
+	if _garden_diorama == null:
+		_garden_diorama = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/GardenDiorama") as GardenDiorama
 	if _zones_section_label == null:
 		_zones_section_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZonesSectionLabel") as Label
 	if _zone_tabs_row == null:
@@ -292,6 +295,8 @@ func _connect_signals() -> void:
 		_decorate_button.pressed.connect(open_decoration_picker)
 	if _decoration_picker != null and not _decoration_picker.decoration_purchase_requested.is_connected(_on_picker_decoration_purchase_requested):
 		_decoration_picker.decoration_purchase_requested.connect(_on_picker_decoration_purchase_requested)
+	if _garden_diorama != null and not _garden_diorama.item_selected.is_connected(_on_diorama_item_selected):
+		_garden_diorama.item_selected.connect(_on_diorama_item_selected)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -493,6 +498,7 @@ func _render_snapshot_at(now_utc: int) -> void:
 
 	_render_garden_items(plants, decorations, now_utc)
 	_update_environment_and_visitors(now_utc)
+	_update_garden_diorama(now_utc)
 	_render_zone_grid()
 	_update_journal_ui()
 
@@ -680,6 +686,8 @@ func _sync_selection_highlights() -> void:
 			if child is DecorationView:
 				var dview: DecorationView = child as DecorationView
 				dview.set_selected(dview.get_runtime_instance_id() == _selected_decoration_instance_id)
+	if _garden_diorama != null:
+		_garden_diorama.set_selected_item(_selected_runtime_instance_id, _selected_decoration_instance_id)
 
 
 func _on_plant_selected(runtime_instance_id: String) -> void:
@@ -1039,6 +1047,8 @@ func _show_blocked_visual() -> void:
 		_empty_container.visible = false
 	if _plants_scroll != null:
 		_plants_scroll.visible = false
+	if _garden_diorama != null:
+		_garden_diorama.clear_for_blocked_state()
 	if _blocked_container != null:
 		_blocked_container.visible = true
 	if _blocked_label != null:
@@ -1355,6 +1365,38 @@ func get_detail_stage_text() -> String:
 	return _detail_stage_label.text if _detail_stage_label != null else ""
 
 
+## Pure query for testing: returns the embedded GardenDiorama instance.
+func get_garden_diorama() -> GardenDiorama:
+	_resolve_nodes()
+	return _garden_diorama
+
+
+func _update_garden_diorama(now_utc: int) -> void:
+	_resolve_nodes()
+	if _garden_diorama == null or _session == null or _session.get_state() == null:
+		return
+	_garden_diorama.render_garden(
+		_session.get_state(),
+		_catalog,
+		now_utc,
+		_last_snapshot,
+		_current_visitor_id,
+		_selected_runtime_instance_id,
+		_selected_decoration_instance_id,
+		_active_zone_id,
+		_locale
+	)
+
+
+func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
+	if runtime_instance_id.is_empty():
+		return
+	if item_kind == "plant":
+		_on_plant_selected(runtime_instance_id)
+	elif item_kind == "decoration":
+		_on_decoration_selected(runtime_instance_id)
+
+
 func _on_picker_planting_requested(definition_id: String) -> void:
 	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
 		var z_id: String = _target_zone_id
@@ -1590,6 +1632,7 @@ func show_visitor_result(result: VisitorSelectionResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
+	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 ## Pure query for testing: returns environment summary text.
@@ -1674,6 +1717,7 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
+	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 ## Opens the journal modal panel.
@@ -3509,6 +3553,7 @@ func select_active_zone(zone_id: String) -> void:
 		_target_grid_x = -1
 		_target_grid_y = -1
 	_render_zone_grid()
+	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 func _on_move_button_pressed() -> void:

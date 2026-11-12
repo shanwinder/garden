@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" path="res://scenes/garden/planting_picker.tscn" id="2_planting_picker"]
 [ext_resource type="PackedScene" path="res://scenes/garden/journal_panel.tscn" id="3_journal_panel"]
 [ext_resource type="PackedScene" path="res://scenes/garden/decoration_picker.tscn" id="4_decoration_picker"]
+[ext_resource type="PackedScene" path="res://scenes/garden/garden_diorama.tscn" id="5_garden_diorama"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_content"]
 
@@ -255,6 +256,9 @@ theme_override_constants/margin_bottom = 4
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 16
+
+[node name="GardenDiorama" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox" instance=ExtResource("5_garden_diorama")]
+layout_mode = 2
 
 [node name="ZonesSectionLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
 visible = false

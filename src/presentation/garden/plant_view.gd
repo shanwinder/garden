@@ -39,6 +39,7 @@ var _locale: String = GardenLocalization.DEFAULT_LOCALE
 var _name_label: Label = null
 var _stage_label: Label = null
 var _stage_badge: Label = null
+var _plant_icon: TextureRect = null
 var _id_label: Label = null
 var _touch_button: Button = null
 var _selection_highlight: Panel = null
@@ -59,6 +60,8 @@ func _resolve_nodes() -> void:
 		_stage_label = get_node_or_null("MarginContainer/VBoxContainer/StageContainer/StageLabel") as Label
 	if _stage_badge == null:
 		_stage_badge = get_node_or_null("MarginContainer/VBoxContainer/StageContainer/StageBadge") as Label
+	if _plant_icon == null:
+		_plant_icon = get_node_or_null("MarginContainer/VBoxContainer/StageContainer/PlantIcon") as TextureRect
 	if _id_label == null:
 		_id_label = get_node_or_null("MarginContainer/VBoxContainer/InstanceIdLabel") as Label
 	if _touch_button == null:
@@ -612,6 +615,11 @@ func _render() -> void:
 
 	if _stage_badge != null:
 		_stage_badge.add_theme_color_override("font_color", get_stage_accent_color())
+
+	if _plant_icon != null:
+		var icon_tex: Texture2D = GardenAssetCatalog.get_plant_texture(_definition_id, _stage)
+		_plant_icon.texture = icon_tex
+		_plant_icon.visible = (icon_tex != null)
 
 	var stage_prefix: String = GardenLocalization.plant_stage_prefix(_stage)
 	match _stage:

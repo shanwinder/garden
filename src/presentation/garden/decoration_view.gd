@@ -34,6 +34,7 @@ var _locale: String = GardenLocalization.DEFAULT_LOCALE
 
 var _name_label: Label = null
 var _role_badge: Label = null
+var _decoration_icon: TextureRect = null
 var _trait_summary_badge: Label = null
 var _id_label: Label = null
 var _touch_button: Button = null
@@ -51,6 +52,8 @@ func _resolve_nodes() -> void:
 		_name_label = get_node_or_null("MarginContainer/VBoxContainer/DecorationNameLabel") as Label
 	if _role_badge == null:
 		_role_badge = get_node_or_null("MarginContainer/VBoxContainer/RoleContainer/RoleBadge") as Label
+	if _decoration_icon == null:
+		_decoration_icon = get_node_or_null("MarginContainer/VBoxContainer/RoleContainer/DecorationIcon") as TextureRect
 	if _trait_summary_badge == null:
 		_trait_summary_badge = get_node_or_null("MarginContainer/VBoxContainer/RoleContainer/TraitSummaryBadge") as Label
 	if _id_label == null:
@@ -269,6 +272,11 @@ func _render() -> void:
 
 	if _selection_highlight != null:
 		_selection_highlight.visible = _is_selected
+
+	if _decoration_icon != null:
+		var icon_tex: Texture2D = GardenAssetCatalog.get_decoration_texture(_definition_id)
+		_decoration_icon.texture = icon_tex
+		_decoration_icon.visible = (icon_tex != null)
 
 
 func _on_touch_button_pressed() -> void:

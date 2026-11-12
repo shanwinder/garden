@@ -1,0 +1,70 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/presentation/garden/garden_diorama.gd" id="1_garden_diorama"]
+
+[sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_add"]
+blend_mode = 1
+
+[node name="GardenDiorama" type="Control"]
+custom_minimum_size = Vector2(0, 680)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+clip_contents = true
+script = ExtResource("1_garden_diorama")
+
+[node name="WorldOrigin" type="Node2D" parent="."]
+position = Vector2(500, 0)
+
+[node name="WorldRoot" type="Node2D" parent="WorldOrigin"]
+
+[node name="BackgroundSprite" type="Sprite2D" parent="WorldOrigin/WorldRoot"]
+texture_filter = 2
+position = Vector2(-540, -720)
+centered = false
+
+[node name="ZoneHighlightsLayer" type="Node2D" parent="WorldOrigin/WorldRoot"]
+
+[node name="PlacedItemsRoot" type="Node2D" parent="WorldOrigin/WorldRoot"]
+y_sort_enabled = true
+
+[node name="VisitorsRoot" type="Node2D" parent="WorldOrigin/WorldRoot"]
+y_sort_enabled = true
+
+[node name="LightsLayer" type="Node2D" parent="WorldOrigin"]
+
+[node name="HousePorchGlow" type="Sprite2D" parent="WorldOrigin/LightsLayer"]
+visible = false
+material = SubResource("CanvasItemMaterial_add")
+position = Vector2(-285, -35)
+scale = Vector2(4.5, 3.2)
+modulate = Color(1, 0.84, 0.48, 0.72)
+
+[node name="FirefliesGroup" type="Node2D" parent="WorldOrigin/LightsLayer"]
+visible = false
+
+[node name="RainParticles" type="CPUParticles2D" parent="WorldOrigin"]
+visible = false
+texture_filter = 2
+position = Vector2(0, -40)
+emitting = false
+amount = 42
+lifetime = 0.95
+emission_shape = 3
+emission_rect_extents = Vector2(560, 20)
+direction = Vector2(-0.14, 1)
+spread = 6.0
+gravity = Vector2(-40, 240)
+initial_velocity_min = 680.0
+initial_velocity_max = 860.0
+color = Color(0.84, 0.92, 0.98, 0.48)
+
+[node name="MistOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 0)
