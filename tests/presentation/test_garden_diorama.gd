@@ -66,6 +66,14 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 		assert_false(marigold_textures.has(tex), "Each Marigold stage uses a distinct texture")
 		marigold_textures.append(tex)
 
+	var chili_textures: Array[Texture2D] = []
+	for st: PlantGrowth.Stage in stages:
+		var tex: Texture2D = GardenAssetCatalog.get_plant_texture("plant.chili", st)
+		assert_true(tex != null, "Chili stage texture must load: %s" % str(st))
+		assert_eq(tex.get_size(), Vector2(240, 268), "Chili texture size matches 240x268")
+		assert_false(chili_textures.has(tex), "Each Chili stage uses a distinct texture")
+		chili_textures.append(tex)
+
 	var clay_jar: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.clay_jar")
 	assert_true(clay_jar != null and clay_jar.get_size() == Vector2(240, 268), "Clay jar texture loads at 240x268")
 	var bench: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.bench")

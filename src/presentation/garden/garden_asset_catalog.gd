@@ -27,6 +27,12 @@ const PLANT_STAGE_TEXTURE_PATHS: Dictionary = {
 		PlantGrowth.Stage.GROWING: "res://assets/plants/marigold/marigold_growing.png",
 		PlantGrowth.Stage.MATURE: "res://assets/plants/marigold/marigold_mature.png",
 	},
+	"plant.chili": {
+		PlantGrowth.Stage.PLANTED: "res://assets/plants/chili/chili_planted.png",
+		PlantGrowth.Stage.SPROUT: "res://assets/plants/chili/chili_sprout.png",
+		PlantGrowth.Stage.GROWING: "res://assets/plants/chili/chili_growing.png",
+		PlantGrowth.Stage.MATURE: "res://assets/plants/chili/chili_mature.png",
+	},
 }
 
 const DECORATION_TEXTURE_PATHS: Dictionary = {
