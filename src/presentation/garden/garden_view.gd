@@ -297,6 +297,10 @@ func _connect_signals() -> void:
 		_decoration_picker.decoration_purchase_requested.connect(_on_picker_decoration_purchase_requested)
 	if _garden_diorama != null and not _garden_diorama.item_selected.is_connected(_on_diorama_item_selected):
 		_garden_diorama.item_selected.connect(_on_diorama_item_selected)
+	if _garden_diorama != null and not _garden_diorama.cell_selected.is_connected(_on_zone_cell_pressed):
+		_garden_diorama.cell_selected.connect(_on_zone_cell_pressed)
+	if _garden_diorama != null and not _garden_diorama.visitor_selected.is_connected(_on_diorama_visitor_selected):
+		_garden_diorama.visitor_selected.connect(_on_diorama_visitor_selected)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -1384,17 +1388,43 @@ func _update_garden_diorama(now_utc: int) -> void:
 		_selected_runtime_instance_id,
 		_selected_decoration_instance_id,
 		_active_zone_id,
-		_locale
+		_locale,
+		_target_zone_id,
+		_target_grid_x,
+		_target_grid_y,
+		_is_move_mode
 	)
+
+
+func _sync_diorama_placement_highlight() -> void:
+	_resolve_nodes()
+	if _garden_diorama != null:
+		_garden_diorama.set_placement_highlight(
+			_target_zone_id,
+			_target_grid_x,
+			_target_grid_y,
+			_is_move_mode,
+			_active_zone_id
+		)
 
 
 func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
 	if runtime_instance_id.is_empty():
 		return
+	_is_move_mode = false
+	_target_zone_id = ""
+	_target_grid_x = -1
+	_target_grid_y = -1
 	if item_kind == "plant":
 		_on_plant_selected(runtime_instance_id)
 	elif item_kind == "decoration":
 		_on_decoration_selected(runtime_instance_id)
+	_render_zone_grid()
+	_sync_diorama_placement_highlight()
+
+
+func _on_diorama_visitor_selected(_visitor_id: String) -> void:
+	_on_observe_visitor_button_pressed()
 
 
 func _on_picker_planting_requested(definition_id: String) -> void:
@@ -3573,6 +3603,7 @@ func _on_move_button_pressed() -> void:
 			_locale
 		)
 	_render_zone_grid()
+	_sync_diorama_placement_highlight()
 
 
 func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
@@ -3591,6 +3622,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_target_grid_y = -1
 		_on_plant_selected(occ_id)
 		_render_zone_grid()
+		_sync_diorama_placement_highlight()
 		return
 
 	if occ_kind == GardenPlacement.KIND_DECORATION and not occ_id.is_empty():
@@ -3600,6 +3632,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_target_grid_y = -1
 		_on_decoration_selected(occ_id)
 		_render_zone_grid()
+		_sync_diorama_placement_highlight()
 		return
 
 	if not GardenZone.is_zone_unlocked(zone_id, _last_snapshot, state.get_journal()):
@@ -3625,6 +3658,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_target_grid_x = grid_x
 		_target_grid_y = grid_y
 	_render_zone_grid()
+	_sync_diorama_placement_highlight()
 
 
 ## Displays user feedback from a GardenPlacementCheckpointResult.

@@ -107,11 +107,24 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 		btn.custom_minimum_size = Vector2(0, 72)
 		btn.focus_mode = Control.FOCUS_ALL
 		btn.add_theme_font_size_override("font_size", 21)
+		_apply_button_icon(btn, def_id)
 		btn.disabled = not _is_enabled
 		btn.pressed.connect(_on_decoration_option_pressed.bind(def_id))
 		_decoration_buttons.append(btn)
 		if _decoration_list_container != null:
 			_decoration_list_container.add_child(btn)
+
+
+func _apply_button_icon(btn: Button, def_id: String) -> void:
+	if btn == null:
+		return
+	var tex: Texture2D = GardenAssetCatalog.get_decoration_texture(def_id)
+	btn.icon = tex
+	btn.expand_icon = (tex != null)
+	if tex != null:
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.add_theme_constant_override("icon_max_width", 56)
+		btn.add_theme_constant_override("h_separation", 12)
 
 
 ## Sets active display locale ("th" or "en") and refreshes decoration shop labels in-place.

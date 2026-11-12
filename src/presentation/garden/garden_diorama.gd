@@ -12,6 +12,8 @@ class_name GardenDiorama
 extends Control
 
 signal item_selected(item_kind: String, runtime_instance_id: String)
+signal cell_selected(zone_id: String, grid_x: int, grid_y: int)
+signal visitor_selected(visitor_id: String)
 
 const DEFAULT_DIORAMA_HEIGHT: float = 680.0
 const BACKGROUND_TOP_LEFT_OFFSET: Vector2 = Vector2(-540.0, -720.0)
@@ -27,6 +29,7 @@ const ZONE_ADJACENT_ROW_STEP: Vector2 = Vector2(-6.0, 92.0)
 const BENCH_CAT_PERCH_OFFSET: Vector2 = Vector2(-8.0, -74.0)
 const DEFAULT_CAT_GROUND_POS: Vector2 = Vector2(185.0, 540.0)
 const DEFAULT_BUTTERFLY_POS: Vector2 = Vector2(-20.0, 290.0)
+const DEFAULT_FIREFLY_POS: Vector2 = Vector2(-60.0, 250.0)
 const FLOWER_BUTTERFLY_OFFSET: Vector2 = Vector2(24.0, -172.0)
 
 const FIREFLY_ANCHORS: Array[Vector2] = [
@@ -51,11 +54,17 @@ var _mist_overlay: ColorRect = null
 
 var _active_tweens: Array[Tween] = []
 var _item_entries: Dictionary = {} # runtime_instance_id -> Dictionary{node, kind, zone_id, grid_x, grid_y, world_pos}
+var _zone_cells: Array[Dictionary] = [] # {zone_id, grid_x, grid_y, world_pos, occupied, marker}
 var _active_visitor_node: Node2D = null
+var _active_visitor_id: String = ""
 
 var _selected_plant_id: String = ""
 var _selected_decoration_id: String = ""
 var _active_zone_id: String = GardenZone.ZONE_MAIN
+var _target_zone_id: String = ""
+var _target_grid_x: int = -1
+var _target_grid_y: int = -1
+var _is_move_mode: bool = false
 var _last_time_period: String = GardenTimePeriod.DAY
 var _last_weather_state: String = GardenWeather.CLEAR
 
@@ -156,7 +165,11 @@ func render_garden(
 	selected_plant_id: String,
 	selected_decoration_id: String,
 	active_zone_id: String,
-	locale: String = GardenLocalization.DEFAULT_LOCALE
+	locale: String = GardenLocalization.DEFAULT_LOCALE,
+	target_zone_id: String = "",
+	target_grid_x: int = -1,
+	target_grid_y: int = -1,
+	is_move_mode: bool = false
 ) -> void:
 	_resolve_nodes()
 	_setup_static_layers()
@@ -166,6 +179,11 @@ func render_garden(
 	_selected_plant_id = selected_plant_id
 	_selected_decoration_id = selected_decoration_id
 	_active_zone_id = active_zone_id if not active_zone_id.is_empty() else GardenZone.ZONE_MAIN
+	_target_zone_id = target_zone_id
+	_target_grid_x = target_grid_x
+	_target_grid_y = target_grid_y
+	_is_move_mode = is_move_mode
+	_active_visitor_id = active_visitor_id
 
 	var time_period: String = snapshot.get_time_period() if snapshot != null else GardenTimePeriod.period_for_utc_seconds(now_utc)
 	var weather_state: String = snapshot.get_weather_state() if snapshot != null else GardenWeather.weather_for_utc_seconds(now_utc)
@@ -177,6 +195,7 @@ func render_garden(
 	_clear_node_children(_visitors_root)
 	_clear_node_children(_fireflies_group)
 	_item_entries.clear()
+	_zone_cells.clear()
 	_active_visitor_node = null
 
 	_render_zone_markers(state, snapshot)
@@ -187,6 +206,7 @@ func render_garden(
 
 	var bench_pos: Vector2 = Vector2.INF
 	var marigold_mature_pos: Vector2 = Vector2.INF
+	var jasmine_mature_pos: Vector2 = Vector2.INF
 	var any_mature_pos: Vector2 = Vector2.INF
 	var any_plant_pos: Vector2 = Vector2.INF
 
@@ -242,6 +262,8 @@ func render_garden(
 				any_mature_pos = world_pos
 			if def_id == "plant.marigold" and marigold_mature_pos == Vector2.INF:
 				marigold_mature_pos = world_pos
+			if def_id == "plant.jasmine" and jasmine_mature_pos == Vector2.INF:
+				jasmine_mature_pos = world_pos
 
 		var item_node: Node2D = _create_plant_node(
 			inst_id,
@@ -263,16 +285,34 @@ func render_garden(
 			"world_pos": world_pos,
 		}
 
+	var flower_mature_pos: Vector2 = marigold_mature_pos if marigold_mature_pos != Vector2.INF else jasmine_mature_pos
 	_render_active_visitor(
 		active_visitor_id,
 		bench_pos,
-		marigold_mature_pos,
+		flower_mature_pos,
 		any_mature_pos,
 		any_plant_pos,
 		catalog,
 		locale
 	)
 	_apply_atmosphere(time_period, weather_state, active_visitor_id, snapshot)
+
+
+## Updates zone cell target / move-mode highlights in place without rebuilding placed sprites.
+func set_placement_highlight(
+	target_zone_id: String,
+	target_grid_x: int,
+	target_grid_y: int,
+	is_move_mode: bool,
+	active_zone_id: String = ""
+) -> void:
+	_target_zone_id = target_zone_id
+	_target_grid_x = target_grid_x
+	_target_grid_y = target_grid_y
+	_is_move_mode = is_move_mode
+	if not active_zone_id.is_empty():
+		_active_zone_id = active_zone_id
+	_apply_zone_cell_styles()
 
 
 ## Updates selection ring visibility without rebuilding the full scene.
@@ -304,7 +344,9 @@ func clear_for_blocked_state() -> void:
 	_clear_node_children(_visitors_root)
 	_clear_node_children(_fireflies_group)
 	_item_entries.clear()
+	_zone_cells.clear()
 	_active_visitor_node = null
+	_active_visitor_id = ""
 	if _rain_particles != null:
 		_rain_particles.emitting = false
 		_rain_particles.visible = false
@@ -323,16 +365,59 @@ func _render_zone_markers(state: GameState, snapshot: GardenSnapshot) -> void:
 	for z_id: String in unlocked_zones:
 		var width_cells: int = GardenZone.get_grid_width(z_id)
 		var height_cells: int = GardenZone.get_grid_height(z_id)
-		var is_active: bool = (z_id == _active_zone_id)
-		var marker_alpha: float = 0.22 if is_active else 0.10
-		var marker_color: Color = Color(0.95, 0.88, 0.56, marker_alpha) if z_id == GardenZone.ZONE_MAIN else Color(0.68, 0.88, 0.72, marker_alpha)
 		for gy: int in range(height_cells):
 			for gx: int in range(width_cells):
+				var world_pos: Vector2 = compute_grid_world_position(z_id, gx, gy)
+				var occupant: Dictionary = GardenPlacement.get_occupant_at(state, z_id, gx, gy) if state != null else {}
+				var occupied: bool = not occupant.is_empty()
 				var marker: Polygon2D = Polygon2D.new()
-				marker.position = compute_grid_world_position(z_id, gx, gy)
+				marker.position = world_pos
 				marker.polygon = _build_ellipse_points(28.0, 12.0, 12)
-				marker.color = marker_color
 				_zone_highlights_layer.add_child(marker)
+				_zone_cells.append({
+					"zone_id": z_id,
+					"grid_x": gx,
+					"grid_y": gy,
+					"world_pos": world_pos,
+					"occupied": occupied,
+					"marker": marker,
+				})
+
+	_apply_zone_cell_styles()
+
+
+func _apply_zone_cell_styles() -> void:
+	for cell: Dictionary in _zone_cells:
+		var marker: Polygon2D = cell.get("marker") as Polygon2D
+		if marker == null or not is_instance_valid(marker):
+			continue
+		var z_id: String = str(cell.get("zone_id", GardenZone.ZONE_MAIN))
+		var gx: int = int(cell.get("grid_x", -1))
+		var gy: int = int(cell.get("grid_y", -1))
+		var occupied: bool = bool(cell.get("occupied", false))
+		var is_active_zone: bool = (z_id == _active_zone_id)
+		var is_target: bool = (
+			z_id == _target_zone_id
+			and gx == _target_grid_x
+			and gy == _target_grid_y
+		)
+		if is_target:
+			marker.color = Color(0.98, 0.86, 0.34, 0.68)
+			marker.scale = Vector2(1.22, 1.22)
+		elif _is_move_mode and not occupied:
+			marker.color = Color(0.55, 0.94, 0.60, 0.48 if is_active_zone else 0.30)
+			marker.scale = Vector2(1.12, 1.12)
+		elif occupied:
+			marker.color = Color(0.88, 0.84, 0.64, 0.10 if is_active_zone else 0.06)
+			marker.scale = Vector2.ONE
+		else:
+			var marker_alpha: float = 0.24 if is_active_zone else 0.12
+			marker.color = (
+				Color(0.95, 0.88, 0.56, marker_alpha)
+				if z_id == GardenZone.ZONE_MAIN
+				else Color(0.68, 0.88, 0.72, marker_alpha)
+			)
+			marker.scale = Vector2.ONE
 
 
 func _create_plant_node(
@@ -483,7 +568,7 @@ func _add_fallback_token(
 func _render_active_visitor(
 	visitor_id: String,
 	bench_pos: Vector2,
-	marigold_mature_pos: Vector2,
+	flower_mature_pos: Vector2,
 	any_mature_pos: Vector2,
 	any_plant_pos: Vector2,
 	catalog: ContentCatalog,
@@ -500,14 +585,16 @@ func _render_active_visitor(
 	if visitor_id == "visitor.cat":
 		anchor_pos = bench_pos + BENCH_CAT_PERCH_OFFSET if bench_pos != Vector2.INF else DEFAULT_CAT_GROUND_POS
 	elif visitor_id == "visitor.butterfly":
-		if marigold_mature_pos != Vector2.INF:
-			anchor_pos = marigold_mature_pos + FLOWER_BUTTERFLY_OFFSET
+		if flower_mature_pos != Vector2.INF:
+			anchor_pos = flower_mature_pos + FLOWER_BUTTERFLY_OFFSET
 		elif any_mature_pos != Vector2.INF:
 			anchor_pos = any_mature_pos + FLOWER_BUTTERFLY_OFFSET
 		elif any_plant_pos != Vector2.INF:
 			anchor_pos = any_plant_pos + Vector2(18.0, -130.0)
 		else:
 			anchor_pos = DEFAULT_BUTTERFLY_POS
+	elif visitor_id == "visitor.firefly":
+		anchor_pos = DEFAULT_FIREFLY_POS
 
 	visitor_node.position = anchor_pos
 
@@ -525,6 +612,18 @@ func _render_active_visitor(
 			sprite.offset = Vector2.ZERO
 		visitor_node.add_child(sprite)
 		_start_visitor_idle_tween(visitor_id, sprite)
+	elif visitor_id == "visitor.firefly" and GardenAssetCatalog.get_firefly_glow_texture() != null:
+		var glow_sprite: Sprite2D = Sprite2D.new()
+		glow_sprite.name = "Sprite"
+		glow_sprite.texture = GardenAssetCatalog.get_firefly_glow_texture()
+		glow_sprite.centered = true
+		glow_sprite.scale = Vector2.ONE
+		glow_sprite.modulate = Color(1.0, 0.95, 0.58, 0.92)
+		var mat: CanvasItemMaterial = CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		glow_sprite.material = mat
+		visitor_node.add_child(glow_sprite)
+		_start_visitor_idle_tween("visitor.butterfly", glow_sprite)
 	else:
 		var vdef: VisitorDefinition = catalog.get_visitor(visitor_id) if catalog != null else null
 		var vname: String = GardenLocalization.get_visitor_name(visitor_id, locale, vdef)
@@ -688,7 +787,15 @@ func _gui_input(event: InputEvent) -> void:
 	if click_pos == Vector2.INF or _world_origin == null:
 		return
 
-	var local_world_pos: Vector2 = click_pos - _world_origin.position
+	_handle_local_world_tap(click_pos - _world_origin.position)
+
+
+## Deterministic test helper: simulates a tap at a WorldOrigin-local coordinate.
+func simulate_tap_at_world_pos(local_world_pos: Vector2) -> void:
+	_handle_local_world_tap(local_world_pos)
+
+
+func _handle_local_world_tap(local_world_pos: Vector2) -> void:
 	var best_id: String = ""
 	var best_kind: String = ""
 	var best_dist: float = 90.0
@@ -704,8 +811,34 @@ func _gui_input(event: InputEvent) -> void:
 			best_id = inst_id
 			best_kind = str(entry.get("kind", ""))
 
+	if _active_visitor_node != null and not _active_visitor_id.is_empty():
+		var visitor_center: Vector2 = _active_visitor_node.position
+		if GardenAssetCatalog.is_grounded_visitor(_active_visitor_id) and _active_visitor_id != "visitor.firefly":
+			visitor_center += Vector2(0.0, -40.0)
+		var visitor_dist: float = local_world_pos.distance_to(visitor_center)
+		if visitor_dist <= 56.0 and (best_id.is_empty() or visitor_dist < best_dist):
+			visitor_selected.emit(_active_visitor_id)
+			return
+
 	if not best_id.is_empty():
 		item_selected.emit(best_kind, best_id)
+		return
+
+	var best_cell: Dictionary = {}
+	var best_cell_dist: float = 54.0
+	for cell: Dictionary in _zone_cells:
+		var cell_pos: Vector2 = cell.get("world_pos", Vector2.INF)
+		var d: float = local_world_pos.distance_to(cell_pos)
+		if d <= best_cell_dist:
+			best_cell_dist = d
+			best_cell = cell
+
+	if not best_cell.is_empty():
+		cell_selected.emit(
+			str(best_cell.get("zone_id", GardenZone.ZONE_MAIN)),
+			int(best_cell.get("grid_x", 0)),
+			int(best_cell.get("grid_y", 0))
+		)
 
 
 func _clear_node_children(container: Node) -> void:
@@ -790,3 +923,34 @@ func get_selected_plant_id() -> String:
 ## Pure query for testing: returns currently selected decoration ID in diorama.
 func get_selected_decoration_id() -> String:
 	return _selected_decoration_id
+
+
+## Pure query for testing: returns total rendered zone cell markers.
+func get_zone_cell_marker_count() -> int:
+	return _zone_cells.size()
+
+
+## Pure query for testing: returns the Polygon2D marker for a given cell, or null.
+func get_zone_cell_marker(zone_id: String, grid_x: int, grid_y: int) -> Polygon2D:
+	for cell: Dictionary in _zone_cells:
+		if (
+			str(cell.get("zone_id", "")) == zone_id
+			and int(cell.get("grid_x", -1)) == grid_x
+			and int(cell.get("grid_y", -1)) == grid_y
+		):
+			return cell.get("marker") as Polygon2D
+	return null
+
+
+## Pure query for testing: returns the currently highlighted target cell dictionary.
+func get_target_cell() -> Dictionary:
+	return {
+		"zone_id": _target_zone_id,
+		"grid_x": _target_grid_x,
+		"grid_y": _target_grid_y,
+	}
+
+
+## Pure query for testing: returns true when diorama is highlighting valid move cells.
+func is_move_highlight_active() -> bool:
+	return _is_move_mode

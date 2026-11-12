@@ -8,6 +8,8 @@ const GARDEN_DIORAMA_SCENE_PATH: String = "res://scenes/garden/garden_diorama.ts
 const GARDEN_VIEW_SCENE_PATH: String = "res://scenes/garden/garden_view.tscn"
 const PLANT_VIEW_SCENE_PATH: String = "res://scenes/garden/plant_view.tscn"
 const DECORATION_VIEW_SCENE_PATH: String = "res://scenes/garden/decoration_view.tscn"
+const PLANTING_PICKER_SCENE_PATH: String = "res://scenes/garden/planting_picker.tscn"
+const DECORATION_PICKER_SCENE_PATH: String = "res://scenes/garden/decoration_picker.tscn"
 
 
 func _init() -> void:
@@ -19,8 +21,11 @@ func run_tests() -> void:
 	_test_diorama_background_and_sprite_contract()
 	_test_diorama_growth_stages_and_fallback_tokens()
 	_test_diorama_visitor_bench_and_butterfly_pivots()
+	_test_diorama_jasmine_butterfly_and_firefly_visitor()
 	_test_diorama_atmosphere_day_night_rain_fireflies()
+	_test_diorama_cell_and_visitor_tapping_and_highlights()
 	_test_card_sprite_thumbnails_and_fallbacks()
+	_test_picker_sprite_thumbnails_and_fallbacks()
 	_test_garden_view_diorama_integration_and_blocked_cleanup()
 
 
@@ -313,3 +318,135 @@ func _test_garden_view_diorama_integration_and_blocked_cleanup() -> void:
 	assert_false(diorama.is_rain_active(), "Blocked state disables rain particles")
 
 	view.free()
+
+
+func _test_diorama_jasmine_butterfly_and_firefly_visitor() -> void:
+	describe("GardenDiorama anchors Butterfly on mature Jasmine and renders Firefly visitor with additive glow")
+	var scene: PackedScene = load(GARDEN_DIORAMA_SCENE_PATH) as PackedScene
+	var diorama: GardenDiorama = scene.instantiate() as GardenDiorama
+	var catalog: ContentCatalog = _create_full_catalog()
+
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("p-basil", "plant.holy_basil", 1000, GardenZone.ZONE_MAIN, 0, 0))
+	state.get_plants().try_add_plant(PlantState.new("p-jasmine", "plant.jasmine", 1000, GardenZone.ZONE_MAIN, 2, 1))
+
+	var snap: GardenSnapshot = GardenSnapshot.new({"flower": 1, "dense_vegetation": 1}, {"plant.holy_basil": 1, "plant.jasmine": 1}, 2, 0, {}, 0, GardenTimePeriod.DAY, GardenWeather.CLEAR)
+	# t=5000 makes both holy_basil and jasmine MATURE
+	diorama.render_garden(state, catalog, 5000, snap, "visitor.butterfly", "", "", GardenZone.ZONE_MAIN, "th")
+	var butterfly_node: Node2D = diorama.get_rendered_visitor_node()
+	var jasmine_node: Node2D = diorama.get_rendered_item_node("p-jasmine")
+	assert_true(butterfly_node != null and jasmine_node != null, "Butterfly and Jasmine rendered")
+	assert_eq(butterfly_node.position, jasmine_node.position + GardenDiorama.FLOWER_BUTTERFLY_OFFSET, "Butterfly prefers mature Jasmine flower over non-flower Basil")
+
+	var night_snap: GardenSnapshot = GardenSnapshot.new({"dense_vegetation": 1}, {"plant.jasmine": 1}, 1, 0, {}, 0, GardenTimePeriod.NIGHT, GardenWeather.CLEAR)
+	diorama.render_garden(state, catalog, 5000, night_snap, "visitor.firefly", "", "", GardenZone.ZONE_MAIN, "th")
+	var firefly_node: Node2D = diorama.get_rendered_visitor_node()
+	assert_true(firefly_node != null, "Firefly visitor node rendered")
+	assert_eq(firefly_node.position, GardenDiorama.DEFAULT_FIREFLY_POS, "Firefly hovers over foliage rather than stone paver")
+	assert_true(firefly_node.get_node_or_null("FallbackToken") == null, "Firefly uses glow sprite rather than boxy FallbackToken")
+	var glow_sprite: Sprite2D = firefly_node.get_node_or_null("Sprite") as Sprite2D
+	assert_true(glow_sprite != null and glow_sprite.texture == GardenAssetCatalog.get_firefly_glow_texture(), "Firefly visitor uses firefly glow texture")
+
+	diorama.free()
+
+
+func _test_diorama_cell_and_visitor_tapping_and_highlights() -> void:
+	describe("GardenDiorama supports direct cell & visitor tapping and target/move highlights")
+	var gv_scene: PackedScene = load(GARDEN_VIEW_SCENE_PATH) as PackedScene
+	var view: GardenView = gv_scene.instantiate() as GardenView
+	var diorama: GardenDiorama = view.get_garden_diorama()
+
+	var catalog: ContentCatalog = _create_full_catalog()
+	var state: GameState = GameState.new()
+	state.get_plants().try_add_plant(PlantState.new("p-1", "plant.holy_basil", 1000, GardenZone.ZONE_MAIN, 1, 1))
+	state.get_decorations().try_add_decoration(DecorationState.new("d-1", "decoration.bench", 1000, GardenZone.ZONE_MAIN, 2, 2))
+	var session: GameSession = GameSession.new(state)
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	view.bind_garden(session, catalog, clock)
+
+	assert_eq(diorama.get_zone_cell_marker_count(), 16, "Unlocked zone.main renders 16 cell markers")
+
+	# Tap empty cell (0, 0) directly in diorama -> targets cell in GardenView
+	var cell_0_0_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 0, 0)
+	diorama.simulate_tap_at_world_pos(cell_0_0_pos)
+	var target: Dictionary = view.get_target_cell()
+	assert_eq(target.get("zone_id"), GardenZone.ZONE_MAIN, "Tapping diorama cell targets zone.main")
+	assert_eq(target.get("grid_x"), 0, "Tapping diorama cell targets grid_x=0")
+	assert_eq(target.get("grid_y"), 0, "Tapping diorama cell targets grid_y=0")
+	assert_eq(diorama.get_target_cell(), target, "Diorama target cell stays synced")
+	var marker_0_0: Polygon2D = diorama.get_zone_cell_marker(GardenZone.ZONE_MAIN, 0, 0)
+	assert_true(marker_0_0 != null and marker_0_0.scale.x > 1.1, "Targeted cell marker scales up visually")
+
+	# Tap placed plant in diorama -> selects plant, clears target
+	var p1_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 1, 1)
+	diorama.simulate_tap_at_world_pos(p1_pos + Vector2(0.0, -40.0))
+	assert_eq(view.get_selected_runtime_instance_id(), "p-1", "Tapping diorama plant selects p-1")
+
+	# Enable move mode via MoveButton -> diorama highlights valid move cells
+	view.get_move_button().pressed.emit()
+	assert_true(diorama.is_move_highlight_active(), "MoveButton activates diorama move-mode cell highlights")
+
+	var move_requests: Array = []
+	view.move_item_requested.connect(func(inst_id: String, zid: String, gx: int, gy: int) -> void:
+		move_requests.append([inst_id, zid, gx, gy])
+	)
+	var cell_3_2_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 3, 2)
+	diorama.simulate_tap_at_world_pos(cell_3_2_pos)
+	assert_eq(move_requests.size(), 1, "Tapping empty diorama cell in move mode emits move_item_requested")
+	assert_eq(move_requests[0], ["p-1", GardenZone.ZONE_MAIN, 3, 2], "Diorama move coordinates match tapped cell")
+
+	# Render active cat visitor on bench and tap cat directly -> emits visitor_observation_requested
+	var snap: GardenSnapshot = GardenSnapshot.new({"warm": 1, "resting": 1}, {"plant.holy_basil": 1}, 1, 1, {"decoration.bench": 1}, 1, GardenTimePeriod.DAY, GardenWeather.CLEAR)
+	diorama.render_garden(state, catalog, 2000, snap, "visitor.cat", "", "", GardenZone.ZONE_MAIN, "th")
+	var observe_hits: Array[int] = []
+	view.visitor_observation_requested.connect(func() -> void:
+		observe_hits.append(1)
+	)
+	# Ensure ObserveVisitorButton is enabled in test context
+	view.get_observe_visitor_button().disabled = false
+	var cat_pos: Vector2 = diorama.get_rendered_visitor_node().position + Vector2(0.0, -30.0)
+	diorama.simulate_tap_at_world_pos(cat_pos)
+	assert_eq(observe_hits.size(), 1, "Tapping active visitor in diorama triggers visitor_observation_requested")
+
+	view.free()
+
+
+func _test_picker_sprite_thumbnails_and_fallbacks() -> void:
+	describe("PlantingPicker and DecorationPicker display GardenAssetCatalog icons for illustrated entries")
+	var catalog: ContentCatalog = _create_full_catalog()
+
+	var p_scene: PackedScene = load(PLANTING_PICKER_SCENE_PATH) as PackedScene
+	var p_picker: PlantingPicker = p_scene.instantiate() as PlantingPicker
+	p_picker.bind_catalog(catalog)
+	var p_list: Node = p_picker.get_node("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/PlantListContainer")
+	var found_chili_icon: bool = false
+	var found_banana_null: bool = false
+	for child: Node in p_list.get_children():
+		var btn: Button = child as Button
+		if btn == null:
+			continue
+		if btn.text.contains("plant.chili"):
+			found_chili_icon = (btn.icon == GardenAssetCatalog.get_plant_texture("plant.chili", PlantGrowth.Stage.MATURE))
+		elif btn.text.contains("plant.banana"):
+			found_banana_null = (btn.icon == null)
+	assert_true(found_chili_icon, "PlantingPicker shows mature sprite icon for plant.chili")
+	assert_true(found_banana_null, "PlantingPicker leaves icon null for non-illustrated plant.banana")
+	p_picker.free()
+
+	var d_scene: PackedScene = load(DECORATION_PICKER_SCENE_PATH) as PackedScene
+	var d_picker: DecorationPicker = d_scene.instantiate() as DecorationPicker
+	d_picker.bind_catalog(catalog)
+	var d_list: Node = d_picker.get_node("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/DecorationListContainer")
+	var found_bench_icon: bool = false
+	var found_can_null: bool = false
+	for child: Node in d_list.get_children():
+		var btn: Button = child as Button
+		if btn == null:
+			continue
+		if btn.text.contains("decoration.bench"):
+			found_bench_icon = (btn.icon == GardenAssetCatalog.get_decoration_texture("decoration.bench"))
+		elif btn.text.contains("decoration.watering_can"):
+			found_can_null = (btn.icon == null)
+	assert_true(found_bench_icon, "DecorationPicker shows sprite icon for decoration.bench")
+	assert_true(found_can_null, "DecorationPicker leaves icon null for non-illustrated decoration.watering_can")
+	d_picker.free()
