@@ -1895,7 +1895,7 @@ func _test_try_observe_visitor_and_checkpoint_and_v1_migration() -> void:
 	var raw_saved: Variant = JSON.parse_string(_read_raw_file(TEST_PRIMARY))
 	assert_true(raw_saved is Dictionary, "Saved PRIMARY is JSON object")
 	if raw_saved is Dictionary:
-		assert_eq(int(raw_saved["schema_version"]), 3, "Saved PRIMARY upgraded to schema_version 3")
+		assert_eq(int(raw_saved["schema_version"]), 4, "Saved PRIMARY upgraded to schema_version 4")
 		assert_true(raw_saved.has("discoveries"), "Saved PRIMARY has discoveries array")
 		assert_true(raw_saved.has("decorations"), "Saved PRIMARY has decorations array")
 

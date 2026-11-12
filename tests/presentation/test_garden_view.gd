@@ -113,6 +113,7 @@ func run_tests() -> void:
 	_test_ambient_event_observation_button_and_feedback()
 	_test_selected_plant_growth_countdown_and_atmosphere_forecast()
 	_test_placed_decoration_cards_rendering_selection_and_inspection()
+	_test_coarse_grid_and_zones_placement_interaction()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -2585,4 +2586,84 @@ func _test_placed_decoration_cards_rendering_selection_and_inspection() -> void:
 	assert_eq(view.get_rendered_decoration_count(), 0, "Blocked clears DecorationViews")
 	assert_false(view.has_selected_decoration(), "Blocked clears selected decoration")
 	assert_eq(view.get_selected_decoration_instance_id(), "", "Blocked clears selected decoration ID")
+	view.free()
+
+
+func _test_coarse_grid_and_zones_placement_interaction() -> void:
+	describe("Coarse Logical Grid & Zones UI: cell occupancy rendering, empty cell targeting, move mode, and zone switching")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	var plant: PlantState = PlantState.new("plant-01", "plant.holy_basil", 1000, GardenZone.ZONE_MAIN, 1, 2)
+	var decor: DecorationState = DecorationState.new("decor-01", "decoration.clay_jar", 1100, GardenZone.ZONE_MAIN, 3, 0)
+	state.get_plants().try_add_plant(plant)
+	state.get_decorations().try_add_decoration(decor)
+
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = _create_test_catalog()
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	view.bind_garden(session, catalog, clock)
+
+	# 1. Grid section and zone tabs exist and are rendered
+	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_MAIN, "Default active zone is zone.main")
+	assert_false(view.is_adjacent_zone_unlocked(), "Adjacent Zone 2 starts locked")
+	assert_true(view.get_zone_status_text().contains("สวนหน้าบ้าน"), "Zone status displays zone name")
+
+	# Check occupied cell buttons
+	var cell_1_2: Button = view.get_zone_grid_cell_button(1, 2)
+	assert_true(cell_1_2 != null, "Cell (1,2) button exists")
+	assert_true(cell_1_2.text.contains("กะเพรา"), "Cell (1,2) text contains basil name")
+
+	var cell_3_0: Button = view.get_zone_grid_cell_button(3, 0)
+	assert_true(cell_3_0 != null, "Cell (3,0) button exists")
+	assert_true(cell_3_0.text.contains("ตุ่มน้ำดินเผา"), "Cell (3,0) text contains jar name")
+
+	# 2. Tapping an empty cell (0,0) selects it as placement target
+	var cell_0_0: Button = view.get_zone_grid_cell_button(0, 0)
+	assert_true(cell_0_0 != null, "Cell (0,0) button exists")
+	cell_0_0.pressed.emit()
+	var target: Dictionary = view.get_target_cell()
+	assert_eq(target.get("zone_id"), GardenZone.ZONE_MAIN, "Target zone is zone.main")
+	assert_eq(target.get("grid_x"), 0, "Target X is 0")
+	assert_eq(target.get("grid_y"), 0, "Target Y is 0")
+	assert_true(view.get_zone_status_text().contains("(0, 0)"), "Zone status announces targeted cell")
+
+	# 3. Tapping an occupied cell (1,2) selects the plant and updates DetailPlacementLabel
+	cell_1_2.pressed.emit()
+	assert_true(view.has_selected_plant(), "Plant selected by tapping occupied grid cell")
+	assert_eq(view.get_selected_runtime_instance_id(), "plant-01", "Selected plant-01")
+	assert_true(view.get_detail_placement_text().contains("สวนหน้าบ้าน"), "Placement label shows zone name")
+	assert_true(view.get_detail_placement_text().contains("(1, 2)"), "Placement label shows coords (1,2)")
+
+	# 4. Move mode: tapping Move button toggles move mode; tapping empty cell (2,2) emits move_item_requested
+	var move_btn: Button = view.get_move_button()
+	assert_true(move_btn != null and not move_btn.disabled, "MoveButton is enabled for selected plant")
+	assert_eq(move_btn.text, "ย้ายตำแหน่ง", "MoveButton shows move text")
+
+	var move_signal_received: Array = []
+	view.move_item_requested.connect(func(inst_id: String, zid: String, gx: int, gy: int) -> void:
+		move_signal_received.append([inst_id, zid, gx, gy])
+	)
+
+	move_btn.pressed.emit()
+	assert_true(view.is_move_mode_active(), "Move mode active after pressing MoveButton")
+	assert_eq(move_btn.text, "ยกเลิกการย้าย", "MoveButton updates to cancel text")
+
+	var cell_2_2: Button = view.get_zone_grid_cell_button(2, 2)
+	cell_2_2.pressed.emit()
+	assert_eq(move_signal_received.size(), 1, "move_item_requested signal emitted")
+	assert_eq(move_signal_received[0], ["plant-01", GardenZone.ZONE_MAIN, 2, 2], "Move signal args match")
+	assert_false(view.is_move_mode_active(), "Move mode deactivates upon target cell selection")
+
+	# 5. Zone switching & unlock: grant score to reach Living Garden (45+ pts) -> Adjacent Zone 2 unlocks
+	state.get_economy().grant_currency(500)
+	for i: int in range(8):
+		state.get_journal().try_put_record(DiscoveryRecord.new("visitor.butterfly" if i == 0 else "plant.holy_basil" if i == 1 else "plant.chili" if i == 2 else "plant.jasmine" if i == 3 else "plant.marigold" if i == 4 else "plant.banana" if i == 5 else "visitor.bird" if i == 6 else "visitor.cat", 100 + i, 1))
+
+	view.refresh_from_session()
+	assert_true(view.is_adjacent_zone_unlocked(), "Adjacent Zone 2 unlocks at 8 discoveries / Living Garden")
+
+	view.get_zone_adjacent_button().pressed.emit()
+	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_ADJACENT_1, "Switched active zone to zone.adjacent_1")
+	assert_true(view.get_zone_status_text().contains("มุมสวนข้างบ้าน"), "Zone status shows Adjacent Zone name")
+
 	view.free()

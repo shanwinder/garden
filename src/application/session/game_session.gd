@@ -57,14 +57,20 @@ func try_register_plant(
 	catalog: ContentCatalog,
 	instance_id: String,
 	definition_id: String,
-	planted_at: int
+	planted_at: int,
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
 ) -> PlantRegistrationResult:
 	return PlantRegistrationService.try_register_plant(
 		_state,
 		catalog,
 		instance_id,
 		definition_id,
-		planted_at
+		planted_at,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 
@@ -75,14 +81,20 @@ func try_plant_now(
 	catalog: ContentCatalog,
 	game_clock: GameClock,
 	random_source: RandomSource,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> PlantRegistrationResult:
 	return PlantingCommandService.try_plant_now(
 		_state,
 		catalog,
 		game_clock,
 		random_source,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 
@@ -224,14 +236,20 @@ func try_purchase_decoration_at(
 	catalog: ContentCatalog,
 	instance_id: String,
 	definition_id: String,
-	placed_at: int
+	placed_at: int,
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
 ) -> DecorationPurchaseResult:
 	return DecorationPurchaseService.try_purchase_and_place_at(
 		_state,
 		catalog,
 		instance_id,
 		definition_id,
-		placed_at
+		placed_at,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 
@@ -242,15 +260,84 @@ func try_purchase_decoration_now(
 	catalog: ContentCatalog,
 	game_clock: GameClock,
 	random_source: RandomSource,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> DecorationPurchaseResult:
 	return DecorationPurchaseService.try_purchase_and_place_now(
 		_state,
 		catalog,
 		game_clock,
 		random_source,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
 	)
+
+
+## Application operation to move an existing plant or decoration to a target unlocked grid cell.
+## Delegates directly to GardenPlacementService.
+func try_move_item_at(
+	catalog: ContentCatalog,
+	runtime_instance_id: String,
+	target_zone_id: String,
+	target_grid_x: int,
+	target_grid_y: int,
+	now_utc_seconds: int
+) -> GardenPlacementResult:
+	return GardenPlacementService.try_move_item_at(
+		_state,
+		catalog,
+		runtime_instance_id,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y,
+		now_utc_seconds
+	)
+
+
+## Application operation to capture current UTC timestamp and move an existing plant or decoration.
+## Delegates directly to GardenPlacementService.
+func try_move_item_now(
+	catalog: ContentCatalog,
+	game_clock: GameClock,
+	runtime_instance_id: String,
+	target_zone_id: String,
+	target_grid_x: int,
+	target_grid_y: int
+) -> GardenPlacementResult:
+	return GardenPlacementService.try_move_item_now(
+		_state,
+		catalog,
+		game_clock,
+		runtime_instance_id,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y
+	)
+
+
+## Pure application query returning the ordered array of unlocked zone IDs at [param now_utc_seconds].
+func get_unlocked_zone_ids(
+	catalog: ContentCatalog,
+	now_utc_seconds: int
+) -> Array[String]:
+	var snapshot: GardenSnapshot = build_garden_snapshot(catalog, now_utc_seconds)
+	var journal: JournalState = _state.get_journal() if _state != null else null
+	return GardenZone.get_unlocked_zone_ids(snapshot, journal)
+
+
+## Pure application query returning true if [param zone_id] is unlocked at [param now_utc_seconds].
+func is_zone_unlocked(
+	catalog: ContentCatalog,
+	zone_id: String,
+	now_utc_seconds: int
+) -> bool:
+	var snapshot: GardenSnapshot = build_garden_snapshot(catalog, now_utc_seconds)
+	var journal: JournalState = _state.get_journal() if _state != null else null
+	return GardenZone.is_zone_unlocked(zone_id, snapshot, journal)
 
 
 ## Pure application query to derive GardenProgressionSummary at [param now_utc_seconds].

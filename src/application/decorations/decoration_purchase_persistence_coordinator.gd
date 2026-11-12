@@ -20,7 +20,10 @@ static func try_purchase_decoration_and_save(
 	game_clock: GameClock,
 	random_source: RandomSource,
 	repository: LocalSaveRepository,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> DecorationPurchaseCheckpointResult:
 	if (
 		session == null
@@ -38,7 +41,10 @@ static func try_purchase_decoration_and_save(
 		catalog,
 		game_clock,
 		random_source,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 	if not purchase_result.is_purchased():

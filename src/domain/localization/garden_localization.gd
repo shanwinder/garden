@@ -487,3 +487,9 @@ static func get_known_decoration_ids() -> Array[String]:
 
 static func get_known_trait_ids() -> Array[String]:
 	return EnvironmentalTrait.ALL_TRAITS.duplicate()
+
+
+static func get_zone_name(zone_id: String, locale: String = DEFAULT_LOCALE) -> String:
+	if zone_id.is_empty():
+		return ""
+	return translate("%s.name" % zone_id, locale, zone_id)

@@ -30,14 +30,18 @@ class_name PlantingCommandService
 extends RefCounted
 
 
-## Validates dependencies, captures current UTC timestamp, generates a unique
-## runtime instance ID, and delegates registration to PlantRegistrationService.
+## Validates dependencies, captures current UTC timestamp, resolves or validates
+## Coarse Logical Grid + Zones placement, generates a unique runtime instance ID,
+## and delegates registration to PlantRegistrationService.
 static func try_plant_now(
 	state: GameState,
 	catalog: ContentCatalog,
 	game_clock: GameClock,
 	random_source: RandomSource,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> PlantRegistrationResult:
 	# 1-5. Dependency presence validation
 	if state == null or catalog == null or game_clock == null or random_source == null:
@@ -55,12 +59,38 @@ static func try_plant_now(
 	if not catalog.has_plant(definition_id):
 		return PlantRegistrationResult.unknown_definition_id()
 
-	# 8. Timestamp capture (utc_now_seconds called exactly once per valid command)
+	# 8. Explicit placement structural check (before sampling clock or RNG)
+	var is_auto_place: bool = zone_id.is_empty() and grid_x == -1 and grid_y == -1
+	if not is_auto_place:
+		if not GardenZone.is_valid_zone_id(zone_id) or not GardenZone.is_within_bounds(zone_id, grid_x, grid_y):
+			return PlantRegistrationResult.invalid_placement()
+
+	# 9. Timestamp capture (utc_now_seconds called exactly once per valid command)
 	var planted_at: int = game_clock.utc_now_seconds()
 	if planted_at < 0:
 		return PlantRegistrationResult.invalid_input()
 
-	# 9. Runtime ID generation (consumes RNG only after successful timestamp capture)
+	# 10. Resolve unlocked zones and validate/assign grid cell before consuming RNG
+	var snapshot: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, planted_at)
+	var unlocked_zones: Array[String] = GardenZone.get_unlocked_zone_ids(snapshot, state.get_journal())
+	var target_zone_id: String = zone_id
+	var target_grid_x: int = grid_x
+	var target_grid_y: int = grid_y
+
+	if is_auto_place:
+		var free_cell: Dictionary = GardenPlacement.find_first_free_cell(state, unlocked_zones)
+		if not (free_cell.get("found", false) as bool):
+			return PlantRegistrationResult.garden_full()
+		target_zone_id = free_cell["zone_id"] as String
+		target_grid_x = free_cell["grid_x"] as int
+		target_grid_y = free_cell["grid_y"] as int
+	else:
+		if not unlocked_zones.has(target_zone_id):
+			return PlantRegistrationResult.zone_locked()
+		if GardenPlacement.is_cell_occupied(state, target_zone_id, target_grid_x, target_grid_y):
+			return PlantRegistrationResult.cell_occupied()
+
+	# 11. Runtime ID generation (consumes RNG only after all preconditions & placement checks pass)
 	var instance_id: String = PlantRuntimeIdGenerator.try_generate_unique_id(
 		plant_collection,
 		random_source
@@ -68,13 +98,16 @@ static func try_plant_now(
 	if instance_id.is_empty():
 		return PlantRegistrationResult.id_generation_failed()
 
-	# 10. Authoritative registration delegation
+	# 12. Authoritative registration delegation
 	return PlantRegistrationService.try_register_plant(
 		state,
 		catalog,
 		instance_id,
 		definition_id,
-		planted_at
+		planted_at,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y
 	)
 
 

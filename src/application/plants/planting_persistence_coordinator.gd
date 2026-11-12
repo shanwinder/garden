@@ -28,7 +28,10 @@ static func try_plant_and_save(
 	game_clock: GameClock,
 	random_source: RandomSource,
 	repository: LocalSaveRepository,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> PlantingCheckpointResult:
 	# 1. Dependency presence validation
 	if session == null or catalog == null or game_clock == null or random_source == null or repository == null:
@@ -43,7 +46,10 @@ static func try_plant_and_save(
 		catalog,
 		game_clock,
 		random_source,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 	# 4. If planting failed, do not attempt to save

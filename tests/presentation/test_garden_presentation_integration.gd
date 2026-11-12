@@ -103,6 +103,7 @@ func run_tests() -> void:
 	_test_backup_recovery_renders_in_presentation()
 	_test_all_blocked_startup_diagnostics_and_pause_safety()
 	_test_localization_thai_english_switching_e2e()
+	_test_coarse_grid_placement_and_first_expansion_e2e()
 	_test_portrait_layout_bounds_regression()
 	_test_file_hygiene()
 
@@ -1548,6 +1549,135 @@ func _test_localization_thai_english_switching_e2e() -> void:
 	assert_eq(blocked_view.get_blocked_message(), "Save data is corrupted; unable to open garden", "Blocked startup translates to English on toggle")
 	blocked_main.free()
 	blocked_app.free()
+	_cleanup_test_files()
+
+
+func _test_coarse_grid_placement_and_first_expansion_e2e() -> void:
+	describe("E2E: Coarse Logical Grid cell targeting, item moving, First Expansion unlock, and Schema V4 persistence across restart")
+	_cleanup_test_files()
+	var repo_1: LocalSaveRepository = LocalSaveRepository.new(TEST_PRIMARY, TEST_TEMP, TEST_BACKUP, TEST_CORRUPT)
+	var clock_1: FakeGameClock = FakeGameClock.new(1000, 0)
+	var rng_1: FakeRandomSource = FakeRandomSource.new([0.0], [1, 2, 3, 4, 5, 6, 7, 8])
+
+	var app_1: AppRoot = AppRoot.new(repo_1, PlantContentLoader.new(), clock_1, rng_1)
+	app_1.bootstrap_session()
+	var main_1: MainScreen = _instantiate_bound_main_screen(app_1)
+	var view_1: GardenView = main_1.get_garden_view()
+
+	# 1. Target empty cell (1, 1) in zone.main, then plant holy basil via PlantingPicker
+	app_1.try_plant_and_checkpoint("plant.holy_basil", GardenZone.ZONE_MAIN, 1, 1)
+	view_1.refresh_from_session()
+
+	var plant_views: Array[PlantView] = view_1.get_plant_views()
+	assert_eq(plant_views.size(), 1, "1 plant view rendered")
+	var basil_id: String = plant_views[0].get_runtime_instance_id()
+	assert_eq(plant_views[0].get_zone_id(), GardenZone.ZONE_MAIN, "Basil placed in zone.main")
+	assert_eq(plant_views[0].get_grid_x(), 1, "Basil placed at grid_x=1")
+	assert_eq(plant_views[0].get_grid_y(), 1, "Basil placed at grid_y=1")
+
+	# Check cell occupancy button in grid
+	var cell_btn: Button = view_1.get_zone_grid_cell_button(1, 1)
+	assert_true(cell_btn != null, "Cell (1,1) button exists")
+	assert_true(cell_btn.text.contains("กะเพรา"), "Cell (1,1) button displays occupant")
+
+	# 2. Grant coins and purchase bench decoration targeted at (2, 2)
+	app_1.game_session.grant_currency(100)
+	app_1.try_purchase_decoration_and_checkpoint("decoration.bench", GardenZone.ZONE_MAIN, 2, 2)
+	view_1.refresh_from_session()
+
+	var decor_views: Array[DecorationView] = view_1.get_decoration_views()
+	assert_eq(decor_views.size(), 1, "1 decoration view rendered")
+	var bench_id: String = decor_views[0].get_runtime_instance_id()
+	assert_eq(decor_views[0].get_zone_id(), GardenZone.ZONE_MAIN, "Bench placed in zone.main")
+	assert_eq(decor_views[0].get_grid_x(), 2, "Bench placed at grid_x=2")
+	assert_eq(decor_views[0].get_grid_y(), 2, "Bench placed at grid_y=2")
+
+	# 3. Move plant from (1, 1) to (3, 3) via move command
+	var move_res: GardenPlacementCheckpointResult = app_1.try_move_item_and_checkpoint(
+		basil_id,
+		GardenZone.ZONE_MAIN,
+		3,
+		3
+	)
+	assert_true(move_res.is_moved(), "Plant move succeeded")
+	assert_true(move_res.is_saved(), "Plant move checkpoint saved")
+	view_1.refresh_from_session()
+
+	var updated_pview: PlantView = view_1.get_plant_view_by_id(basil_id)
+	assert_eq(updated_pview.get_grid_x(), 3, "Plant moved to X=3")
+	assert_eq(updated_pview.get_grid_y(), 3, "Plant moved to Y=3")
+
+	# 4. Check Save Schema V4 wire format on disk
+	var raw_save: String = FileAccess.get_file_as_string(TEST_PRIMARY)
+	var parsed_save: Variant = JSON.parse_string(raw_save)
+	assert_true(parsed_save is Dictionary, "Saved PRIMARY is JSON object")
+	var save_dict: Dictionary = parsed_save as Dictionary
+	assert_eq(int(save_dict["schema_version"]), 4, "Save file uses Schema V4")
+	var saved_plants: Array = save_dict["plants"] as Array
+	assert_eq((saved_plants[0] as Dictionary).get("grid_x"), "3", "Saved plant grid_x is 3")
+	assert_eq((saved_plants[0] as Dictionary).get("grid_y"), "3", "Saved plant grid_y is 3")
+	assert_eq((saved_plants[0] as Dictionary).get("zone_id"), "zone.main", "Saved plant zone_id is zone.main")
+
+	# 5. First Expansion unlock & move across zones:
+	# Add enough discoveries to unlock Adjacent Zone 2 (8+ discoveries)
+	for i: int in range(8):
+		app_1.game_session.record_discovery_at(
+			app_1.get_content_catalog(),
+			"plant.holy_basil" if i == 0 else "plant.chili" if i == 1 else "plant.jasmine" if i == 2 else "plant.marigold" if i == 3 else "plant.banana" if i == 4 else "visitor.butterfly" if i == 5 else "visitor.bird" if i == 6 else "visitor.cat",
+			1000 + i
+		)
+	view_1.refresh_from_session()
+	assert_true(view_1.is_adjacent_zone_unlocked(), "Adjacent Zone 2 is unlocked")
+
+	# Move bench to Adjacent Zone 2 at (1, 1)
+	var move_decor_res: GardenPlacementCheckpointResult = app_1.try_move_item_and_checkpoint(
+		bench_id,
+		GardenZone.ZONE_ADJACENT_1,
+		1,
+		1
+	)
+	assert_true(move_decor_res.is_moved(), "Bench move to adjacent zone succeeded")
+	assert_true(move_decor_res.is_saved(), "Bench move checkpoint saved")
+
+	main_1.free()
+	app_1.free()
+
+	# 6. Process restart: simulate fresh launch from the Schema V4 save file
+	var repo_2: LocalSaveRepository = LocalSaveRepository.new(TEST_PRIMARY, TEST_TEMP, TEST_BACKUP, TEST_CORRUPT)
+	var clock_2: FakeGameClock = FakeGameClock.new(2000, 0)
+	var rng_2: FakeRandomSource = FakeRandomSource.new([], [])
+	var app_2: AppRoot = AppRoot.new(repo_2, PlantContentLoader.new(), clock_2, rng_2)
+	var load_res: LocalSaveLoadResult = app_2.bootstrap_session()
+	assert_true(load_res.is_loaded(), "Session bootstrapped from Schema V4 save")
+
+	var main_2: MainScreen = _instantiate_bound_main_screen(app_2)
+	var view_2: GardenView = main_2.get_garden_view()
+
+	var reloaded_basil: PlantState = app_2.game_session.get_state().get_plants().get_plant(basil_id)
+	assert_true(reloaded_basil != null, "Basil preserved across restart")
+	assert_eq(reloaded_basil.get_zone_id(), GardenZone.ZONE_MAIN, "Reloaded basil in zone.main")
+	assert_eq(reloaded_basil.get_grid_x(), 3, "Reloaded basil X=3")
+	assert_eq(reloaded_basil.get_grid_y(), 3, "Reloaded basil Y=3")
+
+	var reloaded_bench: DecorationState = app_2.game_session.get_state().get_decorations().get_decoration(bench_id)
+	assert_true(reloaded_bench != null, "Bench preserved across restart")
+	assert_eq(reloaded_bench.get_zone_id(), GardenZone.ZONE_ADJACENT_1, "Reloaded bench in zone.adjacent_1")
+	assert_eq(reloaded_bench.get_grid_x(), 1, "Reloaded bench X=1")
+	assert_eq(reloaded_bench.get_grid_y(), 1, "Reloaded bench Y=1")
+
+	# Check UI view details reflect restored placement
+	var reloaded_dview: DecorationView = view_2.get_decoration_view_by_id(bench_id)
+	assert_true(reloaded_dview != null, "DecorationView exists for bench")
+	assert_eq(reloaded_dview.get_zone_id(), GardenZone.ZONE_ADJACENT_1, "DecorationView zone_id is zone.adjacent_1")
+	assert_eq(reloaded_dview.get_grid_x(), 1, "DecorationView grid_x is 1")
+	assert_eq(reloaded_dview.get_grid_y(), 1, "DecorationView grid_y is 1")
+
+	reloaded_dview.get_touch_button().pressed.emit()
+	assert_true(view_2.get_detail_placement_text().contains("มุมสวนข้างบ้าน"), "Details panel displays restored zone")
+	assert_true(view_2.get_detail_placement_text().contains("(1, 1)"), "Details panel displays restored coords (1,1)")
+
+	main_2.free()
+	app_2.free()
 	_cleanup_test_files()
 
 

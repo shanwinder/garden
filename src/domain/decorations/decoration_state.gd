@@ -5,6 +5,8 @@
 ## - instance_id: opaque runtime instance identity
 ## - definition_id: reference to DecorationDefinition identity
 ## - placed_at: authoritative integer seconds timestamp (UTC/Unix)
+## - zone_id: logical garden zone identifier (e.g. "zone.main", "zone.adjacent_1")
+## - grid_x / grid_y: non-negative integer coarse grid coordinates within zone_id
 ##
 ## Architectural rules:
 ## - Belongs to the domain decorations layer (src/domain/decorations/).
@@ -23,12 +25,25 @@ extends RefCounted
 var _instance_id: String
 var _definition_id: String
 var _placed_at: int
+var _zone_id: String
+var _grid_x: int
+var _grid_y: int
 
 
-func _init(instance_id: String, definition_id: String, placed_at: int) -> void:
+func _init(
+	instance_id: String,
+	definition_id: String,
+	placed_at: int,
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
+) -> void:
 	_instance_id = instance_id
 	_definition_id = definition_id
 	_placed_at = placed_at
+	_zone_id = zone_id
+	_grid_x = grid_x
+	_grid_y = grid_y
 
 
 func get_runtime_instance_id() -> String:
@@ -43,12 +58,26 @@ func get_placed_at() -> int:
 	return _placed_at
 
 
+func get_zone_id() -> String:
+	return _zone_id
+
+
+func get_grid_x() -> int:
+	return _grid_x
+
+
+func get_grid_y() -> int:
+	return _grid_y
+
+
 ## Returns true if this DecorationState represents structurally valid runtime facts.
 ##
 ## Requirements:
 ## - instance_id is non-empty
 ## - definition_id belongs to the "decoration." namespace and satisfies StableContentId syntax
 ## - placed_at >= 0
+## - zone_id is a valid GardenZone identifier
+## - grid_x >= 0 and grid_y >= 0
 ##
 ## Pure query: deterministic, side-effect free, no push_error, no clock or RNG access.
 func is_valid() -> bool:
@@ -62,6 +91,12 @@ func is_valid() -> bool:
 		return false
 
 	if _placed_at < 0:
+		return false
+
+	if not GardenZone.is_valid_zone_id(_zone_id):
+		return false
+
+	if _grid_x < 0 or _grid_y < 0:
 		return false
 
 	return true

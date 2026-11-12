@@ -212,6 +212,18 @@ const STRINGS: Dictionary = {
 	"ui.garden.empty_garden": "สวนของคุณยังไม่มีต้นไม้",
 	"ui.garden.blocked_default": "ไม่สามารถโหลดสวนได้ในขณะนี้",
 	"ui.garden.blocked_incomplete_deps": "ไม่สามารถเริ่มต้นสวนได้เนื่องจากข้อมูลไม่สมบูรณ์",
+	"zone.main.name": "สวนหน้าบ้าน",
+	"zone.adjacent_1.name": "มุมสวนข้างบ้าน",
+	"ui.garden.zones_section_header": "ผังสวนและโซน (%s)",
+	"ui.garden.zone_tab_unlocked": "%s (%d/%d)",
+	"ui.garden.zone_tab_locked": "%s (ล็อก)",
+	"ui.garden.zone_status_unlocked": "โซน: %s • ใช้งานแล้ว %d/%d ช่อง | แตะช่องว่างเพื่อเลือกตำแหน่งปลูกหรือวางของ",
+	"ui.garden.zone_status_target": "โซน: %s • เลือกช่อง (%d, %d) แล้ว — กดปลูกหรือซื้อของตกแต่งเพื่อวางในช่องนี้",
+	"ui.garden.zone_status_move": "โหมดย้ายตำแหน่ง: แตะช่องว่างในโซนที่ปลดล็อกเพื่อย้าย %s",
+	"ui.garden.zone_status_locked": "มุมสวนข้างบ้าน (First Expansion): ปลดล็อกอัตโนมัติเมื่อถึงระดับสวนมีชีวิต (45+ แต้ม) หรือเป้าหมายวันที่ 7",
+	"ui.garden.grid_cell_empty": "(%d,%d)",
+	"ui.garden.grid_cell_target": "[%d,%d]",
+	"ui.garden.grid_cell_occupied": "%s\n(%d,%d)",
 
 	# GardenView Details Panel
 	"ui.details.header_plant": "รายละเอียดต้นไม้",
@@ -237,6 +249,9 @@ const STRINGS: Dictionary = {
 	"ui.details.decoration_instance_id": "รหัสประจำชิ้น: %s",
 	"ui.details.placed_at": "จัดวางเมื่อ: %d (Unix UTC)",
 	"ui.details.decoration_no_harvest": "ของตกแต่งไม่ต้องเก็บเกี่ยว",
+	"ui.details.placement": "ตำแหน่ง: %s ช่อง (%d, %d)",
+	"ui.details.move_button": "ย้ายตำแหน่ง",
+	"ui.details.move_cancel_button": "ยกเลิกการย้าย",
 
 	# GardenView Feedback Messages
 	"ui.feedback.planting_not_ready": "ระบบยังไม่พร้อมสำหรับการปลูกต้นไม้",
@@ -273,6 +288,12 @@ const STRINGS: Dictionary = {
 	"ui.feedback.event_none_eligible": "ยังไม่มีเหตุการณ์พิเศษที่เกิดขึ้นในสวนขณะนี้",
 	"ui.feedback.event_not_ready": "ระบบยังไม่พร้อมสำหรับการชมเหตุการณ์ในสวน",
 	"ui.feedback.event_unknown": "สถานะเหตุการณ์ในสวนไม่ระบุ",
+	"ui.feedback.move_not_ready": "ระบบยังไม่พร้อมสำหรับการย้ายตำแหน่ง",
+	"ui.feedback.move_saved": "ย้าย%sไปยัง %s (%d, %d) และบันทึกเรียบร้อยแล้ว",
+	"ui.feedback.move_save_failed": "ย้าย%sไปยัง %s (%d, %d) แล้ว แต่ยังบันทึกไม่สำเร็จ",
+	"ui.feedback.move_rejected_reason": "ไม่สามารถย้ายตำแหน่งได้ (%s)",
+	"ui.feedback.move_rejected": "ไม่สามารถย้ายตำแหน่งได้",
+	"ui.feedback.move_unknown": "สถานะการย้ายตำแหน่งไม่ระบุ",
 
 	# PlantView & DecorationView Cards
 	"ui.plant_card.id_traits": "ID: %s | คุณสมบัติ: %s",

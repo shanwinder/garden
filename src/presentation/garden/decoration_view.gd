@@ -26,6 +26,9 @@ var _display_name: String = ""
 var _placed_at: int = -1
 var _price: int = 0
 var _environmental_traits: Array[String] = []
+var _zone_id: String = GardenZone.ZONE_MAIN
+var _grid_x: int = 0
+var _grid_y: int = 0
 var _is_selected: bool = false
 var _locale: String = GardenLocalization.DEFAULT_LOCALE
 
@@ -72,7 +75,10 @@ func bind_decoration_data(
 	placed_at: int,
 	price: int = 0,
 	environmental_traits: Array[String] = [],
-	locale: String = ""
+	locale: String = "",
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
 ) -> void:
 	if not locale.is_empty():
 		_locale = GardenLocalization.normalize_locale(locale)
@@ -82,6 +88,9 @@ func bind_decoration_data(
 	_placed_at = placed_at
 	_price = maxi(0, price)
 	_environmental_traits = environmental_traits.duplicate()
+	_zone_id = zone_id
+	_grid_x = grid_x
+	_grid_y = grid_y
 	_render()
 
 
@@ -110,6 +119,18 @@ func get_display_name() -> String:
 
 func get_placed_at() -> int:
 	return _placed_at
+
+
+func get_zone_id() -> String:
+	return _zone_id
+
+
+func get_grid_x() -> int:
+	return _grid_x
+
+
+func get_grid_y() -> int:
+	return _grid_y
 
 
 func get_price() -> int:

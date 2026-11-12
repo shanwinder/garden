@@ -66,6 +66,32 @@ func try_add_decoration(state: DecorationState) -> bool:
 	return true
 
 
+## Attempts to replace an existing DecorationState in the collection with [param state].
+##
+## Validation:
+## - [param state] must not be null.
+## - [param state] must satisfy is_valid().
+## - [param state] runtime instance ID must already exist in the collection.
+## - [param state] definition_id must match the existing DecorationState's definition_id.
+func try_replace_existing_decoration(state: DecorationState) -> bool:
+	if state == null:
+		return false
+
+	if not state.is_valid():
+		return false
+
+	var instance_id: String = state.get_runtime_instance_id()
+	if not _decorations_by_runtime_instance_id.has(instance_id):
+		return false
+
+	var existing: DecorationState = _decorations_by_runtime_instance_id[instance_id]
+	if existing == null or existing.get_definition_id() != state.get_definition_id():
+		return false
+
+	_decorations_by_runtime_instance_id[instance_id] = state
+	return true
+
+
 ## Returns all DecorationState instances in the collection in deterministic ascending order
 ## of runtime instance ID.
 ##

@@ -25,7 +25,10 @@ static func try_purchase_and_place_at(
 	catalog: ContentCatalog,
 	instance_id: String,
 	definition_id: String,
-	placed_at: int
+	placed_at: int,
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
 ) -> DecorationPurchaseResult:
 	# 1. Structural input validation
 	if state == null or catalog == null:
@@ -39,6 +42,9 @@ static func try_purchase_and_place_at(
 
 	if not _is_structurally_valid_decoration_definition_id(definition_id):
 		return DecorationPurchaseResult.invalid_input()
+
+	if not GardenZone.is_valid_zone_id(zone_id) or grid_x < 0 or grid_y < 0:
+		return DecorationPurchaseResult.invalid_placement()
 
 	var economy: EconomyState = state.get_economy()
 	var decorations: DecorationCollectionState = state.get_decorations()
@@ -67,7 +73,14 @@ static func try_purchase_and_place_at(
 		return DecorationPurchaseResult.duplicate_instance_id()
 
 	# 6. Construct DecorationState and verify structural validity before spending
-	var decoration: DecorationState = DecorationState.new(instance_id, definition_id, placed_at)
+	var decoration: DecorationState = DecorationState.new(
+		instance_id,
+		definition_id,
+		placed_at,
+		zone_id,
+		grid_x,
+		grid_y
+	)
 	if not decoration.is_valid():
 		return DecorationPurchaseResult.insertion_rejected()
 
@@ -85,15 +98,19 @@ static func try_purchase_and_place_at(
 	return DecorationPurchaseResult.purchased(decoration, price, economy.get_currency())
 
 
-## Validates dependencies, checks catalog and currency sufficiency BEFORE sampling clock
-## or consuming RNG, captures current UTC timestamp once, generates a unique runtime ID,
-## and delegates to [method try_purchase_and_place_at].
+## Validates dependencies, checks catalog, currency sufficiency, and explicit placement BEFORE
+## sampling clock or consuming RNG, captures current UTC timestamp once, resolves or validates
+## Coarse Logical Grid + Zones placement, generates a unique runtime ID, and delegates to
+## [method try_purchase_and_place_at].
 static func try_purchase_and_place_now(
 	state: GameState,
 	catalog: ContentCatalog,
 	game_clock: GameClock,
 	random_source: RandomSource,
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> DecorationPurchaseResult:
 	# 1. Dependency presence validation
 	if state == null or catalog == null or game_clock == null or random_source == null:
@@ -124,12 +141,38 @@ static func try_purchase_and_place_now(
 	if economy.get_currency() < price:
 		return DecorationPurchaseResult.insufficient_currency()
 
-	# 5. Timestamp capture (sampled exactly once per valid command)
+	# 5. Explicit placement structural check (before sampling clock or RNG)
+	var is_auto_place: bool = zone_id.is_empty() and grid_x == -1 and grid_y == -1
+	if not is_auto_place:
+		if not GardenZone.is_valid_zone_id(zone_id) or not GardenZone.is_within_bounds(zone_id, grid_x, grid_y):
+			return DecorationPurchaseResult.invalid_placement()
+
+	# 6. Timestamp capture (sampled exactly once per valid command)
 	var placed_at: int = game_clock.utc_now_seconds()
 	if placed_at < 0:
 		return DecorationPurchaseResult.invalid_input()
 
-	# 6. Runtime ID generation (consumes RNG only after all preconditions pass)
+	# 7. Resolve unlocked zones and validate/assign grid cell before consuming RNG or spending currency
+	var snapshot: GardenSnapshot = GardenSnapshotBuilder.build_snapshot(state, catalog, placed_at)
+	var unlocked_zones: Array[String] = GardenZone.get_unlocked_zone_ids(snapshot, state.get_journal())
+	var target_zone_id: String = zone_id
+	var target_grid_x: int = grid_x
+	var target_grid_y: int = grid_y
+
+	if is_auto_place:
+		var free_cell: Dictionary = GardenPlacement.find_first_free_cell(state, unlocked_zones)
+		if not (free_cell.get("found", false) as bool):
+			return DecorationPurchaseResult.garden_full()
+		target_zone_id = free_cell["zone_id"] as String
+		target_grid_x = free_cell["grid_x"] as int
+		target_grid_y = free_cell["grid_y"] as int
+	else:
+		if not unlocked_zones.has(target_zone_id):
+			return DecorationPurchaseResult.zone_locked()
+		if GardenPlacement.is_cell_occupied(state, target_zone_id, target_grid_x, target_grid_y):
+			return DecorationPurchaseResult.cell_occupied()
+
+	# 8. Runtime ID generation (consumes RNG only after all preconditions & placement checks pass)
 	var instance_id: String = DecorationRuntimeIdGenerator.try_generate_unique_id(
 		decorations,
 		random_source
@@ -137,13 +180,16 @@ static func try_purchase_and_place_now(
 	if instance_id.is_empty():
 		return DecorationPurchaseResult.id_generation_failed()
 
-	# 7. Authoritative purchase & placement
+	# 9. Authoritative purchase & placement
 	return try_purchase_and_place_at(
 		state,
 		catalog,
 		instance_id,
 		definition_id,
-		placed_at
+		placed_at,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y
 	)
 
 

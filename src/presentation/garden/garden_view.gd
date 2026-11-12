@@ -17,10 +17,13 @@ class_name GardenView
 extends Control
 
 signal planting_requested(definition_id: String)
+signal planting_at_requested(definition_id: String, zone_id: String, grid_x: int, grid_y: int)
 signal harvest_requested(runtime_instance_id: String)
 signal visitor_observation_requested()
 signal event_observation_requested()
 signal decoration_purchase_requested(definition_id: String)
+signal decoration_purchase_at_requested(definition_id: String, zone_id: String, grid_x: int, grid_y: int)
+signal move_item_requested(runtime_instance_id: String, target_zone_id: String, target_grid_x: int, target_grid_y: int)
 signal locale_changed(new_locale: String)
 
 const PLANT_VIEW_SCENE: PackedScene = preload("res://scenes/garden/plant_view.tscn")
@@ -43,6 +46,11 @@ var _game_clock: GameClock = null
 
 var _selected_runtime_instance_id: String = ""
 var _selected_decoration_instance_id: String = ""
+var _active_zone_id: String = GardenZone.ZONE_MAIN
+var _target_zone_id: String = ""
+var _target_grid_x: int = -1
+var _target_grid_y: int = -1
+var _is_move_mode: bool = false
 var _current_visitor_id: String = ""
 var _current_event_id: String = ""
 var _eligible_visitor_ids: Array[String] = []
@@ -78,6 +86,7 @@ var _last_visitor_selection_result: VisitorSelectionResult = null
 var _last_visitor_observation_checkpoint_result: VisitorObservationCheckpointResult = null
 var _last_event_selection_result: EventSelectionResult = null
 var _last_decoration_purchase_checkpoint_result: DecorationPurchaseCheckpointResult = null
+var _last_move_checkpoint_result: GardenPlacementCheckpointResult = null
 
 var _background_rect: ColorRect = null
 var _title_label: Label = null
@@ -107,6 +116,12 @@ var _planting_picker: PlantingPicker = null
 var _journal_panel: JournalPanel = null
 var _decoration_picker: DecorationPicker = null
 
+var _zones_section_label: Label = null
+var _zone_tabs_row: Control = null
+var _zone_main_button: Button = null
+var _zone_adjacent_button: Button = null
+var _zone_status_label: Label = null
+var _zone_grid_container: GridContainer = null
 var _plants_section_label: Label = null
 var _plants_container: Container = null
 var _decorations_section_label: Label = null
@@ -125,7 +140,9 @@ var _detail_stage_label: Label = null
 var _detail_reward_label: Label = null
 var _detail_id_label: Label = null
 var _detail_planted_at_label: Label = null
+var _detail_placement_label: Label = null
 var _harvest_button: Button = null
+var _move_button: Button = null
 
 
 func _ready() -> void:
@@ -193,6 +210,18 @@ func _resolve_nodes() -> void:
 		_journal_panel = get_node_or_null("JournalPanel") as JournalPanel
 	if _decoration_picker == null:
 		_decoration_picker = get_node_or_null("DecorationPicker") as DecorationPicker
+	if _zones_section_label == null:
+		_zones_section_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZonesSectionLabel") as Label
+	if _zone_tabs_row == null:
+		_zone_tabs_row = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZoneTabsRow") as Control
+	if _zone_main_button == null:
+		_zone_main_button = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZoneTabsRow/ZoneMainButton") as Button
+	if _zone_adjacent_button == null:
+		_zone_adjacent_button = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZoneTabsRow/ZoneAdjacentButton") as Button
+	if _zone_status_label == null:
+		_zone_status_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZoneStatusLabel") as Label
+	if _zone_grid_container == null:
+		_zone_grid_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/ZoneGridContainer") as GridContainer
 	if _plants_section_label == null:
 		_plants_section_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/PlantsSectionLabel") as Label
 	if _plants_container == null:
@@ -227,8 +256,12 @@ func _resolve_nodes() -> void:
 		_detail_id_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailIdLabel") as Label
 	if _detail_planted_at_label == null:
 		_detail_planted_at_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlantedAtLabel") as Label
+	if _detail_placement_label == null:
+		_detail_placement_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlacementLabel") as Label
 	if _harvest_button == null:
 		_harvest_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/HarvestButton") as Button
+	if _move_button == null:
+		_move_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/MoveButton") as Button
 	_connect_signals()
 
 
@@ -243,6 +276,12 @@ func _connect_signals() -> void:
 		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
 	if _harvest_button != null and not _harvest_button.pressed.is_connected(_on_harvest_button_pressed):
 		_harvest_button.pressed.connect(_on_harvest_button_pressed)
+	if _move_button != null and not _move_button.pressed.is_connected(_on_move_button_pressed):
+		_move_button.pressed.connect(_on_move_button_pressed)
+	if _zone_main_button != null and not _zone_main_button.pressed.is_connected(_on_zone_main_button_pressed):
+		_zone_main_button.pressed.connect(_on_zone_main_button_pressed)
+	if _zone_adjacent_button != null and not _zone_adjacent_button.pressed.is_connected(_on_zone_adjacent_button_pressed):
+		_zone_adjacent_button.pressed.connect(_on_zone_adjacent_button_pressed)
 	if _observe_visitor_button != null and not _observe_visitor_button.pressed.is_connected(_on_observe_visitor_button_pressed):
 		_observe_visitor_button.pressed.connect(_on_observe_visitor_button_pressed)
 	if _observe_event_button != null and not _observe_event_button.pressed.is_connected(_on_observe_event_button_pressed):
@@ -454,6 +493,7 @@ func _render_snapshot_at(now_utc: int) -> void:
 
 	_render_garden_items(plants, decorations, now_utc)
 	_update_environment_and_visitors(now_utc)
+	_render_zone_grid()
 	_update_journal_ui()
 
 
@@ -485,6 +525,7 @@ func _render_garden_items(
 			_decorations_section_label.visible = false
 		if _decorations_container != null:
 			_decorations_container.visible = false
+		_hide_zone_grid()
 		if _empty_container != null:
 			_empty_container.visible = true
 		if _plants_scroll != null:
@@ -542,7 +583,10 @@ func _render_garden_items(
 			seconds_until_mature,
 			plant_traits,
 			seconds_until_next_stage,
-			_locale
+			_locale,
+			plant_state.get_zone_id(),
+			plant_state.get_grid_x(),
+			plant_state.get_grid_y()
 		)
 		view.plant_selected.connect(_on_plant_selected)
 
@@ -570,11 +614,9 @@ func _render_garden_items(
 		var placed_at: int = decor_state.get_placed_at()
 		var decor_def: DecorationDefinition = _catalog.get_decoration(decor_def_id)
 		var decor_price: int = decor_def.price if decor_def != null else 0
-		var decor_traits: Array[String] = (
-			decor_def.environmental_traits.duplicate()
-			if decor_def != null
-			else []
-		)
+		var decor_traits: Array[String] = []
+		if decor_def != null:
+			decor_traits = decor_def.environmental_traits.duplicate()
 
 		var decor_view: DecorationView = DECORATION_VIEW_SCENE.instantiate() as DecorationView
 		decor_view.bind_decoration_data(
@@ -583,7 +625,10 @@ func _render_garden_items(
 			placed_at,
 			decor_price,
 			decor_traits,
-			_locale
+			_locale,
+			decor_state.get_zone_id(),
+			decor_state.get_grid_x(),
+			decor_state.get_grid_y()
 		)
 		decor_view.decoration_selected.connect(_on_decoration_selected)
 
@@ -716,10 +761,11 @@ func _update_decoration_details_panel(
 
 	var def_id: String = decor_state.get_definition_id()
 	_selected_decoration_definition_id = def_id
+	var empty_traits: Array[String] = []
 	_selected_decoration_traits = (
 		definition.environmental_traits.duplicate()
 		if definition != null
-		else []
+		else empty_traits
 	)
 	_selected_decoration_price = maxi(0, definition.price) if definition != null else 0
 	_selected_decoration_placed_at = decor_state.get_placed_at()
@@ -761,9 +807,27 @@ func _update_decoration_details_panel(
 	if _detail_planted_at_label != null:
 		_detail_planted_at_label.text = GardenLocalization.format_key("ui.details.placed_at", [decor_state.get_placed_at()], _locale)
 
+	if _detail_placement_label != null:
+		_detail_placement_label.text = GardenLocalization.format_key(
+			"ui.details.placement",
+			[
+				GardenLocalization.get_zone_name(decor_state.get_zone_id(), _locale),
+				decor_state.get_grid_x(),
+				decor_state.get_grid_y(),
+			],
+			_locale
+		)
+
 	if _harvest_button != null:
 		_harvest_button.disabled = true
 		_harvest_button.text = GardenLocalization.translate("ui.details.decoration_no_harvest", _locale)
+
+	if _move_button != null:
+		_move_button.disabled = _is_blocked
+		_move_button.text = GardenLocalization.translate(
+			"ui.details.move_cancel_button" if _is_move_mode else "ui.details.move_button",
+			_locale
+		)
 
 
 func _update_details_panel(
@@ -779,13 +843,19 @@ func _update_details_panel(
 	if plant_state == null:
 		_clear_selected_plant_fields()
 		_clear_selected_decoration_fields()
+		_is_move_mode = false
 		if _details_header_label != null:
 			_details_header_label.text = GardenLocalization.translate("ui.details.header_plant", _locale)
 		_no_selection_label.visible = true
 		_details_content.visible = false
+		if _detail_placement_label != null:
+			_detail_placement_label.text = ""
 		if _harvest_button != null:
 			_harvest_button.disabled = true
 			_harvest_button.text = GardenLocalization.translate("ui.details.harvest_not_ready", _locale)
+		if _move_button != null:
+			_move_button.disabled = true
+			_move_button.text = GardenLocalization.translate("ui.details.move_button", _locale)
 		return
 
 	_clear_selected_decoration_fields()
@@ -806,10 +876,11 @@ func _update_details_panel(
 		definition,
 		now_utc
 	)
+	var empty_plant_traits: Array[String] = []
 	_selected_plant_traits = (
 		definition.environmental_traits.duplicate()
 		if definition != null
-		else []
+		else empty_plant_traits
 	)
 	_selected_plant_harvest_reward = (
 		maxi(0, definition.harvest_reward)
@@ -867,6 +938,17 @@ func _update_details_panel(
 	if _detail_planted_at_label != null:
 		_detail_planted_at_label.text = GardenLocalization.format_key("ui.details.planted_at", [plant_state.get_planted_at()], _locale)
 
+	if _detail_placement_label != null:
+		_detail_placement_label.text = GardenLocalization.format_key(
+			"ui.details.placement",
+			[
+				GardenLocalization.get_zone_name(plant_state.get_zone_id(), _locale),
+				plant_state.get_grid_x(),
+				plant_state.get_grid_y(),
+			],
+			_locale
+		)
+
 	if _harvest_button != null:
 		var can_harvest: bool = (
 			not _is_blocked
@@ -880,6 +962,13 @@ func _update_details_panel(
 		else:
 			_harvest_button.text = GardenLocalization.translate("ui.details.harvest_not_ready", _locale)
 
+	if _move_button != null:
+		_move_button.disabled = _is_blocked
+		_move_button.text = GardenLocalization.translate(
+			"ui.details.move_cancel_button" if _is_move_mode else "ui.details.move_button",
+			_locale
+		)
+
 
 func _show_blocked_visual() -> void:
 	_resolve_nodes()
@@ -887,6 +976,10 @@ func _show_blocked_visual() -> void:
 	_clear_decoration_views()
 	_selected_runtime_instance_id = ""
 	_selected_decoration_instance_id = ""
+	_target_zone_id = ""
+	_target_grid_x = -1
+	_target_grid_y = -1
+	_is_move_mode = false
 	_current_visitor_id = ""
 	_current_event_id = ""
 	_eligible_visitor_ids = []
@@ -941,6 +1034,7 @@ func _show_blocked_visual() -> void:
 		_decorations_section_label.visible = false
 	if _decorations_container != null:
 		_decorations_container.visible = false
+	_hide_zone_grid()
 	if _empty_container != null:
 		_empty_container.visible = false
 	if _plants_scroll != null:
@@ -1262,7 +1356,16 @@ func get_detail_stage_text() -> String:
 
 
 func _on_picker_planting_requested(definition_id: String) -> void:
-	planting_requested.emit(definition_id)
+	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
+		var z_id: String = _target_zone_id
+		var gx: int = _target_grid_x
+		var gy: int = _target_grid_y
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+		planting_at_requested.emit(definition_id, z_id, gx, gy)
+	else:
+		planting_requested.emit(definition_id)
 
 
 ## Opens the planting picker modal.
@@ -1308,6 +1411,14 @@ func show_planting_result(result: PlantingCheckpointResult) -> void:
 						reason_str = "INSERTION_REJECTED"
 					PlantRegistrationResult.ID_GENERATION_FAILED:
 						reason_str = "ID_GENERATION_FAILED"
+					PlantRegistrationResult.INVALID_PLACEMENT:
+						reason_str = "INVALID_PLACEMENT"
+					PlantRegistrationResult.ZONE_LOCKED:
+						reason_str = "ZONE_LOCKED"
+					PlantRegistrationResult.CELL_OCCUPIED:
+						reason_str = "CELL_OCCUPIED"
+					PlantRegistrationResult.GARDEN_FULL:
+						reason_str = "GARDEN_FULL"
 					_:
 						reason_str = "UNKNOWN"
 			if not reason_str.is_empty():
@@ -1611,7 +1722,16 @@ func get_last_visitor_observation_checkpoint_result() -> VisitorObservationCheck
 
 
 func _on_picker_decoration_purchase_requested(definition_id: String) -> void:
-	decoration_purchase_requested.emit(definition_id)
+	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
+		var z_id: String = _target_zone_id
+		var gx: int = _target_grid_x
+		var gy: int = _target_grid_y
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+		decoration_purchase_at_requested.emit(definition_id, z_id, gx, gy)
+	else:
+		decoration_purchase_requested.emit(definition_id)
 
 
 ## Opens the decoration picker modal.
@@ -1664,6 +1784,14 @@ func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult)
 						reason_str = "CURRENCY_SPEND_REJECTED"
 					DecorationPurchaseResult.INSERTION_REJECTED:
 						reason_str = "INSERTION_REJECTED"
+					DecorationPurchaseResult.INVALID_PLACEMENT:
+						reason_str = "INVALID_PLACEMENT"
+					DecorationPurchaseResult.ZONE_LOCKED:
+						reason_str = "ZONE_LOCKED"
+					DecorationPurchaseResult.CELL_OCCUPIED:
+						reason_str = "CELL_OCCUPIED"
+					DecorationPurchaseResult.GARDEN_FULL:
+						reason_str = "GARDEN_FULL"
 					_:
 						reason_str = "UNKNOWN"
 			if not reason_str.is_empty():
@@ -2057,6 +2185,9 @@ func _refresh_active_feedback_locale() -> void:
 		"event":
 			if _last_event_selection_result != null:
 				show_event_result(_last_event_selection_result)
+		"move":
+			if _last_move_checkpoint_result != null:
+				show_move_result(_last_move_checkpoint_result)
 		"return":
 			if _last_return_summary != null:
 				show_return_summary(_last_return_summary)
@@ -3200,3 +3331,381 @@ func get_selected_decoration_placed_at() -> int:
 func get_details_header_text() -> String:
 	_resolve_nodes()
 	return _details_header_label.text if _details_header_label != null else ""
+
+
+func _hide_zone_grid() -> void:
+	_clear_container_children(_zone_grid_container)
+	if _zones_section_label != null:
+		_zones_section_label.visible = false
+	if _zone_tabs_row != null:
+		_zone_tabs_row.visible = false
+	if _zone_status_label != null:
+		_zone_status_label.visible = false
+	if _zone_grid_container != null:
+		_zone_grid_container.visible = false
+
+
+func _render_zone_grid() -> void:
+	_resolve_nodes()
+	if _is_blocked or _session == null or _session.get_state() == null:
+		_hide_zone_grid()
+		return
+
+	var state: GameState = _session.get_state()
+	var plants: Array[PlantState] = state.get_plants().get_all_plants() if state.get_plants() != null else []
+	var decorations: Array[DecorationState] = (
+		state.get_decorations().get_all_decorations()
+		if state.get_decorations() != null
+		else []
+	)
+	if plants.is_empty() and decorations.is_empty():
+		_hide_zone_grid()
+		return
+
+	var journal: JournalState = state.get_journal()
+	var main_unlocked: bool = GardenZone.is_zone_unlocked(GardenZone.ZONE_MAIN, _last_snapshot, journal)
+	var adj_unlocked: bool = GardenZone.is_zone_unlocked(GardenZone.ZONE_ADJACENT_1, _last_snapshot, journal)
+	if not GardenZone.is_valid_zone_id(_active_zone_id):
+		_active_zone_id = GardenZone.ZONE_MAIN
+
+	var active_zone_name: String = GardenLocalization.get_zone_name(_active_zone_id, _locale)
+	var active_unlocked: bool = adj_unlocked if _active_zone_id == GardenZone.ZONE_ADJACENT_1 else main_unlocked
+	var active_used: int = GardenPlacement.get_occupied_cell_count(state, _active_zone_id)
+	var active_total: int = GardenZone.get_cell_count(_active_zone_id)
+
+	if _zones_section_label != null:
+		_zones_section_label.visible = true
+		_zones_section_label.text = GardenLocalization.format_key(
+			"ui.garden.zones_section_header",
+			[active_zone_name],
+			_locale
+		)
+
+	if _zone_tabs_row != null:
+		_zone_tabs_row.visible = true
+
+	if _zone_main_button != null:
+		var main_name: String = GardenLocalization.get_zone_name(GardenZone.ZONE_MAIN, _locale)
+		var main_used: int = GardenPlacement.get_occupied_cell_count(state, GardenZone.ZONE_MAIN)
+		var main_total: int = GardenZone.get_cell_count(GardenZone.ZONE_MAIN)
+		_zone_main_button.text = GardenLocalization.format_key(
+			"ui.garden.zone_tab_unlocked",
+			[main_name, main_used, main_total],
+			_locale
+		)
+		_zone_main_button.modulate = Color(1.0, 1.0, 0.85, 1.0) if _active_zone_id == GardenZone.ZONE_MAIN else Color(0.85, 0.85, 0.85, 1.0)
+
+	if _zone_adjacent_button != null:
+		var adj_name: String = GardenLocalization.get_zone_name(GardenZone.ZONE_ADJACENT_1, _locale)
+		if adj_unlocked:
+			var adj_used: int = GardenPlacement.get_occupied_cell_count(state, GardenZone.ZONE_ADJACENT_1)
+			var adj_total: int = GardenZone.get_cell_count(GardenZone.ZONE_ADJACENT_1)
+			_zone_adjacent_button.text = GardenLocalization.format_key(
+				"ui.garden.zone_tab_unlocked",
+				[adj_name, adj_used, adj_total],
+				_locale
+			)
+		else:
+			_zone_adjacent_button.text = GardenLocalization.format_key(
+				"ui.garden.zone_tab_locked",
+				[adj_name],
+				_locale
+			)
+		_zone_adjacent_button.modulate = Color(1.0, 1.0, 0.85, 1.0) if _active_zone_id == GardenZone.ZONE_ADJACENT_1 else Color(0.85, 0.85, 0.85, 1.0)
+
+	if _zone_status_label != null:
+		_zone_status_label.visible = true
+		if not active_unlocked:
+			_zone_status_label.text = GardenLocalization.translate("ui.garden.zone_status_locked", _locale)
+		elif _is_move_mode:
+			var moving_name: String = _get_selected_item_display_name()
+			_zone_status_label.text = GardenLocalization.format_key(
+				"ui.garden.zone_status_move",
+				[moving_name],
+				_locale
+			)
+		elif _target_zone_id == _active_zone_id and _target_grid_x >= 0 and _target_grid_y >= 0:
+			_zone_status_label.text = GardenLocalization.format_key(
+				"ui.garden.zone_status_target",
+				[active_zone_name, _target_grid_x, _target_grid_y],
+				_locale
+			)
+		else:
+			_zone_status_label.text = GardenLocalization.format_key(
+				"ui.garden.zone_status_unlocked",
+				[active_zone_name, active_used, active_total],
+				_locale
+			)
+
+	if _zone_grid_container == null:
+		return
+
+	_clear_container_children(_zone_grid_container)
+	_zone_grid_container.visible = true
+	var width: int = GardenZone.get_grid_width(_active_zone_id)
+	var height: int = GardenZone.get_grid_height(_active_zone_id)
+	_zone_grid_container.columns = maxi(1, width)
+
+	for y: int in range(height):
+		for x: int in range(width):
+			var btn: Button = Button.new()
+			btn.name = "Cell_%d_%d" % [x, y]
+			btn.custom_minimum_size = Vector2(64, 56)
+			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			btn.focus_mode = Control.FOCUS_ALL
+			btn.add_theme_font_size_override("font_size", 16)
+
+			var occupant: Dictionary = GardenPlacement.get_occupant_at(state, _active_zone_id, x, y)
+			var occ_kind: String = occupant.get("kind", "") as String
+			var occ_id: String = occupant.get("instance_id", "") as String
+			var occ_def_id: String = occupant.get("definition_id", "") as String
+
+			if occ_kind == GardenPlacement.KIND_PLANT:
+				var plant_name: String = GardenLocalization.get_plant_name(occ_def_id, _locale)
+				btn.text = GardenLocalization.format_key("ui.garden.grid_cell_occupied", [plant_name, x, y], _locale)
+				var is_sel: bool = not _selected_runtime_instance_id.is_empty() and occ_id == _selected_runtime_instance_id
+				btn.modulate = Color(0.85, 1.0, 0.72, 1.0) if is_sel else Color(0.75, 0.92, 0.78, 1.0)
+			elif occ_kind == GardenPlacement.KIND_DECORATION:
+				var decor_name: String = GardenLocalization.get_decoration_name(occ_def_id, _locale)
+				btn.text = GardenLocalization.format_key("ui.garden.grid_cell_occupied", [decor_name, x, y], _locale)
+				var is_sel_d: bool = not _selected_decoration_instance_id.is_empty() and occ_id == _selected_decoration_instance_id
+				btn.modulate = Color(1.0, 0.92, 0.68, 1.0) if is_sel_d else Color(0.92, 0.84, 0.72, 1.0)
+			else:
+				var is_target: bool = (_target_zone_id == _active_zone_id and _target_grid_x == x and _target_grid_y == y)
+				if is_target:
+					btn.text = GardenLocalization.format_key("ui.garden.grid_cell_target", [x, y], _locale)
+					btn.modulate = Color(0.96, 0.88, 0.56, 1.0)
+				else:
+					btn.text = GardenLocalization.format_key("ui.garden.grid_cell_empty", [x, y], _locale)
+					btn.modulate = Color(0.75, 0.75, 0.75, 0.85) if not active_unlocked else Color(0.88, 0.92, 0.88, 1.0)
+				btn.disabled = not active_unlocked
+
+			btn.pressed.connect(_on_zone_cell_pressed.bind(_active_zone_id, x, y))
+			_zone_grid_container.add_child(btn)
+
+
+func _get_selected_item_display_name() -> String:
+	if not _selected_plant_definition_id.is_empty():
+		return GardenLocalization.get_plant_name(_selected_plant_definition_id, _locale)
+	if not _selected_decoration_definition_id.is_empty():
+		return GardenLocalization.get_decoration_name(_selected_decoration_definition_id, _locale)
+	return GardenLocalization.translate("ui.common.dash", _locale)
+
+
+func _on_zone_main_button_pressed() -> void:
+	select_active_zone(GardenZone.ZONE_MAIN)
+
+
+func _on_zone_adjacent_button_pressed() -> void:
+	select_active_zone(GardenZone.ZONE_ADJACENT_1)
+
+
+func select_active_zone(zone_id: String) -> void:
+	if not GardenZone.is_valid_zone_id(zone_id):
+		return
+	_active_zone_id = zone_id
+	if not _target_zone_id.is_empty() and _target_zone_id != _active_zone_id:
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+	_render_zone_grid()
+
+
+func _on_move_button_pressed() -> void:
+	if _is_blocked or _session == null:
+		return
+	if _selected_runtime_instance_id.is_empty() and _selected_decoration_instance_id.is_empty():
+		return
+	_is_move_mode = not _is_move_mode
+	if _is_move_mode:
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+	_resolve_nodes()
+	if _move_button != null:
+		_move_button.text = GardenLocalization.translate(
+			"ui.details.move_cancel_button" if _is_move_mode else "ui.details.move_button",
+			_locale
+		)
+	_render_zone_grid()
+
+
+func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
+	if _is_blocked or _session == null or _session.get_state() == null:
+		return
+
+	var state: GameState = _session.get_state()
+	var occupant: Dictionary = GardenPlacement.get_occupant_at(state, zone_id, grid_x, grid_y)
+	var occ_kind: String = occupant.get("kind", "") as String
+	var occ_id: String = occupant.get("instance_id", "") as String
+
+	if occ_kind == GardenPlacement.KIND_PLANT and not occ_id.is_empty():
+		_is_move_mode = false
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+		_on_plant_selected(occ_id)
+		_render_zone_grid()
+		return
+
+	if occ_kind == GardenPlacement.KIND_DECORATION and not occ_id.is_empty():
+		_is_move_mode = false
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+		_on_decoration_selected(occ_id)
+		_render_zone_grid()
+		return
+
+	if not GardenZone.is_zone_unlocked(zone_id, _last_snapshot, state.get_journal()):
+		return
+
+	if _is_move_mode:
+		var moving_id: String = (
+			_selected_runtime_instance_id
+			if not _selected_runtime_instance_id.is_empty()
+			else _selected_decoration_instance_id
+		)
+		if not moving_id.is_empty():
+			_is_move_mode = false
+			move_item_requested.emit(moving_id, zone_id, grid_x, grid_y)
+			return
+
+	if _target_zone_id == zone_id and _target_grid_x == grid_x and _target_grid_y == grid_y:
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+	else:
+		_target_zone_id = zone_id
+		_target_grid_x = grid_x
+		_target_grid_y = grid_y
+	_render_zone_grid()
+
+
+## Displays user feedback from a GardenPlacementCheckpointResult.
+func show_move_result(result: GardenPlacementCheckpointResult) -> void:
+	_last_move_checkpoint_result = result
+	_resolve_nodes()
+	if _feedback_area == null or _feedback_label == null or result == null:
+		return
+
+	_active_feedback_kind = "move"
+	_feedback_area.visible = true
+	match result.get_status():
+		GardenPlacementCheckpointResult.Status.NOT_READY:
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.move_not_ready", _locale)
+		GardenPlacementCheckpointResult.Status.MOVE_REJECTED:
+			var reason_str: String = ""
+			var move_res: GardenPlacementResult = result.get_placement_result()
+			if move_res != null:
+				match move_res.get_status():
+					GardenPlacementResult.INVALID_INPUT:
+						reason_str = "INVALID_INPUT"
+					GardenPlacementResult.ITEM_NOT_FOUND:
+						reason_str = "ITEM_NOT_FOUND"
+					GardenPlacementResult.INVALID_PLACEMENT:
+						reason_str = "INVALID_PLACEMENT"
+					GardenPlacementResult.ZONE_LOCKED:
+						reason_str = "ZONE_LOCKED"
+					GardenPlacementResult.CELL_OCCUPIED:
+						reason_str = "CELL_OCCUPIED"
+					GardenPlacementResult.SAME_CELL:
+						reason_str = "SAME_CELL"
+					GardenPlacementResult.STATE_UPDATE_REJECTED:
+						reason_str = "STATE_UPDATE_REJECTED"
+					_:
+						reason_str = "UNKNOWN"
+			if not reason_str.is_empty():
+				_feedback_label.text = GardenLocalization.format_key("ui.feedback.move_rejected_reason", [reason_str], _locale)
+			else:
+				_feedback_label.text = GardenLocalization.translate("ui.feedback.move_rejected", _locale)
+		GardenPlacementCheckpointResult.Status.MOVED_SAVED, GardenPlacementCheckpointResult.Status.MOVED_SAVE_FAILED:
+			var pr: GardenPlacementResult = result.get_placement_result()
+			var item_name: String = ""
+			var zone_name: String = ""
+			var gx: int = 0
+			var gy: int = 0
+			if pr != null:
+				if pr.get_item_kind() == GardenPlacement.KIND_PLANT:
+					item_name = GardenLocalization.get_plant_name(pr.get_definition_id(), _locale)
+				else:
+					item_name = GardenLocalization.get_decoration_name(pr.get_definition_id(), _locale)
+				zone_name = GardenLocalization.get_zone_name(pr.get_zone_id(), _locale)
+				gx = pr.get_grid_x()
+				gy = pr.get_grid_y()
+			var key: String = (
+				"ui.feedback.move_saved"
+				if result.get_status() == GardenPlacementCheckpointResult.Status.MOVED_SAVED
+				else "ui.feedback.move_save_failed"
+			)
+			_feedback_label.text = GardenLocalization.format_key(key, [item_name, zone_name, gx, gy], _locale)
+		_:
+			_feedback_label.text = GardenLocalization.translate("ui.feedback.move_unknown", _locale)
+
+
+## Pure query for testing: returns currently selected zone tab ID.
+func get_active_zone_id() -> String:
+	return _active_zone_id
+
+
+## Pure query for testing: returns true if Adjacent Zone 2 is unlocked in the latest refresh.
+func is_adjacent_zone_unlocked() -> bool:
+	if _is_blocked or _session == null or _session.get_state() == null:
+		return false
+	return GardenZone.is_zone_unlocked(
+		GardenZone.ZONE_ADJACENT_1,
+		_last_snapshot,
+		_session.get_state().get_journal()
+	)
+
+
+## Pure query for testing: returns MoveButton instance.
+func get_move_button() -> Button:
+	_resolve_nodes()
+	return _move_button
+
+
+## Pure query for testing: returns true if move mode is active.
+func is_move_mode_active() -> bool:
+	return _is_move_mode and not _is_blocked
+
+
+## Pure query for testing: returns the currently targeted empty grid cell dictionary.
+func get_target_cell() -> Dictionary:
+	return {
+		"zone_id": _target_zone_id,
+		"grid_x": _target_grid_x,
+		"grid_y": _target_grid_y,
+	}
+
+
+## Pure query for testing: returns text displayed in DetailPlacementLabel.
+func get_detail_placement_text() -> String:
+	_resolve_nodes()
+	return _detail_placement_label.text if _detail_placement_label != null else ""
+
+
+## Pure query for testing: returns the grid cell Button at ([param grid_x], [param grid_y]) in the active zone.
+func get_zone_grid_cell_button(grid_x: int, grid_y: int) -> Button:
+	_resolve_nodes()
+	if _zone_grid_container == null:
+		return null
+	return _zone_grid_container.get_node_or_null("Cell_%d_%d" % [grid_x, grid_y]) as Button
+
+
+## Pure query for testing: returns ZoneMainButton.
+func get_zone_main_button() -> Button:
+	_resolve_nodes()
+	return _zone_main_button
+
+
+## Pure query for testing: returns ZoneAdjacentButton.
+func get_zone_adjacent_button() -> Button:
+	_resolve_nodes()
+	return _zone_adjacent_button
+
+
+## Pure query for testing: returns ZoneStatusLabel text.
+func get_zone_status_text() -> String:
+	_resolve_nodes()
+	return _zone_status_label.text if _zone_status_label != null else ""

@@ -572,7 +572,12 @@ func try_observe_visitor_and_checkpoint() -> VisitorObservationCheckpointResult:
 ## - random_source exists
 ##
 ## If not ready: returns PlantingCheckpointResult.not_ready() without mutating state or touching disk.
-func try_plant_and_checkpoint(definition_id: String) -> PlantingCheckpointResult:
+func try_plant_and_checkpoint(
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
+) -> PlantingCheckpointResult:
 	if not _is_bootstrapped:
 		return PlantingCheckpointResult.not_ready()
 
@@ -588,7 +593,10 @@ func try_plant_and_checkpoint(definition_id: String) -> PlantingCheckpointResult
 		game_clock,
 		random_source,
 		save_repository,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
 	)
 
 
@@ -627,7 +635,10 @@ func try_harvest_and_checkpoint(runtime_instance_id: String) -> HarvestCheckpoin
 ##
 ## If not ready: returns DecorationPurchaseCheckpointResult.not_ready() without mutating state or touching disk.
 func try_purchase_decoration_and_checkpoint(
-	definition_id: String
+	definition_id: String,
+	zone_id: String = "",
+	grid_x: int = -1,
+	grid_y: int = -1
 ) -> DecorationPurchaseCheckpointResult:
 	if not _is_bootstrapped:
 		return DecorationPurchaseCheckpointResult.not_ready()
@@ -650,5 +661,37 @@ func try_purchase_decoration_and_checkpoint(
 		game_clock,
 		random_source,
 		save_repository,
-		definition_id
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
+	)
+
+
+## Gameplay entry method to move an existing plant or decoration to a target unlocked grid cell
+## and immediately checkpoint persistence.
+func try_move_item_and_checkpoint(
+	runtime_instance_id: String,
+	target_zone_id: String,
+	target_grid_x: int,
+	target_grid_y: int
+) -> GardenPlacementCheckpointResult:
+	if not _is_bootstrapped:
+		return GardenPlacementCheckpointResult.not_ready()
+
+	if _content_bootstrap_status != ContentBootstrapStatus.READY:
+		return GardenPlacementCheckpointResult.not_ready()
+
+	if content_catalog == null or game_session == null or save_repository == null or game_clock == null:
+		return GardenPlacementCheckpointResult.not_ready()
+
+	return GardenPlacementPersistenceCoordinator.try_move_item_and_save(
+		game_session,
+		content_catalog,
+		game_clock,
+		save_repository,
+		runtime_instance_id,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y
 	)

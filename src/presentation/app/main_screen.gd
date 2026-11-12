@@ -41,6 +41,8 @@ func _connect_garden_signals() -> void:
 	_resolve_nodes()
 	if _garden_view != null and not _garden_view.planting_requested.is_connected(_on_garden_planting_requested):
 		_garden_view.planting_requested.connect(_on_garden_planting_requested)
+	if _garden_view != null and not _garden_view.planting_at_requested.is_connected(_on_garden_planting_at_requested):
+		_garden_view.planting_at_requested.connect(_on_garden_planting_at_requested)
 	if _garden_view != null and not _garden_view.harvest_requested.is_connected(_on_garden_harvest_requested):
 		_garden_view.harvest_requested.connect(_on_garden_harvest_requested)
 	if _garden_view != null and not _garden_view.visitor_observation_requested.is_connected(_on_garden_visitor_observation_requested):
@@ -49,6 +51,10 @@ func _connect_garden_signals() -> void:
 		_garden_view.event_observation_requested.connect(_on_garden_event_observation_requested)
 	if _garden_view != null and not _garden_view.decoration_purchase_requested.is_connected(_on_garden_decoration_purchase_requested):
 		_garden_view.decoration_purchase_requested.connect(_on_garden_decoration_purchase_requested)
+	if _garden_view != null and not _garden_view.decoration_purchase_at_requested.is_connected(_on_garden_decoration_purchase_at_requested):
+		_garden_view.decoration_purchase_at_requested.connect(_on_garden_decoration_purchase_at_requested)
+	if _garden_view != null and not _garden_view.move_item_requested.is_connected(_on_garden_move_item_requested):
+		_garden_view.move_item_requested.connect(_on_garden_move_item_requested)
 
 
 ## Explicit dependency injection seam allowing tests or coordinators to bind an isolated AppRoot.
@@ -147,6 +153,15 @@ func _on_app_session_resumed() -> void:
 
 
 func _on_garden_planting_requested(definition_id: String) -> void:
+	_on_garden_planting_at_requested(definition_id, "", -1, -1)
+
+
+func _on_garden_planting_at_requested(
+	definition_id: String,
+	zone_id: String,
+	grid_x: int,
+	grid_y: int
+) -> void:
 	var app: AppRoot = _get_effective_app_root()
 	if app == null:
 		if _garden_view != null:
@@ -160,7 +175,12 @@ func _on_garden_planting_requested(definition_id: String) -> void:
 		return
 
 	# Invoke authoritative planting checkpoint command exactly once.
-	var result: PlantingCheckpointResult = app.try_plant_and_checkpoint(definition_id)
+	var result: PlantingCheckpointResult = app.try_plant_and_checkpoint(
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
+	)
 
 	if _garden_view != null:
 		_garden_view.show_planting_result(result)
@@ -239,6 +259,15 @@ func _on_garden_event_observation_requested() -> void:
 
 
 func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
+	_on_garden_decoration_purchase_at_requested(definition_id, "", -1, -1)
+
+
+func _on_garden_decoration_purchase_at_requested(
+	definition_id: String,
+	zone_id: String,
+	grid_x: int,
+	grid_y: int
+) -> void:
 	var app: AppRoot = _get_effective_app_root()
 	if app == null:
 		if _garden_view != null:
@@ -254,10 +283,48 @@ func _on_garden_decoration_purchase_requested(definition_id: String) -> void:
 			_garden_view.show_decoration_purchase_result(DecorationPurchaseCheckpointResult.not_ready())
 		return
 
-	var result: DecorationPurchaseCheckpointResult = app.try_purchase_decoration_and_checkpoint(definition_id)
+	var result: DecorationPurchaseCheckpointResult = app.try_purchase_decoration_and_checkpoint(
+		definition_id,
+		zone_id,
+		grid_x,
+		grid_y
+	)
 	if _garden_view != null:
 		_garden_view.show_decoration_purchase_result(result)
 		if result != null and result.is_purchased():
+			_garden_view.refresh_from_session()
+
+
+func _on_garden_move_item_requested(
+	runtime_instance_id: String,
+	target_zone_id: String,
+	target_grid_x: int,
+	target_grid_y: int
+) -> void:
+	var app: AppRoot = _get_effective_app_root()
+	if app == null:
+		if _garden_view != null:
+			_garden_view.show_move_result(GardenPlacementCheckpointResult.not_ready())
+		return
+
+	if (
+		not app.is_session_bootstrapped()
+		or app.get_content_bootstrap_status() != AppRoot.ContentBootstrapStatus.READY
+		or not app.has_active_session()
+	):
+		if _garden_view != null:
+			_garden_view.show_move_result(GardenPlacementCheckpointResult.not_ready())
+		return
+
+	var result: GardenPlacementCheckpointResult = app.try_move_item_and_checkpoint(
+		runtime_instance_id,
+		target_zone_id,
+		target_grid_x,
+		target_grid_y
+	)
+	if _garden_view != null:
+		_garden_view.show_move_result(result)
+		if result != null and result.is_moved():
 			_garden_view.refresh_from_session()
 
 

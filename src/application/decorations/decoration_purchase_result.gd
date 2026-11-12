@@ -19,6 +19,10 @@ enum Status {
 	ID_GENERATION_FAILED,
 	CURRENCY_SPEND_REJECTED,
 	INSERTION_REJECTED,
+	INVALID_PLACEMENT,
+	ZONE_LOCKED,
+	CELL_OCCUPIED,
+	GARDEN_FULL,
 }
 
 const PURCHASED: Status = Status.PURCHASED
@@ -30,6 +34,10 @@ const DUPLICATE_INSTANCE_ID: Status = Status.DUPLICATE_INSTANCE_ID
 const ID_GENERATION_FAILED: Status = Status.ID_GENERATION_FAILED
 const CURRENCY_SPEND_REJECTED: Status = Status.CURRENCY_SPEND_REJECTED
 const INSERTION_REJECTED: Status = Status.INSERTION_REJECTED
+const INVALID_PLACEMENT: Status = Status.INVALID_PLACEMENT
+const ZONE_LOCKED: Status = Status.ZONE_LOCKED
+const CELL_OCCUPIED: Status = Status.CELL_OCCUPIED
+const GARDEN_FULL: Status = Status.GARDEN_FULL
 
 var _status: Status
 var _decoration: DecorationState = null
@@ -99,6 +107,22 @@ static func currency_spend_rejected() -> DecorationPurchaseResult:
 
 static func insertion_rejected() -> DecorationPurchaseResult:
 	return DecorationPurchaseResult.new(Status.INSERTION_REJECTED)
+
+
+static func invalid_placement() -> DecorationPurchaseResult:
+	return DecorationPurchaseResult.new(Status.INVALID_PLACEMENT)
+
+
+static func zone_locked() -> DecorationPurchaseResult:
+	return DecorationPurchaseResult.new(Status.ZONE_LOCKED)
+
+
+static func cell_occupied() -> DecorationPurchaseResult:
+	return DecorationPurchaseResult.new(Status.CELL_OCCUPIED)
+
+
+static func garden_full() -> DecorationPurchaseResult:
+	return DecorationPurchaseResult.new(Status.GARDEN_FULL)
 
 
 func get_status() -> Status:

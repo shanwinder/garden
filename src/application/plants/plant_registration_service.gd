@@ -31,7 +31,10 @@ static func try_register_plant(
 	catalog: ContentCatalog,
 	instance_id: String,
 	definition_id: String,
-	planted_at: int
+	planted_at: int,
+	zone_id: String = GardenZone.ZONE_MAIN,
+	grid_x: int = 0,
+	grid_y: int = 0
 ) -> PlantRegistrationResult:
 	# 1. Input structural validation precedence
 	if state == null or catalog == null:
@@ -54,6 +57,9 @@ static func try_register_plant(
 	if journal == null:
 		return PlantRegistrationResult.invalid_input()
 
+	if not GardenZone.is_valid_zone_id(zone_id) or grid_x < 0 or grid_y < 0:
+		return PlantRegistrationResult.invalid_input()
+
 	# 2. Catalog membership validation
 	if not catalog.has_plant(definition_id):
 		return PlantRegistrationResult.unknown_definition_id()
@@ -63,7 +69,14 @@ static func try_register_plant(
 		return PlantRegistrationResult.duplicate_instance_id()
 
 	# 4. PlantState construction and authoritative collection insertion
-	var plant: PlantState = PlantState.new(instance_id, definition_id, planted_at)
+	var plant: PlantState = PlantState.new(
+		instance_id,
+		definition_id,
+		planted_at,
+		zone_id,
+		grid_x,
+		grid_y
+	)
 	if not plant.is_valid():
 		return PlantRegistrationResult.insertion_rejected()
 

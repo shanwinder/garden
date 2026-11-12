@@ -19,6 +19,10 @@ enum Status {
 	DUPLICATE_INSTANCE_ID,
 	INSERTION_REJECTED,
 	ID_GENERATION_FAILED,
+	INVALID_PLACEMENT,
+	ZONE_LOCKED,
+	CELL_OCCUPIED,
+	GARDEN_FULL,
 }
 
 const REGISTERED: Status = Status.REGISTERED
@@ -27,6 +31,10 @@ const UNKNOWN_DEFINITION_ID: Status = Status.UNKNOWN_DEFINITION_ID
 const DUPLICATE_INSTANCE_ID: Status = Status.DUPLICATE_INSTANCE_ID
 const INSERTION_REJECTED: Status = Status.INSERTION_REJECTED
 const ID_GENERATION_FAILED: Status = Status.ID_GENERATION_FAILED
+const INVALID_PLACEMENT: Status = Status.INVALID_PLACEMENT
+const ZONE_LOCKED: Status = Status.ZONE_LOCKED
+const CELL_OCCUPIED: Status = Status.CELL_OCCUPIED
+const GARDEN_FULL: Status = Status.GARDEN_FULL
 
 var _status: Status
 var _plant: PlantState = null
@@ -68,6 +76,26 @@ static func insertion_rejected() -> PlantRegistrationResult:
 ## Factory for failure when runtime plant instance ID generation fails or is exhausted.
 static func id_generation_failed() -> PlantRegistrationResult:
 	return PlantRegistrationResult.new(Status.ID_GENERATION_FAILED, null)
+
+
+## Factory for failure when target zone_id or grid coordinates are structurally invalid or out of bounds.
+static func invalid_placement() -> PlantRegistrationResult:
+	return PlantRegistrationResult.new(Status.INVALID_PLACEMENT, null)
+
+
+## Factory for failure when target zone is not yet unlocked.
+static func zone_locked() -> PlantRegistrationResult:
+	return PlantRegistrationResult.new(Status.ZONE_LOCKED, null)
+
+
+## Factory for failure when target logical grid cell is already occupied.
+static func cell_occupied() -> PlantRegistrationResult:
+	return PlantRegistrationResult.new(Status.CELL_OCCUPIED, null)
+
+
+## Factory for failure when all unlocked garden grid cells are full.
+static func garden_full() -> PlantRegistrationResult:
+	return PlantRegistrationResult.new(Status.GARDEN_FULL, null)
 
 
 ## Returns the typed registration status.

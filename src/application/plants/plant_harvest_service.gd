@@ -81,11 +81,14 @@ static func try_harvest_plant_at(
 	if reward > EconomyState.MAX_CURRENCY - economy.get_currency():
 		return PlantHarvestResult.currency_grant_rejected()
 
-	# 7. Construct reset PlantState and replace in PlantCollectionState
+	# 7. Construct reset PlantState preserving logical grid placement and replace in PlantCollectionState
 	var updated_plant: PlantState = PlantState.new(
 		runtime_instance_id,
 		definition_id,
-		now_utc_seconds
+		now_utc_seconds,
+		existing_plant.get_zone_id(),
+		existing_plant.get_grid_x(),
+		existing_plant.get_grid_y()
 	)
 	if not updated_plant.is_valid():
 		return PlantHarvestResult.state_update_rejected()

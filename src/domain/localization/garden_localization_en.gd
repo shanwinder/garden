@@ -212,6 +212,18 @@ const STRINGS: Dictionary = {
 	"ui.garden.empty_garden": "Your garden has no plants yet",
 	"ui.garden.blocked_default": "Unable to load the garden right now",
 	"ui.garden.blocked_incomplete_deps": "Unable to start the garden due to incomplete dependencies",
+	"zone.main.name": "Main Garden",
+	"zone.adjacent_1.name": "Adjacent Zone 2",
+	"ui.garden.zones_section_header": "Garden Grid & Zones (%s)",
+	"ui.garden.zone_tab_unlocked": "%s (%d/%d)",
+	"ui.garden.zone_tab_locked": "%s (Locked)",
+	"ui.garden.zone_status_unlocked": "Zone: %s • %d/%d cells used | Tap an empty cell to target placement",
+	"ui.garden.zone_status_target": "Zone: %s • Target cell (%d, %d) selected — tap Plant or Decorate to place here",
+	"ui.garden.zone_status_move": "Move mode: Tap any empty cell in an unlocked zone to move %s",
+	"ui.garden.zone_status_locked": "Adjacent Zone 2 (First Expansion): Unlocks automatically at Living Garden (45+ pts) or Day 7 milestone",
+	"ui.garden.grid_cell_empty": "(%d,%d)",
+	"ui.garden.grid_cell_target": "[%d,%d]",
+	"ui.garden.grid_cell_occupied": "%s\n(%d,%d)",
 
 	# GardenView Details Panel
 	"ui.details.header_plant": "Plant Details",
@@ -237,6 +249,9 @@ const STRINGS: Dictionary = {
 	"ui.details.decoration_instance_id": "Instance ID: %s",
 	"ui.details.placed_at": "Placed at: %d (Unix UTC)",
 	"ui.details.decoration_no_harvest": "Decorations are not harvested",
+	"ui.details.placement": "Placement: %s Cell (%d, %d)",
+	"ui.details.move_button": "Move",
+	"ui.details.move_cancel_button": "Cancel Move",
 
 	# GardenView Feedback Messages
 	"ui.feedback.planting_not_ready": "Garden is not ready for planting",
@@ -273,6 +288,12 @@ const STRINGS: Dictionary = {
 	"ui.feedback.event_none_eligible": "No special garden events are active right now",
 	"ui.feedback.event_not_ready": "Garden is not ready to watch events",
 	"ui.feedback.event_unknown": "Unknown event status",
+	"ui.feedback.move_not_ready": "Garden is not ready to move items",
+	"ui.feedback.move_saved": "Moved %s to %s (%d, %d) and saved",
+	"ui.feedback.move_save_failed": "Moved %s to %s (%d, %d), but save failed",
+	"ui.feedback.move_rejected_reason": "Unable to move item (%s)",
+	"ui.feedback.move_rejected": "Unable to move item",
+	"ui.feedback.move_unknown": "Unknown move status",
 
 	# PlantView & DecorationView Cards
 	"ui.plant_card.id_traits": "ID: %s | Traits: %s",

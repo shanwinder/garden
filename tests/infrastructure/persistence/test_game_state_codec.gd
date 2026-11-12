@@ -63,6 +63,9 @@ func run_tests() -> void:
 	_test_v3_decorations_round_trip_and_ordering()
 	_test_v2_to_v3_migration_and_v1_to_v3_chain()
 	_test_failure_decorations_validation()
+	_test_v4_placement_round_trip_and_ordering()
+	_test_v3_to_v4_migration_and_v1_to_v4_chain()
+	_test_failure_v4_placement_validation()
 
 
 func _test_type_contract() -> void:
@@ -77,7 +80,8 @@ func _test_type_contract() -> void:
 	assert_eq(GameStateCodec.SCHEMA_VERSION_V1, 1, "SCHEMA_VERSION_V1 must be 1")
 	assert_eq(GameStateCodec.SCHEMA_VERSION_V2, 2, "SCHEMA_VERSION_V2 must be 2")
 	assert_eq(GameStateCodec.SCHEMA_VERSION_V3, 3, "SCHEMA_VERSION_V3 must be 3")
-	assert_eq(GameStateCodec.CURRENT_SCHEMA_VERSION, 3, "CURRENT_SCHEMA_VERSION must be 3")
+	assert_eq(GameStateCodec.SCHEMA_VERSION_V4, 4, "SCHEMA_VERSION_V4 must be 4")
+	assert_eq(GameStateCodec.CURRENT_SCHEMA_VERSION, 4, "CURRENT_SCHEMA_VERSION must be 4")
 
 
 func _test_encode_null_state() -> void:
@@ -87,11 +91,11 @@ func _test_encode_null_state() -> void:
 
 
 func _test_default_state_encode_and_decode() -> void:
-	describe("Default empty GameState encodes to valid V3 shape and decodes cleanly")
+	describe("Default empty GameState encodes to valid V4 shape and decodes cleanly")
 	var original: GameState = GameState.new()
 	var encoded: Dictionary = GameStateCodec.encode(original)
 
-	assert_eq(encoded.get("schema_version"), 3, "Root schema_version must be 3")
+	assert_eq(encoded.get("schema_version"), 4, "Root schema_version must be 4")
 	assert_true(encoded.has("economy"), "Root must contain economy")
 	assert_true(encoded.has("plants"), "Root must contain plants")
 	assert_true(encoded.has("discoveries"), "Root must contain discoveries")
@@ -437,7 +441,7 @@ func _test_failure_root_validation() -> void:
 
 
 func _test_failure_schema_version_validation() -> void:
-	describe("Schema version validation accepts V1 (1/1.0), V2 (2/2.0), and V3 (3/3.0); rejects 0, 4, 999, fractional floats, strings, booleans, null")
+	describe("Schema version validation accepts V1 (1/1.0), V2 (2/2.0), V3 (3/3.0), and V4 (4/4.0); rejects 0, 5, 999, fractional floats, strings, booleans, null")
 	var valid_v1_base: Dictionary = {
 		"schema_version": 1,
 		"economy": {"currency": "0"},
@@ -456,8 +460,15 @@ func _test_failure_schema_version_validation() -> void:
 		"discoveries": [],
 		"decorations": []
 	}
+	var valid_v4_base: Dictionary = {
+		"schema_version": 4,
+		"economy": {"currency": "0"},
+		"plants": [],
+		"discoveries": [],
+		"decorations": []
+	}
 
-	# Accepted: V1 native integer 1 and float 1.0 (migrated V1 -> V2 -> V3)
+	# Accepted: V1 native integer 1 and float 1.0 (migrated V1 -> V2 -> V3 -> V4)
 	var v1_int: Dictionary = valid_v1_base.duplicate(true)
 	v1_int["schema_version"] = 1
 	assert_true(GameStateCodec.decode(v1_int) != null, "Accept schema_version int 1 (V1 migrated)")
@@ -466,7 +477,7 @@ func _test_failure_schema_version_validation() -> void:
 	v1_float["schema_version"] = 1.0
 	assert_true(GameStateCodec.decode(v1_float) != null, "Accept schema_version float 1.0 (V1 migrated)")
 
-	# Accepted: V2 native integer 2 and float 2.0 (migrated V2 -> V3)
+	# Accepted: V2 native integer 2 and float 2.0 (migrated V2 -> V3 -> V4)
 	var v2_int: Dictionary = valid_v2_base.duplicate(true)
 	v2_int["schema_version"] = 2
 	assert_true(GameStateCodec.decode(v2_int) != null, "Accept schema_version int 2 (V2 migrated)")
@@ -475,14 +486,23 @@ func _test_failure_schema_version_validation() -> void:
 	v2_float["schema_version"] = 2.0
 	assert_true(GameStateCodec.decode(v2_float) != null, "Accept schema_version float 2.0 (V2 migrated)")
 
-	# Accepted: V3 native integer 3 and float 3.0
+	# Accepted: V3 native integer 3 and float 3.0 (migrated V3 -> V4)
 	var v3_int: Dictionary = valid_v3_base.duplicate(true)
 	v3_int["schema_version"] = 3
-	assert_true(GameStateCodec.decode(v3_int) != null, "Accept schema_version int 3 (V3)")
+	assert_true(GameStateCodec.decode(v3_int) != null, "Accept schema_version int 3 (V3 migrated)")
 
 	var v3_float: Dictionary = valid_v3_base.duplicate(true)
 	v3_float["schema_version"] = 3.0
-	assert_true(GameStateCodec.decode(v3_float) != null, "Accept schema_version float 3.0 (V3)")
+	assert_true(GameStateCodec.decode(v3_float) != null, "Accept schema_version float 3.0 (V3 migrated)")
+
+	# Accepted: V4 native integer 4 and float 4.0
+	var v4_int: Dictionary = valid_v4_base.duplicate(true)
+	v4_int["schema_version"] = 4
+	assert_true(GameStateCodec.decode(v4_int) != null, "Accept schema_version int 4 (V4)")
+
+	var v4_float: Dictionary = valid_v4_base.duplicate(true)
+	v4_float["schema_version"] = 4.0
+	assert_true(GameStateCodec.decode(v4_float) != null, "Accept schema_version float 4.0 (V4)")
 
 	var v0: Dictionary = valid_v1_base.duplicate(true)
 	v0["schema_version"] = 0
@@ -498,9 +518,9 @@ func _test_failure_schema_version_validation() -> void:
 	v3_missing_decor["schema_version"] = 3
 	assert_true(GameStateCodec.decode(v3_missing_decor) == null, "Reject schema_version 3 when missing decorations key")
 
-	var v4: Dictionary = valid_v3_base.duplicate(true)
-	v4["schema_version"] = 4
-	assert_true(GameStateCodec.decode(v4) == null, "Reject schema_version 4")
+	var v5: Dictionary = valid_v4_base.duplicate(true)
+	v5["schema_version"] = 5
+	assert_true(GameStateCodec.decode(v5) == null, "Reject schema_version 5")
 
 	var v999: Dictionary = valid_v1_base.duplicate(true)
 	v999["schema_version"] = 999
@@ -782,7 +802,7 @@ func _test_v2_discoveries_round_trip_and_ordering() -> void:
 	original.get_journal().try_put_record(DiscoveryRecord.new("visitor.butterfly", 1500, 4))
 
 	var encoded: Dictionary = GameStateCodec.encode(original)
-	assert_eq(encoded.get("schema_version"), 3, "Encoded schema_version is 3")
+	assert_eq(encoded.get("schema_version"), 4, "Encoded schema_version is 4")
 	var raw_disc: Array = encoded.get("discoveries") as Array
 	assert_eq(raw_disc.size(), 3, "3 discoveries encoded")
 	assert_eq((raw_disc[0] as Dictionary).get("definition_id"), "plant.jasmine", "Sorted index 0")
@@ -836,9 +856,9 @@ func _test_v1_to_v2_migration() -> void:
 	assert_eq(decoded.get_journal().get_count(), 0, "Migrated V1 journal starts with 0 entries")
 	assert_eq(decoded.get_decorations().get_count(), 0, "Migrated V1 decorations starts with 0 entries")
 
-	# Re-encoding produces V3
+	# Re-encoding produces V4
 	var reencoded: Dictionary = GameStateCodec.encode(decoded)
-	assert_eq(reencoded.get("schema_version"), 3, "Re-encoded state uses Schema V3")
+	assert_eq(reencoded.get("schema_version"), 4, "Re-encoded state uses Schema V4")
 
 	# V1 snapshot with discoveries key is rejected by migrate_v1_to_v2
 	var hybrid_v1: Dictionary = v1_snapshot.duplicate(true)
@@ -945,7 +965,7 @@ func _test_v3_decorations_round_trip_and_ordering() -> void:
 	)
 
 	var encoded: Dictionary = GameStateCodec.encode(original)
-	assert_eq(encoded.get("schema_version"), 3, "Encoded schema_version is 3")
+	assert_eq(encoded.get("schema_version"), 4, "Encoded schema_version is 4")
 	var raw_decor: Array = encoded.get("decorations") as Array
 	assert_eq(raw_decor.size(), 3, "3 decorations encoded")
 	assert_eq((raw_decor[0] as Dictionary).get("instance_id"), "decor-a", "Sorted index 0")
@@ -1076,3 +1096,152 @@ func _test_failure_decorations_validation() -> void:
 		},
 	]
 	assert_eq(GameStateCodec.decode(dup_decor), null, "Reject duplicate decoration runtime instance ID")
+
+
+func _test_v4_placement_round_trip_and_ordering() -> void:
+	describe("Schema V4 encodes and decodes zone_id, grid_x, and grid_y on plants and decorations")
+	var original: GameState = GameState.new()
+	original.get_economy().grant_currency(300)
+	original.get_plants().try_add_plant(
+		PlantState.new("p-main", "plant.holy_basil", 1000, GardenZone.ZONE_MAIN, 2, 3)
+	)
+	original.get_plants().try_add_plant(
+		PlantState.new("p-adj", "plant.jasmine", 2000, GardenZone.ZONE_ADJACENT_1, 1, 2)
+	)
+	original.get_decorations().try_add_decoration(
+		DecorationState.new("d-adj", "decoration.bench", 3000, GardenZone.ZONE_ADJACENT_1, 3, 1)
+	)
+
+	var encoded: Dictionary = GameStateCodec.encode(original)
+	assert_eq(encoded.get("schema_version"), 4, "Encoded schema_version is 4")
+
+	var raw_plants: Array = encoded.get("plants") as Array
+	assert_eq(raw_plants.size(), 2, "2 plants encoded")
+	assert_eq((raw_plants[0] as Dictionary).get("zone_id"), "zone.adjacent_1", "Plant p-adj zone_id")
+	assert_eq((raw_plants[0] as Dictionary).get("grid_x"), "1", "Plant p-adj grid_x wire string")
+	assert_eq((raw_plants[0] as Dictionary).get("grid_y"), "2", "Plant p-adj grid_y wire string")
+	assert_eq((raw_plants[1] as Dictionary).get("zone_id"), "zone.main", "Plant p-main zone_id")
+	assert_eq((raw_plants[1] as Dictionary).get("grid_x"), "2", "Plant p-main grid_x wire string")
+	assert_eq((raw_plants[1] as Dictionary).get("grid_y"), "3", "Plant p-main grid_y wire string")
+
+	var raw_decor: Array = encoded.get("decorations") as Array
+	assert_eq(raw_decor.size(), 1, "1 decoration encoded")
+	assert_eq((raw_decor[0] as Dictionary).get("zone_id"), "zone.adjacent_1", "Decoration zone_id")
+	assert_eq((raw_decor[0] as Dictionary).get("grid_x"), "3", "Decoration grid_x wire string")
+	assert_eq((raw_decor[0] as Dictionary).get("grid_y"), "1", "Decoration grid_y wire string")
+
+	var json_str: String = JSON.stringify(encoded)
+	var parsed: Variant = JSON.parse_string(json_str)
+	var decoded: GameState = GameStateCodec.decode(parsed)
+	assert_true(decoded != null, "Decoded V4 state not null")
+	var dec_p_adj: PlantState = decoded.get_plants().get_plant("p-adj")
+	assert_true(dec_p_adj != null, "Decoded p-adj exists")
+	assert_eq(dec_p_adj.get_zone_id(), "zone.adjacent_1", "Decoded p-adj zone_id preserved")
+	assert_eq(dec_p_adj.get_grid_x(), 1, "Decoded p-adj grid_x preserved")
+	assert_eq(dec_p_adj.get_grid_y(), 2, "Decoded p-adj grid_y preserved")
+	var dec_d_adj: DecorationState = decoded.get_decorations().get_decoration("d-adj")
+	assert_true(dec_d_adj != null, "Decoded d-adj exists")
+	assert_eq(dec_d_adj.get_zone_id(), "zone.adjacent_1", "Decoded d-adj zone_id preserved")
+	assert_eq(dec_d_adj.get_grid_x(), 3, "Decoded d-adj grid_x preserved")
+	assert_eq(dec_d_adj.get_grid_y(), 1, "Decoded d-adj grid_y preserved")
+
+
+func _test_v3_to_v4_migration_and_v1_to_v4_chain() -> void:
+	describe("Explicit V3 -> V4 migration assigns deterministic non-overlapping zone.main coordinates without mutating V3 input")
+	var v3_snapshot: Dictionary = {
+		"schema_version": 3,
+		"economy": {"currency": "500"},
+		"plants": [
+			{"instance_id": "p-1", "definition_id": "plant.holy_basil", "planted_at": "1000"},
+			{"instance_id": "p-2", "definition_id": "plant.chili", "planted_at": "1100"},
+		],
+		"discoveries": [
+			{"definition_id": "plant.holy_basil", "first_seen_at": "1000", "times_seen": "1"},
+		],
+		"decorations": [
+			{"instance_id": "d-1", "definition_id": "decoration.clay_jar", "placed_at": "1200"},
+			{"instance_id": "d-2", "definition_id": "decoration.bench", "placed_at": "1300"},
+			{"instance_id": "d-3", "definition_id": "decoration.garden_lamp", "placed_at": "1400"},
+		],
+	}
+
+	var migrated_var: Variant = GameStateCodec.migrate_v3_to_v4(v3_snapshot)
+	assert_true(migrated_var is Dictionary, "migrate_v3_to_v4 returns Dictionary")
+	var migrated: Dictionary = migrated_var as Dictionary
+	assert_eq(migrated.get("schema_version"), 4, "Migrated schema_version is 4")
+	assert_eq(v3_snapshot.get("schema_version"), 3, "Source V3 dictionary not mutated")
+	assert_false((v3_snapshot["plants"][0] as Dictionary).has("zone_id"), "Source V3 plant not mutated")
+
+	var decoded: GameState = GameStateCodec.decode(v3_snapshot)
+	assert_true(decoded != null, "V3 snapshot decodes cleanly through V3 -> V4 migration")
+	assert_eq(decoded.get_plants().get_plant("p-1").get_zone_id(), "zone.main", "p-1 zone.main")
+	assert_eq(decoded.get_plants().get_plant("p-1").get_grid_x(), 0, "p-1 x=0")
+	assert_eq(decoded.get_plants().get_plant("p-1").get_grid_y(), 0, "p-1 y=0")
+	assert_eq(decoded.get_plants().get_plant("p-2").get_grid_x(), 1, "p-2 x=1")
+	assert_eq(decoded.get_plants().get_plant("p-2").get_grid_y(), 0, "p-2 y=0")
+	assert_eq(decoded.get_decorations().get_decoration("d-1").get_grid_x(), 2, "d-1 x=2")
+	assert_eq(decoded.get_decorations().get_decoration("d-1").get_grid_y(), 0, "d-1 y=0")
+	assert_eq(decoded.get_decorations().get_decoration("d-2").get_grid_x(), 3, "d-2 x=3")
+	assert_eq(decoded.get_decorations().get_decoration("d-2").get_grid_y(), 0, "d-2 y=0")
+	assert_eq(decoded.get_decorations().get_decoration("d-3").get_grid_x(), 0, "d-3 wraps to x=0")
+	assert_eq(decoded.get_decorations().get_decoration("d-3").get_grid_y(), 1, "d-3 wraps to y=1")
+
+	# Hybrid V3 with V4 keys rejected
+	var hybrid_v3: Dictionary = v3_snapshot.duplicate(true)
+	(hybrid_v3["plants"][0] as Dictionary)["zone_id"] = "zone.main"
+	assert_eq(GameStateCodec.migrate_v3_to_v4(hybrid_v3), null, "Hybrid V3 plant with zone_id rejected")
+	assert_eq(GameStateCodec.decode(hybrid_v3), null, "Decode rejects hybrid V3 plant")
+
+
+func _test_failure_v4_placement_validation() -> void:
+	describe("Schema V4 placement validation rejects missing/invalid zone_id, non-canonical grid_x/grid_y, and numeric coords")
+	var valid_v4: Dictionary = {
+		"schema_version": 4,
+		"economy": {"currency": "0"},
+		"plants": [],
+		"discoveries": [],
+		"decorations": [],
+	}
+
+	var missing_zone: Dictionary = valid_v4.duplicate(true)
+	missing_zone["plants"] = [{
+		"instance_id": "p-1",
+		"definition_id": "plant.holy_basil",
+		"planted_at": "1000",
+		"grid_x": "0",
+		"grid_y": "0",
+	}]
+	assert_eq(GameStateCodec.decode(missing_zone), null, "Reject V4 plant missing zone_id")
+
+	var bad_zone: Dictionary = valid_v4.duplicate(true)
+	bad_zone["plants"] = [{
+		"instance_id": "p-1",
+		"definition_id": "plant.holy_basil",
+		"planted_at": "1000",
+		"zone_id": "zone.unknown",
+		"grid_x": "0",
+		"grid_y": "0",
+	}]
+	assert_eq(GameStateCodec.decode(bad_zone), null, "Reject V4 plant with unknown zone_id")
+
+	var numeric_grid: Dictionary = valid_v4.duplicate(true)
+	numeric_grid["decorations"] = [{
+		"instance_id": "d-1",
+		"definition_id": "decoration.bench",
+		"placed_at": "1000",
+		"zone_id": "zone.main",
+		"grid_x": 1,
+		"grid_y": "0",
+	}]
+	assert_eq(GameStateCodec.decode(numeric_grid), null, "Reject numeric grid_x in V4 decoration")
+
+	var leading_zero_grid: Dictionary = valid_v4.duplicate(true)
+	leading_zero_grid["decorations"] = [{
+		"instance_id": "d-1",
+		"definition_id": "decoration.bench",
+		"placed_at": "1000",
+		"zone_id": "zone.main",
+		"grid_x": "01",
+		"grid_y": "0",
+	}]
+	assert_eq(GameStateCodec.decode(leading_zero_grid), null, "Reject leading-zero grid_x in V4 decoration")

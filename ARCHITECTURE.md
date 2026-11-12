@@ -767,6 +767,13 @@ Per owner decision, the garden uses a **Coarse Logical Grid + Zones** model (`zo
 - Cell occupancy, zone unlock eligibility, and placement bounds validation belong in application/domain logic, not only in drag/tap visual code.
 - Any future migration from Save Schema V3 (which currently omits placement fields) to a spatial schema version must assign deterministic default positions for existing items without losing player data.
 
+#### Implementation Status (Coarse Logical Grid & Zones Placement)
+
+- **Domain Models (`GardenZone` & `GardenPlacement`)**: `GardenZone` (`src/domain/placement/garden_zone.gd`) defines canonical zones (`zone.main` as 4×4 grid of 16 cells, and `zone.adjacent_1` as 4×3 grid of 12 cells), bounds validation, cell enumeration, and automatic unlock evaluation (Adjacent Zone 2 unlocks at `Living Garden` / 45 pts or Day 7 milestone without coin grind). `GardenPlacement` (`src/domain/placement/garden_placement.gd`) evaluates cell occupancy, occupant descriptors, bounds, and deterministic first-free-cell allocation.
+- **Runtime Facts & Save Schema V4**: `PlantState` and `DecorationState` store canonical resolution-independent spatial facts (`zone_id: String`, `grid_x: int`, `grid_y: int`). `GameStateCodec` encodes these as canonical decimal strings in Save Schema V4 and provides deterministic sequential `V1 -> V2 -> V3 -> V4` migration.
+- **Application Services & Checkpoints**: `GardenPlacementService` (`src/application/placement/garden_placement_service.gd`) and `GardenPlacementPersistenceCoordinator` coordinate validated item relocation and atomic safe-write disk checkpoints.
+- **Presentation Integration**: `GardenView` renders interactive zone tabs, cell status, occupancy buttons, empty cell targeting, and move mode in both Thai and English.
+
 ---
 
 ## 20. Economy Architecture
@@ -888,13 +895,13 @@ During early architectural planning, a conceptual save structure was outlined as
 
 This conceptual shape served to illustrate versioning and modular data groupings before persistence was implemented.
 
-#### Current Implemented V3 Contract and V1/V2 Compatibility (Normative)
+#### Current Implemented V4 Contract and V1/V2/V3 Compatibility (Normative)
 
-Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. As of Milestone 13, `CURRENT_SCHEMA_VERSION = 3`. The canonical V3 wire format is:
+Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepository`, and `LocalSaveLoadResult`. `CURRENT_SCHEMA_VERSION = 4`. The canonical V4 wire format is:
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "economy": {
     "currency": "250"
   },
@@ -902,7 +909,10 @@ Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepos
     {
       "instance_id": "plant-instance-a",
       "definition_id": "plant.holy_basil",
-      "planted_at": "1700000000"
+      "planted_at": "1700000000",
+      "zone_id": "zone.main",
+      "grid_x": "0",
+      "grid_y": "0"
     }
   ],
   "discoveries": [
@@ -921,17 +931,20 @@ Persistence is implemented in the codebase via `GameStateCodec`, `LocalSaveRepos
     {
       "instance_id": "decor-instance-a",
       "definition_id": "decoration.clay_jar",
-      "placed_at": "1700000600"
+      "placed_at": "1700000600",
+      "zone_id": "zone.main",
+      "grid_x": "1",
+      "grid_y": "0"
     }
   ]
 }
 ```
 
-Legacy Schema V1 and V2 saves remain supported on decode through explicit sequential deterministic migration (`GameStateCodec.migrate_v1_to_v2(v1_snapshot)` followed by `GameStateCodec.migrate_v2_to_v3(v2_snapshot)`), which upgrades `schema_version` to `3` and initializes `"discoveries": []` (for V1) and `"decorations": []` (for V1/V2).
+Legacy Schema V1, V2, and V3 saves remain supported on decode through explicit sequential deterministic migration (`GameStateCodec.migrate_v1_to_v2(v1_snapshot)` -> `GameStateCodec.migrate_v2_to_v3(v2_snapshot)` -> `GameStateCodec.migrate_v3_to_v4(v3_snapshot)`), which upgrades `schema_version` to `4`, initializes `"discoveries": []` (for V1), `"decorations": []` (for V1/V2), and assigns deterministic non-overlapping row-major logical grid positions in `"zone.main"` (`grid_x`, `grid_y`) for existing plants and decorations (for V1/V2/V3).
 
 #### Int64 Wire Encoding Rule
 
-Important: `currency`, `planted_at`, `first_seen_at`, `times_seen`, and `placed_at` are canonical non-negative decimal **strings** at the JSON wire boundary.
+Important: `currency`, `planted_at`, `first_seen_at`, `times_seen`, `placed_at`, `grid_x`, and `grid_y` are canonical non-negative decimal **strings** at the JSON wire boundary.
 
 - Runtime/domain types remain `int` (signed 64-bit integer).
 - Reason: Godot's built-in `JSON` parser represents numeric values as 64-bit floating-point numbers (`float`). A 64-bit IEEE-754 float cannot losslessly represent arbitrary signed 64-bit integers beyond $2^{53}$ (9,007,199,254,740,992). To avoid precision loss on large values up to `9223372036854775807`, persistent int64 domain values are encoded as exact decimal strings on the wire.
@@ -1061,11 +1074,12 @@ When content IDs are renamed or removed, migration/alias rules must preserve val
 
 Resetting all progress is not an acceptable migration strategy unless the owner explicitly approves it for a pre-release prototype.
 
-#### Implementation Status (Milestones 12 and 13)
+#### Implementation Status (Milestones 12, 13, and Placement System)
 
 - **Deterministic V1 -> V2 migration**: `GameStateCodec.migrate_v1_to_v2(v1_snapshot: Variant) -> Variant` validates that `v1_snapshot` is a `Dictionary` with `schema_version == 1` and exact V1 root keys (`schema_version`, `economy`, `plants`), returning a new V2 `Dictionary` with `"schema_version": 2`, preserved `"economy"` and `"plants"`, and `"discoveries": []` without mutating the caller's input dictionary.
 - **Deterministic V2 -> V3 migration**: `GameStateCodec.migrate_v2_to_v3(v2_snapshot: Variant) -> Variant` validates that `v2_snapshot` is a `Dictionary` with `schema_version == 2` and exact V2 root keys (`schema_version`, `economy`, `plants`, `discoveries`), returning a new V3 `Dictionary` with `"schema_version": 3`, preserved `"economy"`, `"plants"`, and `"discoveries"`, and `"decorations": []` without mutating the caller's input dictionary.
-- **Automatic sequential decode upgrade**: `GameStateCodec.decode(snapshot)` transparently runs `migrate_v1_to_v2(snapshot)` (when `schema_version == 1`) and `migrate_v2_to_v3(...)` (when `schema_version == 2`) before validating and decoding into `GameState`. All subsequent `GameStateCodec.encode(state)` calls write Schema V3.
+- **Deterministic V3 -> V4 migration**: `GameStateCodec.migrate_v3_to_v4(v3_snapshot: Variant) -> Variant` validates that `v3_snapshot` is a `Dictionary` with `schema_version == 3` and exact V3 root keys (`schema_version`, `economy`, `plants`, `discoveries`, `decorations`), returning a new V4 `Dictionary` with `"schema_version": 4`, preserved `"economy"` and `"discoveries"`, and deterministically assigns non-overlapping Coarse Logical Grid positions (`zone_id: "zone.main"`, `grid_x`, `grid_y`) in row-major order across plants followed by decorations without mutating the caller's input dictionary.
+- **Automatic sequential decode upgrade**: `GameStateCodec.decode(snapshot)` transparently runs `migrate_v1_to_v2(snapshot)` (when `schema_version == 1`), `migrate_v2_to_v3(...)` (when `schema_version == 2`), and `migrate_v3_to_v4(...)` (when `schema_version == 3`) before validating and decoding into `GameState`. All subsequent `GameStateCodec.encode(state)` calls write Schema V4.
 
 ---
 
