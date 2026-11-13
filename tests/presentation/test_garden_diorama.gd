@@ -28,6 +28,7 @@ func run_tests() -> void:
 	_test_card_sprite_thumbnails_and_fallbacks()
 	_test_picker_sprite_thumbnails_and_fallbacks()
 	_test_garden_view_diorama_integration_and_blocked_cleanup()
+	_test_diorama_event_anchoring_bounds_and_tapping()
 
 
 func _create_full_catalog() -> ContentCatalog:
@@ -684,3 +685,98 @@ func _assert_light_trait_and_event_visuals(diorama: GardenDiorama, catalog: Cont
 	diorama.clear_for_blocked_state()
 	assert_eq(diorama.get_active_event_id(), "", "clear_for_blocked_state clears active event ID")
 	assert_eq(diorama.get_rendered_event_nodes().size(), 0, "clear_for_blocked_state removes event stage nodes")
+
+
+func _test_diorama_event_anchoring_bounds_and_tapping() -> void:
+	describe("GardenDiorama clamps all event nodes inside visible bounds, aligns anchors, and supports event tapping")
+	var scene: PackedScene = load(GARDEN_DIORAMA_SCENE_PATH) as PackedScene
+	var diorama: GardenDiorama = scene.instantiate() as GardenDiorama
+	var catalog: ContentCatalog = _create_full_catalog()
+
+	# 1. Empty garden fallback for every event stays strictly inside visible WorldOrigin bounds
+	var empty_state: GameState = GameState.new()
+	var all_events: Array[String] = [
+		"event.morning_butterflies",
+		"event.bird_shade_song",
+		"event.cat_sleeping_bench",
+		"event.cat_jasmine_night_rest",
+		"event.frog_rain_chorus",
+		"event.firefly_night_glow",
+		"event.unknown_future_fallback",
+	]
+	for ev_id: String in all_events:
+		var snap: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0, {}, 0, GardenTimePeriod.DAY, GardenWeather.CLEAR)
+		diorama.render_garden(empty_state, catalog, 2000, snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, ev_id)
+		var nodes: Array[Node2D] = diorama.get_rendered_event_nodes()
+		assert_true(nodes.size() >= 1, "Empty fallback renders >= 1 visible event node for %s" % ev_id)
+		for node: Node2D in nodes:
+			assert_true(
+				node.position.x >= GardenDiorama.EVENT_WORLD_BOUNDS_MIN.x and node.position.x <= GardenDiorama.EVENT_WORLD_BOUNDS_MAX.x,
+				"%s empty node %s x=%s inside visible horizontal bounds" % [ev_id, node.name, str(node.position.x)]
+			)
+			assert_true(
+				node.position.y >= GardenDiorama.EVENT_WORLD_BOUNDS_MIN.y and node.position.y <= GardenDiorama.EVENT_WORLD_BOUNDS_MAX.y,
+				"%s empty node %s y=%s inside visible vertical bounds" % [ev_id, node.name, str(node.position.y)]
+			)
+
+	# 2. Mature garden anchor alignment checks (canopy height, bench seat, lamp perch, opposite pond banks)
+	var mature_state: GameState = GameState.new()
+	mature_state.get_plants().try_add_plant(PlantState.new("p-jas-mat", "plant.jasmine", 0, GardenZone.ZONE_MAIN, 0, 0))
+	mature_state.get_decorations().try_add_decoration(DecorationState.new("d-bench-ev", "decoration.bench", 0, GardenZone.ZONE_MAIN, 2, 1))
+	mature_state.get_decorations().try_add_decoration(DecorationState.new("d-pond-ev", "decoration.small_pond", 0, GardenZone.ZONE_MAIN, 1, 2))
+	mature_state.get_decorations().try_add_decoration(DecorationState.new("d-lamp-ev", "decoration.garden_lamp", 0, GardenZone.ZONE_MAIN, 3, 0))
+	var mature_snap: GardenSnapshot = GardenSnapshot.new(
+		{"flower": 1, "water": 1, "light": 1, "perch": 1, "shade": 1, "shelter": 1},
+		{"plant.jasmine": 1},
+		1,
+		1,
+		{"decoration.bench": 1, "decoration.small_pond": 1, "decoration.garden_lamp": 1},
+		3,
+		GardenTimePeriod.MORNING,
+		GardenWeather.CLEAR
+	)
+	var jas_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 0, 0)
+	var bench_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 2, 1)
+	var pond_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 1, 2)
+	var lamp_pos: Vector2 = GardenDiorama.compute_grid_world_position(GardenZone.ZONE_MAIN, 3, 0)
+
+	diorama.render_garden(mature_state, catalog, 5000, mature_snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.morning_butterflies")
+	var bf_nodes: Array[Node2D] = diorama.get_rendered_event_nodes()
+	assert_eq(bf_nodes.size(), 2, "event.morning_butterflies renders 2 butterflies")
+	assert_true(bf_nodes[0].position.y < jas_pos.y - 120.0, "Morning butterflies hover at jasmine blossom canopy height rather than soil level")
+
+	diorama.render_garden(mature_state, catalog, 5000, mature_snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.cat_sleeping_bench")
+	var cat_node: Node2D = null
+	for node: Node2D in diorama.get_rendered_event_nodes():
+		if node.name == "EventCat_0":
+			cat_node = node
+	assert_true(cat_node != null, "event.cat_sleeping_bench renders EventCat_0")
+	assert_eq(cat_node.position, bench_pos + GardenDiorama.BENCH_CAT_PERCH_OFFSET, "Sleeping cat aligns directly onto bench seat offset")
+
+	diorama.render_garden(mature_state, catalog, 5000, mature_snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.bird_shade_song")
+	var bird_node: Node2D = null
+	for node: Node2D in diorama.get_rendered_event_nodes():
+		if node.name == "EventBird_0":
+			bird_node = node
+	assert_true(bird_node != null, "event.bird_shade_song renders EventBird_0")
+	assert_eq(bird_node.position, lamp_pos + GardenDiorama.LAMP_BIRD_PERCH_OFFSET, "Shade song bird shares lamp perch anchor priority cleanly")
+
+	diorama.render_garden(mature_state, catalog, 5000, mature_snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.frog_rain_chorus")
+	var frog_nodes: Array[Node2D] = diorama.get_rendered_event_nodes()
+	assert_eq(frog_nodes.size(), 2, "event.frog_rain_chorus renders two frogs around pond")
+	assert_eq(frog_nodes[0].position, pond_pos + GardenDiorama.POND_FROG_OFFSET, "First chorus frog sits on left pond bank")
+	assert_true(frog_nodes[1].position.x > pond_pos.x, "Second chorus frog sits on opposite pond bank")
+
+	# 3. Tapping event actor emits event_selected and spawns a puff, without stealing unlocked soil cells
+	var tapped_events: Array[String] = []
+	diorama.event_selected.connect(func(eid: String) -> void:
+		tapped_events.append(eid)
+	)
+	diorama.render_garden(empty_state, catalog, 2000, mature_snap, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.bird_shade_song")
+	var target_bird: Node2D = diorama.get_rendered_event_nodes()[0]
+	var puffs_before: int = diorama.get_feedback_effect_count()
+	diorama.simulate_tap_at_world_pos(target_bird.position)
+	assert_eq(tapped_events, ["event.bird_shade_song"], "Tapping floating event actor emits event_selected")
+	assert_true(diorama.get_feedback_effect_count() >= puffs_before + 1, "Tapping event actor spawns a feedback puff")
+
+	diorama.free()

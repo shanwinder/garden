@@ -14,6 +14,7 @@ extends Control
 signal item_selected(item_kind: String, runtime_instance_id: String)
 signal cell_selected(zone_id: String, grid_x: int, grid_y: int)
 signal visitor_selected(visitor_id: String)
+signal event_selected(event_id: String)
 
 const DEFAULT_DIORAMA_HEIGHT: float = 680.0
 const BACKGROUND_TOP_LEFT_OFFSET: Vector2 = Vector2(-540.0, -720.0)
@@ -44,6 +45,8 @@ const JAR_BIRD_PERCH_OFFSET: Vector2 = Vector2(-42.0, -206.0)
 const BANANA_BIRD_PERCH_OFFSET: Vector2 = Vector2(36.0, -246.0)
 const BENCH_BIRD_PERCH_OFFSET: Vector2 = Vector2(88.0, -172.0)
 const DEFAULT_BIRD_PERCH_POS: Vector2 = Vector2(-150.0, 178.0)
+const EVENT_WORLD_BOUNDS_MIN: Vector2 = Vector2(-360.0, 84.0)
+const EVENT_WORLD_BOUNDS_MAX: Vector2 = Vector2(360.0, 610.0)
 
 const FIREFLY_ANCHORS: Array[Vector2] = [
 	Vector2(-240.0, 230.0),
@@ -344,6 +347,48 @@ func _create_event_actor_node(
 	return actor_root
 
 
+static func _clamp_event_world_pos(world_pos: Vector2) -> Vector2:
+	return Vector2(
+		clampf(world_pos.x, EVENT_WORLD_BOUNDS_MIN.x, EVENT_WORLD_BOUNDS_MAX.x),
+		clampf(world_pos.y, EVENT_WORLD_BOUNDS_MIN.y, EVENT_WORLD_BOUNDS_MAX.y)
+	)
+
+
+static func _resolve_butterfly_anchor(anchors: Dictionary) -> Vector2:
+	var flower_mature_pos: Vector2 = anchors.get("flower_mature_pos", Vector2.INF)
+	if flower_mature_pos != Vector2.INF:
+		return flower_mature_pos + FLOWER_BUTTERFLY_OFFSET
+	var any_mature_pos: Vector2 = anchors.get("any_mature_pos", Vector2.INF)
+	if any_mature_pos != Vector2.INF:
+		return any_mature_pos + FLOWER_BUTTERFLY_OFFSET
+	var any_plant_pos: Vector2 = anchors.get("any_plant_pos", Vector2.INF)
+	if any_plant_pos != Vector2.INF:
+		return any_plant_pos + Vector2(18.0, -130.0)
+	return DEFAULT_BUTTERFLY_POS
+
+
+static func _resolve_bird_perch_position(anchors: Dictionary) -> Vector2:
+	var fence_pos: Vector2 = anchors.get("fence_pos", Vector2.INF)
+	if fence_pos != Vector2.INF:
+		return fence_pos + FENCE_BIRD_PERCH_OFFSET
+	var lamp_pos: Vector2 = anchors.get("lamp_pos", Vector2.INF)
+	if lamp_pos != Vector2.INF:
+		return lamp_pos + LAMP_BIRD_PERCH_OFFSET
+	var table_pos: Vector2 = anchors.get("table_pos", Vector2.INF)
+	if table_pos != Vector2.INF:
+		return table_pos + TABLE_BIRD_PERCH_OFFSET
+	var jar_pos: Vector2 = anchors.get("jar_pos", Vector2.INF)
+	if jar_pos != Vector2.INF:
+		return jar_pos + JAR_BIRD_PERCH_OFFSET
+	var banana_mature_pos: Vector2 = anchors.get("banana_mature_pos", Vector2.INF)
+	if banana_mature_pos != Vector2.INF:
+		return banana_mature_pos + BANANA_BIRD_PERCH_OFFSET
+	var bench_pos: Vector2 = anchors.get("bench_pos", Vector2.INF)
+	if bench_pos != Vector2.INF:
+		return bench_pos + BENCH_BIRD_PERCH_OFFSET
+	return DEFAULT_BIRD_PERCH_POS
+
+
 func _render_active_event(
 	active_event_id: String,
 	active_visitor_id: String,
@@ -360,19 +405,14 @@ func _render_active_event(
 	var any_plant_pos: Vector2 = anchors.get("any_plant_pos", Vector2.INF)
 	var pond_pos: Vector2 = anchors.get("pond_pos", Vector2.INF)
 	var jar_pos: Vector2 = anchors.get("jar_pos", Vector2.INF)
-	var fence_pos: Vector2 = anchors.get("fence_pos", Vector2.INF)
-	var table_pos: Vector2 = anchors.get("table_pos", Vector2.INF)
 
 	match active_event_id:
 		"event.morning_butterflies":
-			var bloom_base: Vector2 = _first_valid_anchor(
-				[flower_mature_pos, any_mature_pos, any_plant_pos],
-				Vector2(460.0, 1140.0)
-			)
+			var bloom_base: Vector2 = _resolve_butterfly_anchor(anchors)
 			_create_event_actor_node(
 				"EventButterfly_0",
 				"visitor.butterfly",
-				bloom_base + Vector2(-42.0, -58.0),
+				_clamp_event_world_pos(bloom_base + Vector2(-46.0, 12.0)),
 				active_event_id,
 				false,
 				5.5,
@@ -382,7 +422,7 @@ func _render_active_event(
 			_create_event_actor_node(
 				"EventButterfly_1",
 				"visitor.butterfly",
-				bloom_base + Vector2(46.0, -40.0),
+				_clamp_event_world_pos(bloom_base + Vector2(36.0, -16.0)),
 				active_event_id,
 				true,
 				6.0,
@@ -390,14 +430,16 @@ func _render_active_event(
 				0.4
 			)
 		"event.bird_shade_song":
-			var perch_base: Vector2 = _first_valid_anchor(
-				[
-					fence_pos + Vector2(22.0, -78.0) if fence_pos != Vector2.INF else Vector2.INF,
-					table_pos + Vector2(20.0, -68.0) if table_pos != Vector2.INF else Vector2.INF,
-				],
-				DEFAULT_BIRD_PERCH_POS
+			var perch_base: Vector2 = _resolve_bird_perch_position(anchors)
+			var bird_pos: Vector2 = _clamp_event_world_pos(
+				perch_base if active_visitor_id != "visitor.bird" else perch_base + Vector2(56.0, -10.0)
 			)
-			var bird_pos: Vector2 = perch_base if active_visitor_id != "visitor.bird" else perch_base + Vector2(56.0, -12.0)
+			_create_event_glow_node(
+				"EventBirdSongHalo",
+				bird_pos,
+				Color(1.0, 0.95, 0.72, 0.36),
+				active_event_id
+			)
 			_create_event_actor_node(
 				"EventBird_0",
 				"visitor.bird",
@@ -409,10 +451,12 @@ func _render_active_event(
 				0.0
 			)
 		"event.cat_sleeping_bench":
-			var rest_bench_pos: Vector2 = bench_pos + Vector2(0.0, -34.0) if bench_pos != Vector2.INF else Vector2(420.0, 1180.0)
+			var rest_bench_pos: Vector2 = _clamp_event_world_pos(
+				bench_pos + BENCH_CAT_PERCH_OFFSET if bench_pos != Vector2.INF else DEFAULT_CAT_GROUND_POS
+			)
 			_create_event_glow_node(
 				"EventBenchWarmth",
-				rest_bench_pos + Vector2(0.0, -20.0),
+				_clamp_event_world_pos(rest_bench_pos + Vector2(0.0, -36.0)),
 				Color(1.0, 0.94, 0.76, 0.42),
 				active_event_id
 			)
@@ -428,13 +472,24 @@ func _render_active_event(
 					0.0
 				)
 		"event.cat_jasmine_night_rest":
-			var jasmine_anchor: Vector2 = _first_valid_anchor(
-				[jasmine_mature_pos, jasmine_any_pos, bench_pos],
-				Vector2(440.0, 1200.0)
+			var jasmine_target: Vector2 = _first_valid_anchor(
+				[jasmine_mature_pos, jasmine_any_pos],
+				Vector2.INF
 			)
+			var halo_pos: Vector2
+			var cat_pos: Vector2
+			if jasmine_target != Vector2.INF:
+				halo_pos = _clamp_event_world_pos(jasmine_target + Vector2(0.0, -110.0))
+				cat_pos = _clamp_event_world_pos(jasmine_target + JASMINE_CAT_REST_OFFSET)
+			elif bench_pos != Vector2.INF:
+				cat_pos = _clamp_event_world_pos(bench_pos + BENCH_CAT_PERCH_OFFSET)
+				halo_pos = _clamp_event_world_pos(cat_pos + Vector2(0.0, -36.0))
+			else:
+				cat_pos = DEFAULT_CAT_GROUND_POS
+				halo_pos = _clamp_event_world_pos(cat_pos + Vector2(0.0, -48.0))
 			_create_event_glow_node(
 				"EventJasmineMoonHalo",
-				jasmine_anchor + Vector2(0.0, -48.0),
+				halo_pos,
 				Color(0.88, 0.93, 1.0, 0.52),
 				active_event_id
 			)
@@ -442,7 +497,7 @@ func _render_active_event(
 				_create_event_actor_node(
 					"EventCatJasmine_0",
 					"visitor.cat",
-					jasmine_anchor + Vector2(54.0, 14.0),
+					cat_pos,
 					active_event_id,
 					true,
 					1.4,
@@ -450,18 +505,21 @@ func _render_active_event(
 					0.0
 				)
 		"event.frog_rain_chorus":
-			var water_anchor: Vector2 = _first_valid_anchor(
-				[
-					pond_pos + Vector2(-38.0, 12.0) if pond_pos != Vector2.INF else Vector2.INF,
-					jar_pos + Vector2(-34.0, 8.0) if jar_pos != Vector2.INF else Vector2.INF,
-				],
-				Vector2(340.0, 1280.0)
-			)
+			var frog_left: Vector2 = DEFAULT_FROG_GROUND_POS
+			var frog_right: Vector2 = DEFAULT_FROG_GROUND_POS + Vector2(88.0, -6.0)
+			if pond_pos != Vector2.INF:
+				frog_left = pond_pos + POND_FROG_OFFSET
+				frog_right = pond_pos + Vector2(-POND_FROG_OFFSET.x, POND_FROG_OFFSET.y - 4.0)
+			elif jar_pos != Vector2.INF:
+				frog_left = jar_pos + JAR_FROG_OFFSET
+				frog_right = jar_pos + Vector2(-JAR_FROG_OFFSET.x, JAR_FROG_OFFSET.y + 4.0)
+			frog_left = _clamp_event_world_pos(frog_left)
+			frog_right = _clamp_event_world_pos(frog_right)
 			if active_visitor_id != "visitor.frog":
 				_create_event_actor_node(
 					"EventFrog_0",
 					"visitor.frog",
-					water_anchor,
+					frog_left,
 					active_event_id,
 					false,
 					2.0,
@@ -471,7 +529,7 @@ func _render_active_event(
 			_create_event_actor_node(
 				"EventFrog_1",
 				"visitor.frog",
-				water_anchor + Vector2(76.0, 4.0),
+				frog_right,
 				active_event_id,
 				true,
 				2.0,
@@ -479,13 +537,12 @@ func _render_active_event(
 				0.5
 			)
 		"event.firefly_night_glow":
-			var firefly_anchor: Vector2 = _first_valid_anchor(
-				[
-					any_mature_pos + Vector2(0.0, -56.0) if any_mature_pos != Vector2.INF else Vector2.INF,
-					any_plant_pos + Vector2(0.0, -44.0) if any_plant_pos != Vector2.INF else Vector2.INF,
-				],
-				Vector2(540.0, 1040.0)
-			)
+			var firefly_anchor: Vector2 = DEFAULT_FIREFLY_POS
+			if any_mature_pos != Vector2.INF:
+				firefly_anchor = any_mature_pos + Vector2(0.0, -148.0)
+			elif any_plant_pos != Vector2.INF:
+				firefly_anchor = any_plant_pos + Vector2(0.0, -112.0)
+			firefly_anchor = _clamp_event_world_pos(firefly_anchor)
 			_create_event_glow_node(
 				"EventFireflyFocal",
 				firefly_anchor,
@@ -494,13 +551,14 @@ func _render_active_event(
 				"firefly_focal"
 			)
 		_:
-			var generic_anchor: Vector2 = _first_valid_anchor(
-				[any_mature_pos, any_plant_pos],
-				Vector2(540.0, 1120.0)
-			)
+			var generic_anchor: Vector2 = Vector2(0.0, 290.0)
+			if any_mature_pos != Vector2.INF:
+				generic_anchor = any_mature_pos + Vector2(0.0, -120.0)
+			elif any_plant_pos != Vector2.INF:
+				generic_anchor = any_plant_pos + Vector2(0.0, -96.0)
 			_create_event_glow_node(
 				"EventShimmer",
-				generic_anchor + Vector2(0.0, -40.0),
+				_clamp_event_world_pos(generic_anchor),
 				Color(1.0, 0.96, 0.80, 0.50),
 				active_event_id
 			)
@@ -1007,15 +1065,8 @@ func _add_fallback_token(
 func _compute_visitor_anchor(visitor_id: String, anchors: Dictionary) -> Vector2:
 	var bench_pos: Vector2 = anchors.get("bench_pos", Vector2.INF)
 	var jasmine_mature_pos: Vector2 = anchors.get("jasmine_mature_pos", Vector2.INF)
-	var flower_mature_pos: Vector2 = anchors.get("flower_mature_pos", Vector2.INF)
-	var any_mature_pos: Vector2 = anchors.get("any_mature_pos", Vector2.INF)
-	var any_plant_pos: Vector2 = anchors.get("any_plant_pos", Vector2.INF)
 	var pond_pos: Vector2 = anchors.get("pond_pos", Vector2.INF)
 	var jar_pos: Vector2 = anchors.get("jar_pos", Vector2.INF)
-	var fence_pos: Vector2 = anchors.get("fence_pos", Vector2.INF)
-	var lamp_pos: Vector2 = anchors.get("lamp_pos", Vector2.INF)
-	var table_pos: Vector2 = anchors.get("table_pos", Vector2.INF)
-	var banana_mature_pos: Vector2 = anchors.get("banana_mature_pos", Vector2.INF)
 
 	match visitor_id:
 		"visitor.cat":
@@ -1025,13 +1076,7 @@ func _compute_visitor_anchor(visitor_id: String, anchors: Dictionary) -> Vector2
 				return jasmine_mature_pos + JASMINE_CAT_REST_OFFSET
 			return DEFAULT_CAT_GROUND_POS
 		"visitor.butterfly":
-			if flower_mature_pos != Vector2.INF:
-				return flower_mature_pos + FLOWER_BUTTERFLY_OFFSET
-			if any_mature_pos != Vector2.INF:
-				return any_mature_pos + FLOWER_BUTTERFLY_OFFSET
-			if any_plant_pos != Vector2.INF:
-				return any_plant_pos + Vector2(18.0, -130.0)
-			return DEFAULT_BUTTERFLY_POS
+			return _resolve_butterfly_anchor(anchors)
 		"visitor.firefly":
 			return DEFAULT_FIREFLY_POS
 		"visitor.frog":
@@ -1041,19 +1086,7 @@ func _compute_visitor_anchor(visitor_id: String, anchors: Dictionary) -> Vector2
 				return jar_pos + JAR_FROG_OFFSET
 			return DEFAULT_FROG_GROUND_POS
 		"visitor.bird":
-			if fence_pos != Vector2.INF:
-				return fence_pos + FENCE_BIRD_PERCH_OFFSET
-			if lamp_pos != Vector2.INF:
-				return lamp_pos + LAMP_BIRD_PERCH_OFFSET
-			if table_pos != Vector2.INF:
-				return table_pos + TABLE_BIRD_PERCH_OFFSET
-			if jar_pos != Vector2.INF:
-				return jar_pos + JAR_BIRD_PERCH_OFFSET
-			if banana_mature_pos != Vector2.INF:
-				return banana_mature_pos + BANANA_BIRD_PERCH_OFFSET
-			if bench_pos != Vector2.INF:
-				return bench_pos + BENCH_BIRD_PERCH_OFFSET
-			return DEFAULT_BIRD_PERCH_POS
+			return _resolve_bird_perch_position(anchors)
 		_:
 			return DEFAULT_CAT_GROUND_POS
 
@@ -1392,6 +1425,29 @@ func _handle_local_world_tap(local_world_pos: Vector2) -> void:
 			int(best_cell.get("grid_x", 0)),
 			int(best_cell.get("grid_y", 0))
 		)
+		return
+
+	if not _active_event_id.is_empty():
+		var best_event_node: Node2D = null
+		var best_event_center: Vector2 = Vector2.INF
+		var best_event_dist: float = 56.0
+		for ev_node: Node2D in _event_nodes:
+			if ev_node == null or not is_instance_valid(ev_node):
+				continue
+			var ev_center: Vector2 = ev_node.position
+			var species_id: String = str(ev_node.get_meta("species_id", ""))
+			if not species_id.is_empty() and GardenAssetCatalog.is_grounded_visitor(species_id) and species_id != "visitor.firefly":
+				ev_center += Vector2(0.0, -32.0)
+			var d_ev: float = local_world_pos.distance_to(ev_center)
+			if d_ev <= best_event_dist:
+				best_event_dist = d_ev
+				best_event_node = ev_node
+				best_event_center = ev_center
+		if best_event_node != null:
+			var tapped_event_id: String = str(best_event_node.get_meta("event_id", _active_event_id))
+			if not tapped_event_id.is_empty():
+				play_feedback_puff_at_world_pos(best_event_center)
+				event_selected.emit(tapped_event_id)
 
 
 func _clear_node_children(container: Node) -> void:

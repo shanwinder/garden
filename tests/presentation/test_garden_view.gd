@@ -116,6 +116,7 @@ func run_tests() -> void:
 	_test_coarse_grid_and_zones_placement_interaction()
 	_test_safe_area_insets_calculation_and_application()
 	_test_android_back_navigation_and_go_back_state()
+	_test_diorama_event_tap_and_move_feedback_polish()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -2828,3 +2829,76 @@ func _test_android_back_navigation_and_go_back_state() -> void:
 	assert_false(view.handle_back_action(), "Blocked startup does not swallow back action")
 
 	view.free()
+
+
+func _test_diorama_event_tap_and_move_feedback_polish() -> void:
+	describe("GardenView wires diorama event taps to localized feedback and plays puff cleanly on item moves")
+	_cleanup_presentation_test_files()
+
+	var repo: CountingSaveRepo = CountingSaveRepo.new()
+	var clock: CallCountingClock = CallCountingClock.new(21600) # morning, clear
+	var rng: FakeRandomSource = FakeRandomSource.new([0.1], [1, 2, 3, 4])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	app.bootstrap_session()
+
+	var state: GameState = app.game_session.get_state()
+	var p1: PlantState = PlantState.new("p-ev-tap", "plant.jasmine", 0, GardenZone.ZONE_MAIN, 0, 0)
+	state.get_plants().try_add_plant(p1)
+
+	var main_node: MainScreen = (load(MAIN_SCENE_PATH) as PackedScene).instantiate() as MainScreen
+	main_node._ready()
+	main_node.bind_app_root(app)
+	var view: GardenView = main_node.get_garden_view()
+	var diorama: GardenDiorama = view.get_garden_diorama()
+
+	# 1. Trigger event.morning_butterflies via ObserveEventButton, clear feedback, then tap diorama butterfly
+	view.get_observe_event_button().pressed.emit()
+	assert_eq(view.get_current_event_id(), "event.morning_butterflies", "ObserveEvent selects event.morning_butterflies")
+	assert_true(diorama.get_rendered_event_nodes().size() >= 2, "Butterflies staged on diorama")
+
+	# Re-tap butterfly directly in diorama -> refreshes event description banner & adds puff
+	var puffs_before: int = diorama.get_feedback_effect_count()
+	var butterfly_node: Node2D = diorama.get_rendered_event_nodes()[0]
+	diorama.simulate_tap_at_world_pos(butterfly_node.position)
+	assert_true(diorama.get_feedback_effect_count() >= puffs_before + 1, "Tapping event actor on GardenView diorama spawns sparkle puff")
+	assert_true(view.is_feedback_visible(), "Feedback visible after tapping diorama event actor")
+	assert_true(
+		view.get_feedback_text().contains("ฝูงผีเสื้อยามเช้า"),
+		"Tapping event actor displays localized event feedback"
+	)
+
+	# Switch locale while event feedback active -> feedback updates cleanly to English
+	view.set_locale("en")
+	assert_true(
+		view.get_feedback_text().contains("Morning Butterfly Flutter"),
+		"Locale toggle cleanly re-renders event feedback in English"
+	)
+
+	# 2. show_visitor_result + locale switch does not break or churn diorama unnecessarily
+	var vdef: VisitorDefinition = app.get_content_catalog().get_visitor("visitor.butterfly")
+	view.show_visitor_result(VisitorSelectionResult.selected(vdef, ["visitor.butterfly"], view.get_last_garden_snapshot()))
+	assert_eq(view.get_current_visitor_id(), "visitor.butterfly", "show_visitor_result sets active visitor")
+	view.set_locale("th")
+	assert_true(view.get_feedback_text().contains("ผีเสื้อบ้านสวน"), "Visitor feedback switches cleanly back to Thai")
+
+	# 3. show_move_result spawns diorama puff at destination cell and translates cleanly
+	var move_res: GardenPlacementResult = GardenPlacementResult.moved(
+		GardenPlacement.KIND_PLANT,
+		"p-ev-tap",
+		"plant.jasmine",
+		GardenZone.ZONE_MAIN,
+		1,
+		2
+	)
+	var puffs_before_move: int = diorama.get_feedback_effect_count()
+	view.show_move_result(GardenPlacementCheckpointResult.moved_saved(move_res))
+	assert_true(
+		diorama.get_feedback_effect_count() >= puffs_before_move + 1,
+		"show_move_result triggers feedback puff at destination cell"
+	)
+	view.set_locale("en")
+	assert_true(view.get_feedback_text().contains("Moved"), "Move feedback translates cleanly to English without error")
+
+	main_node.free()
+	app.free()
+	_cleanup_presentation_test_files()

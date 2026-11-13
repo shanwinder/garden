@@ -86,6 +86,7 @@ var _last_harvest_checkpoint_result: HarvestCheckpointResult = null
 var _last_visitor_selection_result: VisitorSelectionResult = null
 var _last_visitor_observation_checkpoint_result: VisitorObservationCheckpointResult = null
 var _last_event_selection_result: EventSelectionResult = null
+var _last_tapped_event_id: String = ""
 var _last_decoration_purchase_checkpoint_result: DecorationPurchaseCheckpointResult = null
 var _last_move_checkpoint_result: GardenPlacementCheckpointResult = null
 
@@ -357,6 +358,8 @@ func _connect_signals() -> void:
 		_garden_diorama.cell_selected.connect(_on_zone_cell_pressed)
 	if _garden_diorama != null and not _garden_diorama.visitor_selected.is_connected(_on_diorama_visitor_selected):
 		_garden_diorama.visitor_selected.connect(_on_diorama_visitor_selected)
+	if _garden_diorama != null and not _garden_diorama.event_selected.is_connected(_on_diorama_event_selected):
+		_garden_diorama.event_selected.connect(_on_diorama_event_selected)
 
 
 ## Explicit dependency injection API for GardenView.
@@ -1555,6 +1558,28 @@ func _on_diorama_visitor_selected(_visitor_id: String) -> void:
 	_on_observe_visitor_button_pressed()
 
 
+func _format_selected_event_feedback(event_id: String) -> String:
+	var edef: EventDefinition = _catalog.get_event(event_id) if _catalog != null else null
+	var ename: String = GardenLocalization.get_event_name(event_id, _locale, edef)
+	var edesc: String = GardenLocalization.get_event_description(event_id, _locale, edef)
+	if not edesc.is_empty():
+		return GardenLocalization.format_key("ui.feedback.event_selected_desc", [ename, event_id, edesc], _locale)
+	return GardenLocalization.format_key("ui.feedback.event_selected", [ename, event_id], _locale)
+
+
+func _on_diorama_event_selected(event_id: String) -> void:
+	if _is_blocked or event_id.is_empty():
+		return
+	_resolve_nodes()
+	_current_event_id = event_id
+	_last_tapped_event_id = event_id
+	if _feedback_area != null and _feedback_label != null:
+		_active_feedback_kind = "event_tap"
+		_feedback_area.visible = true
+		_feedback_label.text = _format_selected_event_feedback(event_id)
+	_play_sfx("ui_tap")
+
+
 func _on_picker_planting_requested(definition_id: String) -> void:
 	_sync_back_navigation_state()
 	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
@@ -1806,7 +1831,8 @@ func show_visitor_result(result: VisitorSelectionResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
-	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
+	if not _suppress_feedback_effects:
+		_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 ## Pure query for testing: returns environment summary text.
@@ -2383,13 +2409,8 @@ func show_event_result(result: EventSelectionResult) -> void:
 			EventSelectionResult.Status.SELECTED:
 				var eid: String = result.get_selected_event_id()
 				_current_event_id = eid
-				var edef: EventDefinition = _catalog.get_event(eid) if _catalog != null else null
-				var ename: String = GardenLocalization.get_event_name(eid, _locale, edef)
-				var edesc: String = GardenLocalization.get_event_description(eid, _locale, edef)
-				if not edesc.is_empty():
-					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected_desc", [ename, eid, edesc], _locale)
-				else:
-					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected", [ename, eid], _locale)
+				_last_tapped_event_id = ""
+				_feedback_label.text = _format_selected_event_feedback(eid)
 				if not _suppress_feedback_effects:
 					_play_sfx("discover")
 			EventSelectionResult.Status.NO_ELIGIBLE_EVENTS:
@@ -2426,6 +2447,9 @@ func _refresh_active_feedback_locale() -> void:
 		"event":
 			if _last_event_selection_result != null:
 				show_event_result(_last_event_selection_result)
+		"event_tap":
+			if not _last_tapped_event_id.is_empty():
+				_feedback_label.text = _format_selected_event_feedback(_last_tapped_event_id)
 		"move":
 			if _last_move_checkpoint_result != null:
 				show_move_result(_last_move_checkpoint_result)
@@ -3891,7 +3915,10 @@ func show_move_result(result: GardenPlacementCheckpointResult) -> void:
 				else "ui.feedback.move_save_failed"
 			)
 			_feedback_label.text = GardenLocalization.format_key(key, [item_name, zone_name, gx, gy], _locale)
-			_play_sfx("place_decor")
+			if not _suppress_feedback_effects:
+				_play_sfx("place_decor")
+				if _garden_diorama != null and pr != null:
+					_garden_diorama.play_feedback_puff_at_cell(pr.get_zone_id(), gx, gy)
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.move_unknown", _locale)
 
