@@ -59,6 +59,7 @@ func run_tests() -> void:
 	_test_q_touch_controls_enabled_only_when_ready()
 	_test_r_no_scene_load_errors()
 	_test_s_rich_metadata_and_garden_context()
+	_test_t_target_placement_note_and_full_garden()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -707,4 +708,62 @@ func _test_s_rich_metadata_and_garden_context() -> void:
 	assert_false(picker.has_pending_plant_traits_summary(), "has_pending_plant_traits_summary() is false when none pending")
 	assert_false(picker.has_pending_plant_option_text(), "has_pending_plant_option_text() is false when none pending")
 	assert_false(picker.has_pending_plant_display_name(), "has_pending_plant_display_name() is false when none pending")
+	picker.free()
+
+
+func _test_t_target_placement_note_and_full_garden() -> void:
+	describe("T. PlantingPicker surfaces targeted cell note, confirmation suffix, locale updates, and full-garden warning")
+	var picker: PlantingPicker = _instantiate_picker()
+	var catalog: ContentCatalog = _create_production_catalog()
+	picker.bind_catalog(catalog)
+
+	assert_false(picker.has_target_placement(), "No target placement initially")
+	assert_true(picker.has_free_placement_slot(), "Has free placement slot initially")
+	assert_eq(
+		picker.get_note_text(),
+		GardenLocalization.translate("ui.planting_picker.note", "th"),
+		"Default note shown when no target cell is selected"
+	)
+
+	picker.update_garden_context(null, null, GardenZone.ZONE_ADJACENT_1, 2, 1, true)
+	assert_true(picker.has_target_placement(), "Target placement recorded after context update")
+	assert_eq(
+		picker.get_target_placement(),
+		{"zone_id": GardenZone.ZONE_ADJACENT_1, "grid_x": 2, "grid_y": 1},
+		"get_target_placement returns targeted zone and grid coords"
+	)
+	assert_true(
+		picker.get_note_text().contains("มุมสวนข้างบ้าน") and picker.get_note_text().contains("(2, 1)"),
+		"Targeted Thai note displays zone name and coordinates"
+	)
+
+	picker.select_plant_definition("plant.jasmine")
+	assert_true(
+		picker.get_confirm_prompt_text().contains("มุมสวนข้างบ้าน") and picker.get_confirm_prompt_text().contains("(2, 1)"),
+		"Confirmation prompt includes target zone and coordinates"
+	)
+
+	picker.set_locale("en")
+	assert_true(
+		picker.get_note_text().contains("Adjacent Zone") and picker.get_note_text().contains("(2, 1)"),
+		"Targeted note translates live to English"
+	)
+	assert_true(
+		picker.get_confirm_prompt_text().contains("Adjacent Zone") and picker.get_confirm_prompt_text().contains("(2, 1)"),
+		"Pending confirmation prompt translates live to English with target cell"
+	)
+
+	picker.cancel_confirmation()
+	picker.update_garden_context(null, null, "", -1, -1, false)
+	assert_false(picker.has_target_placement(), "Target cleared when context clears target cell")
+	assert_false(picker.has_free_placement_slot(), "has_free_placement_slot reflects full unlocked zones")
+	assert_eq(
+		picker.get_note_text(),
+		GardenLocalization.translate("ui.planting_picker.note_full", "en"),
+		"Full-garden note displays clearly when no empty cells remain"
+	)
+
+	picker.bind_catalog(catalog)
+	assert_false(picker.has_target_placement(), "Rebinding catalog resets target placement")
+	assert_true(picker.has_free_placement_slot(), "Rebinding catalog resets free slot assumption")
 	picker.free()

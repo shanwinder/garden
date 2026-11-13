@@ -26,6 +26,10 @@ var _catalog: ContentCatalog = null
 var _snapshot: GardenSnapshot = null
 var _available_currency: int = -1
 var _has_currency_context: bool = false
+var _target_zone_id: String = ""
+var _target_grid_x: int = -1
+var _target_grid_y: int = -1
+var _has_free_placement_slot: bool = true
 var _pending_definition_id: String = ""
 var _is_dispatching_confirmation: bool = false
 var _is_enabled: bool = true
@@ -90,6 +94,10 @@ func _connect_dialog_signals() -> void:
 func bind_catalog(catalog: ContentCatalog) -> void:
 	_catalog = catalog
 	_pending_definition_id = ""
+	_target_zone_id = ""
+	_target_grid_x = -1
+	_target_grid_y = -1
+	_has_free_placement_slot = true
 	_resolve_nodes()
 	_apply_static_texts()
 	_clear_decoration_buttons()
@@ -146,13 +154,32 @@ func get_locale() -> String:
 	return _locale
 
 
+func _has_valid_target_cell() -> bool:
+	return GardenZone.is_within_bounds(_target_zone_id, _target_grid_x, _target_grid_y)
+
+
+func _refresh_note_text() -> void:
+	if _note_label == null:
+		return
+	if _has_valid_target_cell():
+		var zone_name: String = GardenLocalization.get_zone_name(_target_zone_id, _locale)
+		_note_label.text = GardenLocalization.format_key(
+			"ui.decoration_picker.note_target",
+			[zone_name, _target_grid_x, _target_grid_y],
+			_locale
+		)
+	elif not _has_free_placement_slot:
+		_note_label.text = GardenLocalization.translate("ui.decoration_picker.note_full", _locale)
+	else:
+		_note_label.text = GardenLocalization.translate("ui.decoration_picker.note", _locale)
+
+
 func _apply_static_texts() -> void:
 	if _title_label != null:
 		_title_label.text = GardenLocalization.translate("ui.decoration_picker.title", _locale)
 	if _close_button != null:
 		_close_button.text = GardenLocalization.translate("ui.common.close", _locale)
-	if _note_label != null:
-		_note_label.text = GardenLocalization.translate("ui.decoration_picker.note", _locale)
+	_refresh_note_text()
 	if _confirm_title_label != null:
 		_confirm_title_label.text = GardenLocalization.translate("ui.decoration_picker.confirm_title", _locale)
 	if _confirm_notice_label != null:
@@ -163,12 +190,32 @@ func _apply_static_texts() -> void:
 		_confirm_button.text = GardenLocalization.translate("ui.common.confirm", _locale)
 
 
-## Updates optional read-only shop context (available currency and GardenSnapshot) and refreshes labels in-place.
-func update_shop_context(available_currency: int, snapshot: GardenSnapshot = null) -> void:
+## Updates optional read-only shop context (available currency, GardenSnapshot, and target cell) in-place.
+func update_shop_context(
+	available_currency: int,
+	snapshot: GardenSnapshot = null,
+	target_zone_id: String = "",
+	target_grid_x: int = -1,
+	target_grid_y: int = -1,
+	has_free_placement_slot: bool = true
+) -> void:
 	_available_currency = available_currency
 	_has_currency_context = available_currency >= 0
 	_snapshot = snapshot
+	if GardenZone.is_within_bounds(target_zone_id, target_grid_x, target_grid_y):
+		_target_zone_id = target_zone_id
+		_target_grid_x = target_grid_x
+		_target_grid_y = target_grid_y
+	else:
+		_target_zone_id = ""
+		_target_grid_x = -1
+		_target_grid_y = -1
+	_has_free_placement_slot = has_free_placement_slot
+	_resolve_nodes()
+	_refresh_note_text()
 	_refresh_button_labels()
+	if not _pending_definition_id.is_empty():
+		_update_confirm_prompt_text(_pending_definition_id)
 
 
 func _refresh_button_labels() -> void:
@@ -285,6 +332,13 @@ func _update_confirm_prompt_text(definition_id: String) -> void:
 		)
 	if _has_currency_context and _available_currency < price_val:
 		prompt_text += GardenLocalization.translate("ui.decoration_picker.badge_insufficient", _locale)
+	if _has_valid_target_cell():
+		var zone_name: String = GardenLocalization.get_zone_name(_target_zone_id, _locale)
+		prompt_text += GardenLocalization.format_key(
+			"ui.decoration_picker.confirm_target_suffix",
+			[zone_name, _target_grid_x, _target_grid_y],
+			_locale
+		)
 	_confirm_prompt_label.text = prompt_text
 
 
@@ -384,6 +438,31 @@ func get_pending_definition_id() -> String:
 func get_confirm_prompt_text() -> String:
 	_resolve_nodes()
 	return _confirm_prompt_label.text if _confirm_prompt_label != null else ""
+
+
+## Pure query for testing: returns footer note label text.
+func get_note_text() -> String:
+	_resolve_nodes()
+	return _note_label.text if _note_label != null else ""
+
+
+## Pure query for testing: returns true when a valid target cell context is active.
+func has_target_placement() -> bool:
+	return _has_valid_target_cell()
+
+
+## Pure query for testing: returns the bound target cell descriptor.
+func get_target_placement() -> Dictionary:
+	return {
+		"zone_id": _target_zone_id,
+		"grid_x": _target_grid_x,
+		"grid_y": _target_grid_y,
+	}
+
+
+## Pure query for testing: returns whether unlocked placement cells have room.
+func has_free_placement_slot() -> bool:
+	return _has_free_placement_slot
 
 
 ## Pure query for testing: returns available decoration definition IDs in current list.

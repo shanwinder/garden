@@ -308,6 +308,9 @@ const STRINGS: Dictionary = {
 	# PlantingPicker
 	"ui.planting_picker.title": "Choose a Plant",
 	"ui.planting_picker.note": "(Plants are placed in your selected cell or the first open cell in an unlocked zone)",
+	"ui.planting_picker.note_target": "Planting in selected cell: %s (%d, %d)",
+	"ui.planting_picker.note_full": "All unlocked garden cells are full — move an item or unlock the next zone",
+	"ui.planting_picker.confirm_target_suffix": "\nTarget cell: %s (%d, %d)",
 	"ui.planting_picker.confirm_title": "Confirm Planting",
 	"ui.planting_picker.confirm_notice": "The plant will be placed in your garden and begin growing in real time",
 	"ui.planting_picker.mature_seconds": "Matures in %ds",
@@ -323,6 +326,9 @@ const STRINGS: Dictionary = {
 	# DecorationPicker
 	"ui.decoration_picker.title": "Decoration Shop",
 	"ui.decoration_picker.note": "(Some decorations add environmental traits to attract new visitors)",
+	"ui.decoration_picker.note_target": "Placing in selected cell: %s (%d, %d) • Some decorations add environmental traits to attract new visitors",
+	"ui.decoration_picker.note_full": "All unlocked garden cells are full — move an item or unlock the next zone",
+	"ui.decoration_picker.confirm_target_suffix": "\nTarget cell: %s (%d, %d)",
 	"ui.decoration_picker.confirm_title": "Confirm Purchase",
 	"ui.decoration_picker.confirm_notice": "Coins are spent on confirmation and the decoration is placed immediately",
 	"ui.decoration_picker.option_base": "%s (%s) — %d coins | %s",

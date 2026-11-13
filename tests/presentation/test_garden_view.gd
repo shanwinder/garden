@@ -117,6 +117,7 @@ func run_tests() -> void:
 	_test_safe_area_insets_calculation_and_application()
 	_test_android_back_navigation_and_go_back_state()
 	_test_diorama_event_tap_and_move_feedback_polish()
+	_test_picker_target_context_cross_zone_sync_and_move_mode_guards()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -2902,3 +2903,154 @@ func _test_diorama_event_tap_and_move_feedback_polish() -> void:
 	main_node.free()
 	app.free()
 	_cleanup_presentation_test_files()
+
+
+func _test_picker_target_context_cross_zone_sync_and_move_mode_guards() -> void:
+	describe("GardenView syncs active zone and picker target context across diorama/grid taps, wraps detail labels horizontally, and cancels move mode cleanly on conflicting actions")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	# Unlock Adjacent Zone 2 cleanly via 8 discoveries and place items in both zones.
+	for i: int in range(8):
+		var rec_id: String = (
+			"visitor.butterfly" if i == 0
+			else "plant.holy_basil" if i == 1
+			else "plant.chili" if i == 2
+			else "plant.jasmine" if i == 3
+			else "plant.marigold" if i == 4
+			else "plant.banana" if i == 5
+			else "visitor.bird" if i == 6
+			else "visitor.cat"
+		)
+		state.get_journal().try_put_record(DiscoveryRecord.new(rec_id, 100 + i, 1))
+	state.get_economy().grant_currency(500)
+	var mature_basil: PlantState = PlantState.new("p-main-01", "plant.holy_basil", 0, GardenZone.ZONE_MAIN, 0, 0)
+	var adj_plant: PlantState = PlantState.new("p-adj-01", "plant.jasmine", 1000, GardenZone.ZONE_ADJACENT_1, 3, 2)
+	state.get_plants().try_add_plant(mature_basil)
+	state.get_plants().try_add_plant(adj_plant)
+
+	var p_res: PlantContentLoadResult = PlantContentLoader.new().load_production_definitions()
+	var v_res: VisitorContentLoadResult = VisitorContentLoader.new().load_production_definitions()
+	var d_res: DecorationContentLoadResult = DecorationContentLoader.new().load_production_definitions()
+	var catalog: ContentCatalog = ContentCatalog.try_create(
+		p_res.get_definitions(),
+		v_res.get_definitions(),
+		d_res.get_definitions()
+	)
+	var session: GameSession = GameSession.new(state)
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+	view.bind_garden(session, catalog, clock)
+
+	# 1. Portrait DetailsArea layout & autowrap checks
+	var details_area: Control = view.get_node_or_null("MainMargin/LayoutBox/DetailsArea") as Control
+	var reward_label: Label = view.get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailRewardLabel") as Label
+	var placement_label: Label = view.get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlacementLabel") as Label
+	assert_true(details_area != null and details_area.custom_minimum_size.y == 220.0, "DetailsArea compact height is 220px for portrait efficiency")
+	assert_true(reward_label != null and reward_label.autowrap_mode == TextServer.AUTOWRAP_WORD, "DetailRewardLabel uses word autowrap")
+	assert_true(placement_label != null and placement_label.autowrap_mode == TextServer.AUTOWRAP_WORD, "DetailPlacementLabel uses word autowrap")
+	assert_eq(view.get_harvest_button().get_parent(), view.get_move_button().get_parent(), "HarvestButton and MoveButton share side-by-side DetailsActionsHBox")
+
+	# 2. Tapping an empty cell in zone.adjacent_1 directly on Diorama switches _active_zone_id and passes target to pickers
+	var diorama: GardenDiorama = view.get_garden_diorama()
+	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_MAIN, "Starts on zone.main")
+	diorama.simulate_tap_at_world_pos(GardenDiorama.compute_grid_world_position(GardenZone.ZONE_ADJACENT_1, 1, 1))
+	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_ADJACENT_1, "Tapping adjacent empty diorama cell syncs active zone")
+	assert_eq(
+		view.get_target_cell(),
+		{"zone_id": GardenZone.ZONE_ADJACENT_1, "grid_x": 1, "grid_y": 1},
+		"Target cell updated from diorama tap"
+	)
+
+	view.open_planting_picker()
+	assert_true(view.get_planting_picker().has_target_placement(), "PlantingPicker receives targeted cell when opened")
+	assert_true(
+		view.get_planting_picker().get_note_text().contains("มุมสวนข้างบ้าน") and view.get_planting_picker().get_note_text().contains("(1, 1)"),
+		"PlantingPicker displays targeted zone and coords in note"
+	)
+	view.close_planting_picker()
+
+	view.open_decoration_picker()
+	assert_true(view.get_decoration_picker().has_target_placement(), "DecorationPicker receives targeted cell when opened")
+	assert_true(
+		view.get_decoration_picker().get_note_text().contains("มุมสวนข้างบ้าน") and view.get_decoration_picker().get_note_text().contains("(1, 1)"),
+		"DecorationPicker displays targeted zone and coords in note"
+	)
+	view.close_decoration_picker()
+
+	# 3. Switching active zone clears stale target and updates picker context; tapping diorama item in zone.adjacent_1 syncs active zone
+	view.select_active_zone(GardenZone.ZONE_MAIN)
+	assert_false(view.get_planting_picker().has_target_placement(), "Switching active zone clears stale target from PlantingPicker")
+	assert_false(view.get_decoration_picker().has_target_placement(), "Switching active zone clears stale target from DecorationPicker")
+
+	var adj_node: Node2D = diorama.get_rendered_item_node("p-adj-01")
+	assert_true(adj_node != null, "Adjacent plant rendered in diorama")
+	diorama.simulate_tap_at_world_pos(adj_node.position + Vector2(0.0, -40.0))
+	assert_eq(view.get_selected_runtime_instance_id(), "p-adj-01", "Tapping adjacent item in diorama selects it")
+	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_ADJACENT_1, "Tapping adjacent item in diorama syncs active zone to zone.adjacent_1")
+
+	# 4. Move mode locale update and automatic cancellation on conflicting actions
+	view.get_move_button().pressed.emit()
+	assert_true(view.is_move_mode_active(), "Move mode enabled")
+	view.set_locale("en")
+	assert_eq(
+		view.get_move_button().text,
+		GardenLocalization.translate("ui.details.move_cancel_button", "en"),
+		"Move button updates cancel text in English while move mode active"
+	)
+	view.set_locale("th")
+
+	view.open_planting_picker()
+	assert_false(view.is_move_mode_active(), "Opening PlantingPicker cancels active move mode")
+	assert_eq(
+		view.get_move_button().text,
+		GardenLocalization.translate("ui.details.move_button", "th"),
+		"Move button label reverts when move mode cancels"
+	)
+	view.close_planting_picker()
+
+	view.get_move_button().pressed.emit()
+	assert_true(view.is_move_mode_active(), "Move mode re-enabled")
+	view.open_decoration_picker()
+	assert_false(view.is_move_mode_active(), "Opening DecorationPicker cancels active move mode")
+	view.close_decoration_picker()
+
+	var harvest_signals: Array[String] = []
+	view.harvest_requested.connect(func(inst_id: String) -> void:
+		harvest_signals.append(inst_id)
+	)
+	view.get_plant_view_by_id("p-main-01").simulate_selection_input()
+	view.get_move_button().pressed.emit()
+	assert_true(view.is_move_mode_active(), "Move mode enabled on mature plant")
+	view.get_harvest_button().pressed.emit()
+	assert_false(view.is_move_mode_active(), "Harvesting mature plant cancels active move mode")
+	assert_eq(harvest_signals, ["p-main-01"], "Harvest signal still emits cleanly")
+
+	# 5. Full unlocked grid triggers full-garden warning in both pickers
+	var filler_idx: int = 0
+	for zid: String in [GardenZone.ZONE_MAIN, GardenZone.ZONE_ADJACENT_1]:
+		var w: int = GardenZone.get_grid_width(zid)
+		var h: int = GardenZone.get_grid_height(zid)
+		for gy: int in range(h):
+			for gx: int in range(w):
+				var occ: Dictionary = GardenPlacement.get_occupant_at(state, zid, gx, gy)
+				if occ.get("kind", "") == GardenPlacement.KIND_NONE:
+					filler_idx += 1
+					state.get_plants().try_add_plant(PlantState.new("filler-%d" % filler_idx, "plant.chili", 1000, zid, gx, gy))
+	view.refresh_from_session()
+	view.open_planting_picker()
+	assert_false(view.get_planting_picker().has_free_placement_slot(), "PlantingPicker detects full unlocked zones")
+	assert_eq(
+		view.get_planting_picker().get_note_text(),
+		GardenLocalization.translate("ui.planting_picker.note_full", "th"),
+		"PlantingPicker shows full-garden Thai note"
+	)
+	view.close_planting_picker()
+	view.open_decoration_picker()
+	assert_false(view.get_decoration_picker().has_free_placement_slot(), "DecorationPicker detects full unlocked zones")
+	assert_eq(
+		view.get_decoration_picker().get_note_text(),
+		GardenLocalization.translate("ui.decoration_picker.note_full", "th"),
+		"DecorationPicker shows full-garden Thai note"
+	)
+	view.close_decoration_picker()
+
+	view.free()

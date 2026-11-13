@@ -305,9 +305,9 @@ func _resolve_nodes() -> void:
 	if _detail_placement_label == null:
 		_detail_placement_label = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailPlacementLabel") as Label
 	if _harvest_button == null:
-		_harvest_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/HarvestButton") as Button
+		_harvest_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailsActionsHBox/HarvestButton") as Button
 	if _move_button == null:
-		_move_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/MoveButton") as Button
+		_move_button = get_node_or_null("MainMargin/LayoutBox/DetailsArea/MarginContainer/DetailsVBox/DetailsContent/DetailsActionsHBox/MoveButton") as Button
 	_connect_signals()
 
 
@@ -498,6 +498,11 @@ func _apply_static_texts() -> void:
 		_empty_label.text = GardenLocalization.translate("ui.garden.empty_garden", _locale)
 	if _no_selection_label != null:
 		_no_selection_label.text = GardenLocalization.translate("ui.details.no_selection", _locale)
+	if _move_button != null:
+		_move_button.text = GardenLocalization.translate(
+			"ui.details.move_cancel_button" if _is_move_mode else "ui.details.move_button",
+			_locale
+		)
 
 
 func _update_audio_button_text() -> void:
@@ -1180,10 +1185,7 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 		if _session != null and _session.get_state() != null
 		else null
 	)
-	if _planting_picker != null:
-		_planting_picker.update_garden_context(_last_snapshot, journal)
-	if _decoration_picker != null:
-		_decoration_picker.update_shop_context(_session.get_currency(), _last_snapshot)
+	_sync_picker_placement_contexts()
 
 	var day_number: int = int(now_utc / 86400) if now_utc >= 0 else 0
 	var currency: int = _session.get_currency() if _session != null else 0
@@ -1538,6 +1540,32 @@ func _trigger_diorama_puff_for_decoration(decor: DecorationState) -> void:
 		)
 
 
+func _sync_picker_placement_contexts() -> void:
+	var state: GameState = _session.get_state() if _session != null else null
+	var journal: JournalState = state.get_journal() if state != null else null
+	var currency: int = _session.get_currency() if _session != null else 0
+	var unlocked_zones: Array[String] = GardenZone.get_unlocked_zone_ids(_last_snapshot, journal)
+	var has_free_slot: bool = true
+	if state != null:
+		var free_cell: Dictionary = GardenPlacement.find_first_free_cell(state, unlocked_zones, _active_zone_id)
+		has_free_slot = free_cell.get("found", false) as bool
+	var target_zone: String = ""
+	var target_x: int = -1
+	var target_y: int = -1
+	if (
+		not _target_zone_id.is_empty()
+		and GardenZone.is_within_bounds(_target_zone_id, _target_grid_x, _target_grid_y)
+		and GardenZone.is_zone_unlocked(_target_zone_id, _last_snapshot, journal)
+	):
+		target_zone = _target_zone_id
+		target_x = _target_grid_x
+		target_y = _target_grid_y
+	if _planting_picker != null:
+		_planting_picker.update_garden_context(_last_snapshot, journal, target_zone, target_x, target_y, has_free_slot)
+	if _decoration_picker != null:
+		_decoration_picker.update_shop_context(currency, _last_snapshot, target_zone, target_x, target_y, has_free_slot)
+
+
 func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
 	if runtime_instance_id.is_empty():
 		return
@@ -1545,12 +1573,30 @@ func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -
 	_target_zone_id = ""
 	_target_grid_x = -1
 	_target_grid_y = -1
+	var item_zone_id: String = ""
+	if _session != null and _session.get_state() != null:
+		var state: GameState = _session.get_state()
+		if item_kind == "plant" and state.get_plants() != null:
+			var plant_state: PlantState = state.get_plants().get_plant(runtime_instance_id)
+			if plant_state != null:
+				item_zone_id = plant_state.get_zone_id()
+		elif item_kind == "decoration" and state.get_decorations() != null:
+			var decor_state: DecorationState = state.get_decorations().get_decoration(runtime_instance_id)
+			if decor_state != null:
+				item_zone_id = decor_state.get_zone_id()
+		if (
+			not item_zone_id.is_empty()
+			and GardenZone.is_valid_zone_id(item_zone_id)
+			and GardenZone.is_zone_unlocked(item_zone_id, _last_snapshot, state.get_journal())
+		):
+			_active_zone_id = item_zone_id
 	if item_kind == "plant":
 		_on_plant_selected(runtime_instance_id)
 	elif item_kind == "decoration":
 		_on_decoration_selected(runtime_instance_id)
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
+	_sync_picker_placement_contexts()
 	_sync_back_navigation_state()
 
 
@@ -1589,6 +1635,7 @@ func _on_picker_planting_requested(definition_id: String) -> void:
 		_target_zone_id = ""
 		_target_grid_x = -1
 		_target_grid_y = -1
+		_sync_picker_placement_contexts()
 		planting_at_requested.emit(definition_id, z_id, gx, gy)
 	else:
 		planting_requested.emit(definition_id)
@@ -1599,6 +1646,9 @@ func open_planting_picker() -> void:
 	if _is_blocked or _session == null:
 		return
 	_resolve_nodes()
+	if _is_move_mode:
+		_set_move_mode(false)
+	_sync_picker_placement_contexts()
 	_play_sfx("ui_tap")
 	if _planting_picker != null:
 		_planting_picker.open_picker()
@@ -1708,6 +1758,8 @@ func _on_harvest_button_pressed() -> void:
 		return
 	if _harvest_button != null and _harvest_button.disabled:
 		return
+	if _is_move_mode:
+		_set_move_mode(false)
 	harvest_requested.emit(_selected_runtime_instance_id)
 
 
@@ -1982,6 +2034,7 @@ func _on_picker_decoration_purchase_requested(definition_id: String) -> void:
 		_target_zone_id = ""
 		_target_grid_x = -1
 		_target_grid_y = -1
+		_sync_picker_placement_contexts()
 		decoration_purchase_at_requested.emit(definition_id, z_id, gx, gy)
 	else:
 		decoration_purchase_requested.emit(definition_id)
@@ -1992,6 +2045,9 @@ func open_decoration_picker() -> void:
 	if _is_blocked or _session == null:
 		return
 	_resolve_nodes()
+	if _is_move_mode:
+		_set_move_mode(false)
+	_sync_picker_placement_contexts()
 	_play_sfx("ui_tap")
 	if _decoration_picker != null:
 		_decoration_picker.open_picker()
@@ -3770,6 +3826,7 @@ func select_active_zone(zone_id: String) -> void:
 		_target_grid_x = -1
 		_target_grid_y = -1
 	_render_zone_grid()
+	_sync_picker_placement_contexts()
 	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
@@ -3849,12 +3906,14 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_target_grid_x = -1
 		_target_grid_y = -1
 	else:
+		_active_zone_id = zone_id
 		_target_zone_id = zone_id
 		_target_grid_x = grid_x
 		_target_grid_y = grid_y
 	_play_sfx("ui_tap")
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
+	_sync_picker_placement_contexts()
 	_sync_back_navigation_state()
 
 

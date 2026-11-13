@@ -308,6 +308,9 @@ const STRINGS: Dictionary = {
 	# PlantingPicker
 	"ui.planting_picker.title": "เลือกพันธุ์ไม้ที่จะปลูก",
 	"ui.planting_picker.note": "(ต้นไม้จะปลูกในช่องที่เลือก หรือช่องว่างแรกในโซนที่ปลดล็อก)",
+	"ui.planting_picker.note_target": "จะปลูกในช่องที่เลือก: %s (%d, %d)",
+	"ui.planting_picker.note_full": "ช่องในโซนที่ปลดล็อกเต็มแล้ว — ย้ายต้นไม้หรือปลดล็อกโซนเพิ่ม",
+	"ui.planting_picker.confirm_target_suffix": "\nตำแหน่งที่จะปลูก: %s (%d, %d)",
 	"ui.planting_picker.confirm_title": "ยืนยันการปลูก",
 	"ui.planting_picker.confirm_notice": "ต้นไม้จะถูกปลูกและเริ่มเติบโตตามเวลาจริงในสวนทันที",
 	"ui.planting_picker.mature_seconds": "โตเต็มที่ %d วินาที",
@@ -323,6 +326,9 @@ const STRINGS: Dictionary = {
 	# DecorationPicker
 	"ui.decoration_picker.title": "ร้านของตกแต่งสวน",
 	"ui.decoration_picker.note": "(ของตกแต่งบางชิ้นช่วยเพิ่มสภาพแวดล้อมและดึงดูดผู้มาเยือนใหม่)",
+	"ui.decoration_picker.note_target": "จะวางในช่องที่เลือก: %s (%d, %d) • ของตกแต่งบางชิ้นช่วยเพิ่มสภาพแวดล้อมและดึงดูดผู้มาเยือนใหม่",
+	"ui.decoration_picker.note_full": "ช่องในโซนที่ปลดล็อกเต็มแล้ว — ย้ายของตกแต่งหรือปลดล็อกโซนเพิ่ม",
+	"ui.decoration_picker.confirm_target_suffix": "\nตำแหน่งที่จะวาง: %s (%d, %d)",
 	"ui.decoration_picker.confirm_title": "ยืนยันการซื้อของตกแต่ง",
 	"ui.decoration_picker.confirm_notice": "ระบบจะหักเหรียญเมื่อยืนยันและบันทึกของตกแต่งลงในสวนทันที",
 	"ui.decoration_picker.option_base": "%s (%s) — %d เหรียญ | %s",
