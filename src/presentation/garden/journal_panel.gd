@@ -14,6 +14,7 @@ class_name JournalPanel
 extends Control
 
 signal journal_closed()
+signal ui_tapped()
 
 var _journal: JournalState = null
 var _catalog: ContentCatalog = null
@@ -59,8 +60,13 @@ func _resolve_nodes() -> void:
 
 
 func _connect_signals() -> void:
-	if _close_button != null and not _close_button.pressed.is_connected(close_journal):
-		_close_button.pressed.connect(close_journal)
+	if _close_button != null and not _close_button.pressed.is_connected(_on_close_button_pressed):
+		_close_button.pressed.connect(_on_close_button_pressed)
+
+
+func _on_close_button_pressed() -> void:
+	ui_tapped.emit()
+	close_journal()
 
 
 ## Sets active display locale ("th" or "en") and rebuilds journal entries in-place.
@@ -437,6 +443,8 @@ func _add_section_header(title: String) -> void:
 		return
 	var header: Label = Label.new()
 	header.text = title
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_theme_font_size_override("font_size", 26)
 	header.add_theme_color_override("font_color", Color(0.95, 0.85, 0.45, 1))
 	_entries_container.add_child(header)
@@ -456,6 +464,7 @@ func _add_entry_label(text: String, is_discovered: bool, icon_texture: Texture2D
 		lbl.add_theme_color_override("font_color", Color(0.62, 0.68, 0.64, 1))
 	if icon_texture != null:
 		var row: HBoxContainer = HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_theme_constant_override("separation", 12)
 		var icon_rect: TextureRect = TextureRect.new()
 		icon_rect.texture = icon_texture

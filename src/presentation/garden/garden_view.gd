@@ -39,6 +39,7 @@ const TIME_PERIOD_BASE_COLORS: Dictionary = {
 const DEFAULT_BACKGROUND_COLOR: Color = Color(0.12, 0.15, 0.13, 1.0)
 const CLOUDY_TINT_COLOR: Color = Color(0.14, 0.16, 0.18, 1.0)
 const RAIN_TINT_COLOR: Color = Color(0.10, 0.14, 0.20, 1.0)
+const BASE_MAIN_MARGIN_PX: int = 28
 
 var _session: GameSession = null
 var _catalog: ContentCatalog = null
@@ -89,6 +90,13 @@ var _last_decoration_purchase_checkpoint_result: DecorationPurchaseCheckpointRes
 var _last_move_checkpoint_result: GardenPlacementCheckpointResult = null
 
 var _background_rect: ColorRect = null
+var _main_margin: MarginContainer = null
+var _last_applied_margins: Dictionary = {
+	"left": BASE_MAIN_MARGIN_PX,
+	"top": BASE_MAIN_MARGIN_PX,
+	"right": BASE_MAIN_MARGIN_PX,
+	"bottom": BASE_MAIN_MARGIN_PX,
+}
 var _title_label: Label = null
 var _refresh_button: Button = null
 var _plant_button: Button = null
@@ -151,6 +159,11 @@ var _move_button: Button = null
 
 func _ready() -> void:
 	_resolve_nodes()
+	var viewport: Viewport = get_viewport()
+	if viewport != null and not viewport.size_changed.is_connected(_refresh_safe_area_margins):
+		viewport.size_changed.connect(_refresh_safe_area_margins)
+	_refresh_safe_area_margins()
+	_sync_back_navigation_state()
 	_apply_static_texts()
 	if _is_blocked:
 		_show_blocked_visual()
@@ -158,10 +171,32 @@ func _ready() -> void:
 		refresh_from_session()
 
 
+func _exit_tree() -> void:
+	if get_tree() != null:
+		get_tree().set_quit_on_go_back(true)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_SIZE_CHANGED:
+		_refresh_safe_area_margins()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		handle_back_action()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event != null and event.is_action_pressed("ui_cancel"):
+		if handle_back_action():
+			var viewport: Viewport = get_viewport()
+			if viewport != null:
+				viewport.set_input_as_handled()
+
+
 ## Resolves child node references safely whether _ready has fired or not.
 func _resolve_nodes() -> void:
 	if _background_rect == null:
 		_background_rect = get_node_or_null("Background") as ColorRect
+	if _main_margin == null:
+		_main_margin = get_node_or_null("MainMargin") as MarginContainer
 	if _title_label == null:
 		_title_label = get_node_or_null("MainMargin/LayoutBox/HeaderArea/TitleLabel") as Label
 	if _refresh_button == null:
@@ -284,6 +319,10 @@ func _connect_signals() -> void:
 		_language_button.pressed.connect(toggle_locale)
 	if _planting_picker != null and not _planting_picker.planting_requested.is_connected(_on_picker_planting_requested):
 		_planting_picker.planting_requested.connect(_on_picker_planting_requested)
+	if _planting_picker != null and not _planting_picker.picker_closed.is_connected(_on_modal_closed):
+		_planting_picker.picker_closed.connect(_on_modal_closed)
+	if _planting_picker != null and not _planting_picker.ui_tapped.is_connected(_on_child_ui_tapped):
+		_planting_picker.ui_tapped.connect(_on_child_ui_tapped)
 	if _harvest_button != null and not _harvest_button.pressed.is_connected(_on_harvest_button_pressed):
 		_harvest_button.pressed.connect(_on_harvest_button_pressed)
 	if _move_button != null and not _move_button.pressed.is_connected(_on_move_button_pressed):
@@ -298,12 +337,20 @@ func _connect_signals() -> void:
 		_observe_event_button.pressed.connect(_on_observe_event_button_pressed)
 	if _journal_button != null and not _journal_button.pressed.is_connected(open_journal_panel):
 		_journal_button.pressed.connect(open_journal_panel)
+	if _journal_panel != null and not _journal_panel.journal_closed.is_connected(_on_modal_closed):
+		_journal_panel.journal_closed.connect(_on_modal_closed)
+	if _journal_panel != null and not _journal_panel.ui_tapped.is_connected(_on_child_ui_tapped):
+		_journal_panel.ui_tapped.connect(_on_child_ui_tapped)
 	if _audio_button != null and not _audio_button.pressed.is_connected(toggle_audio_mute):
 		_audio_button.pressed.connect(toggle_audio_mute)
 	if _decorate_button != null and not _decorate_button.pressed.is_connected(open_decoration_picker):
 		_decorate_button.pressed.connect(open_decoration_picker)
 	if _decoration_picker != null and not _decoration_picker.decoration_purchase_requested.is_connected(_on_picker_decoration_purchase_requested):
 		_decoration_picker.decoration_purchase_requested.connect(_on_picker_decoration_purchase_requested)
+	if _decoration_picker != null and not _decoration_picker.picker_closed.is_connected(_on_modal_closed):
+		_decoration_picker.picker_closed.connect(_on_modal_closed)
+	if _decoration_picker != null and not _decoration_picker.ui_tapped.is_connected(_on_child_ui_tapped):
+		_decoration_picker.ui_tapped.connect(_on_child_ui_tapped)
 	if _garden_diorama != null and not _garden_diorama.item_selected.is_connected(_on_diorama_item_selected):
 		_garden_diorama.item_selected.connect(_on_diorama_item_selected)
 	if _garden_diorama != null and not _garden_diorama.cell_selected.is_connected(_on_zone_cell_pressed):
@@ -920,6 +967,7 @@ func _update_details_panel(
 		if _move_button != null:
 			_move_button.disabled = true
 			_move_button.text = GardenLocalization.translate("ui.details.move_button", _locale)
+		_sync_back_navigation_state()
 		return
 
 	_clear_selected_decoration_fields()
@@ -1113,6 +1161,7 @@ func _show_blocked_visual() -> void:
 		_blocked_label.text = _blocked_message if not _blocked_message.is_empty() else GardenLocalization.translate("ui.garden.blocked_default", _locale)
 
 	_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
+	_sync_back_navigation_state()
 
 
 func _update_environment_and_visitors(now_utc: int) -> void:
@@ -1498,6 +1547,7 @@ func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -
 		_on_decoration_selected(runtime_instance_id)
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
+	_sync_back_navigation_state()
 
 
 func _on_diorama_visitor_selected(_visitor_id: String) -> void:
@@ -1505,6 +1555,7 @@ func _on_diorama_visitor_selected(_visitor_id: String) -> void:
 
 
 func _on_picker_planting_requested(definition_id: String) -> void:
+	_sync_back_navigation_state()
 	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
 		var z_id: String = _target_zone_id
 		var gx: int = _target_grid_x
@@ -1525,6 +1576,7 @@ func open_planting_picker() -> void:
 	_play_sfx("ui_tap")
 	if _planting_picker != null:
 		_planting_picker.open_picker()
+	_sync_back_navigation_state()
 
 
 ## Closes the planting picker modal.
@@ -1532,6 +1584,7 @@ func close_planting_picker() -> void:
 	_resolve_nodes()
 	if _planting_picker != null:
 		_planting_picker.close_picker()
+	_sync_back_navigation_state()
 
 
 ## Displays user feedback from a PlantingCheckpointResult.
@@ -1850,6 +1903,7 @@ func open_journal_panel() -> void:
 	_play_sfx("ui_tap")
 	if _journal_panel != null:
 		_journal_panel.open_journal()
+	_sync_back_navigation_state()
 
 
 ## Closes the journal modal panel.
@@ -1857,6 +1911,7 @@ func close_journal_panel() -> void:
 	_resolve_nodes()
 	if _journal_panel != null:
 		_journal_panel.close_journal()
+	_sync_back_navigation_state()
 
 
 ## Pure query for testing: returns child JournalPanel instance.
@@ -1889,6 +1944,7 @@ func get_last_visitor_observation_checkpoint_result() -> VisitorObservationCheck
 
 
 func _on_picker_decoration_purchase_requested(definition_id: String) -> void:
+	_sync_back_navigation_state()
 	if not _target_zone_id.is_empty() and _target_grid_x >= 0 and _target_grid_y >= 0:
 		var z_id: String = _target_zone_id
 		var gx: int = _target_grid_x
@@ -1909,6 +1965,7 @@ func open_decoration_picker() -> void:
 	_play_sfx("ui_tap")
 	if _decoration_picker != null:
 		_decoration_picker.open_picker()
+	_sync_back_navigation_state()
 
 
 ## Closes the decoration picker modal.
@@ -1916,6 +1973,7 @@ func close_decoration_picker() -> void:
 	_resolve_nodes()
 	if _decoration_picker != null:
 		_decoration_picker.close_picker()
+	_sync_back_navigation_state()
 
 
 ## Displays user feedback from a DecorationPurchaseCheckpointResult.
@@ -3684,13 +3742,8 @@ func select_active_zone(zone_id: String) -> void:
 	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
-func _on_move_button_pressed() -> void:
-	if _is_blocked or _session == null:
-		return
-	if _selected_runtime_instance_id.is_empty() and _selected_decoration_instance_id.is_empty():
-		return
-	_play_sfx("ui_tap")
-	_is_move_mode = not _is_move_mode
+func _set_move_mode(enabled: bool) -> void:
+	_is_move_mode = enabled
 	if _is_move_mode:
 		_target_zone_id = ""
 		_target_grid_x = -1
@@ -3703,6 +3756,16 @@ func _on_move_button_pressed() -> void:
 		)
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
+	_sync_back_navigation_state()
+
+
+func _on_move_button_pressed() -> void:
+	if _is_blocked or _session == null:
+		return
+	if _selected_runtime_instance_id.is_empty() and _selected_decoration_instance_id.is_empty():
+		return
+	_play_sfx("ui_tap")
+	_set_move_mode(not _is_move_mode)
 
 
 func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
@@ -3722,6 +3785,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_on_plant_selected(occ_id)
 		_render_zone_grid()
 		_sync_diorama_placement_highlight()
+		_sync_back_navigation_state()
 		return
 
 	if occ_kind == GardenPlacement.KIND_DECORATION and not occ_id.is_empty():
@@ -3732,6 +3796,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_on_decoration_selected(occ_id)
 		_render_zone_grid()
 		_sync_diorama_placement_highlight()
+		_sync_back_navigation_state()
 		return
 
 	if not GardenZone.is_zone_unlocked(zone_id, _last_snapshot, state.get_journal()):
@@ -3744,7 +3809,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 			else _selected_decoration_instance_id
 		)
 		if not moving_id.is_empty():
-			_is_move_mode = false
+			_set_move_mode(false)
 			move_item_requested.emit(moving_id, zone_id, grid_x, grid_y)
 			return
 
@@ -3759,6 +3824,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 	_play_sfx("ui_tap")
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
+	_sync_back_navigation_state()
 
 
 ## Displays user feedback from a GardenPlacementCheckpointResult.
@@ -3889,3 +3955,157 @@ func get_zone_adjacent_button() -> Button:
 func get_zone_status_text() -> String:
 	_resolve_nodes()
 	return _zone_status_label.text if _zone_status_label != null else ""
+
+
+## Pure helper computing safe-area-aware canvas margins on MainMargin from physical safe-area pixels.
+static func compute_safe_area_margins(
+	safe_area: Rect2i,
+	screen_size: Vector2i,
+	viewport_size: Vector2,
+	base_margin: int = BASE_MAIN_MARGIN_PX
+) -> Dictionary:
+	var min_margin: int = maxi(0, base_margin)
+	if (
+		safe_area.size.x <= 0
+		or safe_area.size.y <= 0
+		or screen_size.x <= 0
+		or screen_size.y <= 0
+		or viewport_size.x <= 0.0
+		or viewport_size.y <= 0.0
+	):
+		return {
+			"left": min_margin,
+			"top": min_margin,
+			"right": min_margin,
+			"bottom": min_margin,
+		}
+
+	var left_edge: int = clampi(safe_area.position.x, 0, screen_size.x)
+	var top_edge: int = clampi(safe_area.position.y, 0, screen_size.y)
+	var right_edge: int = clampi(safe_area.end.x, left_edge, screen_size.x)
+	var bottom_edge: int = clampi(safe_area.end.y, top_edge, screen_size.y)
+	if right_edge <= left_edge or bottom_edge <= top_edge:
+		return {
+			"left": min_margin,
+			"top": min_margin,
+			"right": min_margin,
+			"bottom": min_margin,
+		}
+
+	var scale_x: float = viewport_size.x / float(screen_size.x)
+	var scale_y: float = viewport_size.y / float(screen_size.y)
+	var max_inset_x: int = maxi(min_margin, int(floor(viewport_size.x * 0.25)))
+	var max_inset_y: int = maxi(min_margin, int(floor(viewport_size.y * 0.25)))
+
+	return {
+		"left": mini(max_inset_x, maxi(min_margin, ceili(float(left_edge) * scale_x))),
+		"top": mini(max_inset_y, maxi(min_margin, ceili(float(top_edge) * scale_y))),
+		"right": mini(max_inset_x, maxi(min_margin, ceili(float(screen_size.x - right_edge) * scale_x))),
+		"bottom": mini(max_inset_y, maxi(min_margin, ceili(float(screen_size.y - bottom_edge) * scale_y))),
+	}
+
+
+## Applies explicit safe-area insets to MainMargin and returns the applied canvas margins.
+func apply_safe_area_insets(
+	safe_area: Rect2i,
+	screen_size: Vector2i,
+	viewport_size: Vector2
+) -> Dictionary:
+	_resolve_nodes()
+	var margins: Dictionary = compute_safe_area_margins(
+		safe_area,
+		screen_size,
+		viewport_size,
+		BASE_MAIN_MARGIN_PX
+	)
+	_last_applied_margins = margins.duplicate()
+	if _main_margin != null:
+		_main_margin.add_theme_constant_override("margin_left", int(margins["left"]))
+		_main_margin.add_theme_constant_override("margin_top", int(margins["top"]))
+		_main_margin.add_theme_constant_override("margin_right", int(margins["right"]))
+		_main_margin.add_theme_constant_override("margin_bottom", int(margins["bottom"]))
+	return _last_applied_margins.duplicate()
+
+
+func _refresh_safe_area_margins() -> void:
+	if not is_inside_tree():
+		return
+	var viewport: Viewport = get_viewport()
+	var viewport_size: Vector2 = viewport.get_visible_rect().size if viewport != null else size
+	apply_safe_area_insets(
+		DisplayServer.get_display_safe_area(),
+		DisplayServer.window_get_size(),
+		viewport_size
+	)
+
+
+## Pure query for testing: returns the last margins applied to MainMargin.
+func get_applied_main_margins() -> Dictionary:
+	return _last_applied_margins.duplicate()
+
+
+## Returns true if an overlay modal, confirmation dialog, or move editing mode is active.
+func has_active_back_target() -> bool:
+	if _is_blocked:
+		return false
+	if _planting_picker != null and _planting_picker.is_picker_open():
+		return true
+	if _decoration_picker != null and _decoration_picker.is_picker_open():
+		return true
+	if _journal_panel != null and _journal_panel.is_journal_open():
+		return true
+	return _is_move_mode
+
+
+## Returns true when Android system Back should quit to the launcher instead of dismissing UI.
+func should_quit_on_go_back() -> bool:
+	return not has_active_back_target()
+
+
+func _sync_back_navigation_state() -> void:
+	if is_inside_tree() and get_tree() != null:
+		get_tree().set_quit_on_go_back(should_quit_on_go_back())
+
+
+func _on_modal_closed() -> void:
+	_sync_back_navigation_state()
+
+
+func _on_child_ui_tapped() -> void:
+	_play_sfx("ui_tap")
+
+
+## Handles Android hardware/gesture back or ui_cancel by closing the top-most confirmation,
+## modal overlay, or active move mode without risking unintended quit or data mutation.
+func handle_back_action() -> bool:
+	_resolve_nodes()
+	if _is_blocked:
+		_sync_back_navigation_state()
+		return false
+	if _planting_picker != null and _planting_picker.is_picker_open():
+		if _planting_picker.is_confirmation_active():
+			_planting_picker.cancel_confirmation()
+		else:
+			close_planting_picker()
+		_play_sfx("ui_tap")
+		_sync_back_navigation_state()
+		return true
+	if _decoration_picker != null and _decoration_picker.is_picker_open():
+		if _decoration_picker.is_confirmation_active():
+			_decoration_picker.cancel_confirmation()
+		else:
+			close_decoration_picker()
+		_play_sfx("ui_tap")
+		_sync_back_navigation_state()
+		return true
+	if _journal_panel != null and _journal_panel.is_journal_open():
+		close_journal_panel()
+		_play_sfx("ui_tap")
+		_sync_back_navigation_state()
+		return true
+	if _is_move_mode:
+		_set_move_mode(false)
+		_play_sfx("ui_tap")
+		return true
+	_sync_back_navigation_state()
+	return false

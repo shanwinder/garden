@@ -67,6 +67,7 @@ size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
 text = "เพาะเมล็ด"
 horizontal_alignment = 2
+autowrap_mode = 2
 
 [node name="PlantNameLabel" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -74,6 +75,7 @@ size_flags_vertical = 3
 theme_override_font_sizes/font_size = 28
 text = "กะเพรา"
 vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="InstanceIdLabel" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2

@@ -114,6 +114,8 @@ func run_tests() -> void:
 	_test_selected_plant_growth_countdown_and_atmosphere_forecast()
 	_test_placed_decoration_cards_rendering_selection_and_inspection()
 	_test_coarse_grid_and_zones_placement_interaction()
+	_test_safe_area_insets_calculation_and_application()
+	_test_android_back_navigation_and_go_back_state()
 
 
 func _create_test_catalog() -> ContentCatalog:
@@ -2674,5 +2676,140 @@ func _test_coarse_grid_and_zones_placement_interaction() -> void:
 	view.get_zone_adjacent_button().pressed.emit()
 	assert_eq(view.get_active_zone_id(), GardenZone.ZONE_ADJACENT_1, "Switched active zone to zone.adjacent_1")
 	assert_true(view.get_zone_status_text().contains("มุมสวนข้างบ้าน"), "Zone status shows Adjacent Zone name")
+
+	view.free()
+
+
+func _test_safe_area_insets_calculation_and_application() -> void:
+	describe("Safe-area insets calculation scales OS cutouts to canvas margins safely")
+	# Desktop / headless empty rect falls back cleanly to 28px baseline margins.
+	var empty_margins: Dictionary = GardenView.compute_safe_area_margins(
+		Rect2i(0, 0, 0, 0),
+		Vector2i(1080, 1920),
+		Vector2(1080.0, 1920.0)
+	)
+	assert_eq(empty_margins, {"left": 28, "top": 28, "right": 28, "bottom": 28}, "Empty safe area preserves 28px margins")
+
+	# Full-screen safe area preserves 28px baseline margins.
+	var full_margins: Dictionary = GardenView.compute_safe_area_margins(
+		Rect2i(0, 0, 1080, 2400),
+		Vector2i(1080, 2400),
+		Vector2(1080.0, 2400.0)
+	)
+	assert_eq(full_margins, {"left": 28, "top": 28, "right": 28, "bottom": 28}, "Zero-cutout full safe area preserves 28px margins")
+
+	# Punch-hole / notch top 112px + gesture bar bottom 64px + side cutout 36px at 1:1 scale.
+	var notched_margins: Dictionary = GardenView.compute_safe_area_margins(
+		Rect2i(36, 112, 1044, 2224),
+		Vector2i(1080, 2400),
+		Vector2(1080.0, 2400.0)
+	)
+	assert_eq(notched_margins, {"left": 36, "top": 112, "right": 28, "bottom": 64}, "Applies top, bottom, and asymmetrical left safe-area insets")
+
+	# 720x1600 physical screen scaled to 1080x2400 logical canvas (1.5x).
+	var scaled_margins: Dictionary = GardenView.compute_safe_area_margins(
+		Rect2i(0, 60, 720, 1500),
+		Vector2i(720, 1600),
+		Vector2(1080.0, 2400.0)
+	)
+	assert_eq(scaled_margins, {"left": 28, "top": 90, "right": 28, "bottom": 60}, "Scales 720x1600 physical cutouts cleanly to 1080x2400 canvas")
+
+	# Live GardenView MainMargin receives theme constant overrides.
+	var view: GardenView = _instantiate_garden_view()
+	var main_margin: MarginContainer = view.get_node_or_null("MainMargin") as MarginContainer
+	assert_true(main_margin != null, "MainMargin exists")
+	var applied: Dictionary = view.apply_safe_area_insets(
+		Rect2i(0, 88, 1080, 2260),
+		Vector2i(1080, 2400),
+		Vector2(1080.0, 2400.0)
+	)
+	assert_eq(applied, {"left": 28, "top": 88, "right": 28, "bottom": 52}, "apply_safe_area_insets returns applied dictionary")
+	assert_eq(view.get_applied_main_margins(), applied, "get_applied_main_margins tracks applied margins")
+	assert_eq(main_margin.get_theme_constant("margin_top"), 88, "MainMargin margin_top updated")
+	assert_eq(main_margin.get_theme_constant("margin_bottom"), 52, "MainMargin margin_bottom updated")
+	view.free()
+
+
+func _test_android_back_navigation_and_go_back_state() -> void:
+	describe("Android back button / ui_cancel dismisses confirmations, open modals, and Move Mode cleanly")
+	var view: GardenView = _instantiate_garden_view()
+	var state: GameState = GameState.new()
+	state.get_economy().grant_currency(200)
+	state.get_plants().try_add_plant(PlantState.new("plant-back-1", "plant.holy_basil", 1000, GardenZone.ZONE_MAIN, 0, 0))
+	var session: GameSession = GameSession.new(state)
+	var catalog: ContentCatalog = ContentCatalog.try_create(
+		PlantContentLoader.new().load_production_definitions().get_definitions(),
+		[],
+		DecorationContentLoader.new().load_production_definitions().get_definitions()
+	)
+	var clock: FakeGameClock = FakeGameClock.new(2000, 0)
+
+	view.bind_garden(session, catalog, clock)
+
+	assert_false(view.has_active_back_target(), "No back target active on idle garden home")
+	assert_true(view.should_quit_on_go_back(), "should_quit_on_go_back enabled on idle garden home")
+	assert_false(view.handle_back_action(), "handle_back_action returns false on idle garden home")
+
+	# 1. PlantingPicker: confirmation overlay closes before picker overlay
+	var picker: PlantingPicker = view.get_planting_picker()
+	view.open_planting_picker()
+	assert_true(picker.is_picker_open(), "PlantingPicker opened")
+	assert_false(view.should_quit_on_go_back(), "should_quit_on_go_back disabled while PlantingPicker is open")
+	picker.select_plant_definition("plant.holy_basil")
+	assert_true(picker.is_confirmation_active(), "Confirmation active after choosing plant")
+
+	view.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	assert_false(picker.is_confirmation_active(), "First back press cancels confirmation only")
+	assert_true(picker.is_picker_open(), "PlantingPicker stays open after cancelling confirmation")
+	assert_false(view.should_quit_on_go_back(), "should_quit_on_go_back still disabled while PlantingPicker stays open")
+
+	view.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	assert_false(picker.is_picker_open(), "Second back press closes PlantingPicker")
+	assert_true(view.should_quit_on_go_back(), "should_quit_on_go_back restored after closing PlantingPicker")
+
+	# 2. DecorationPicker: ui_cancel event cancels confirmation then closes picker
+	var dec_picker: DecorationPicker = view.get_decoration_picker()
+	view.open_decoration_picker()
+	assert_true(dec_picker.is_picker_open(), "DecorationPicker opened")
+	assert_false(view.should_quit_on_go_back(), "should_quit_on_go_back disabled while DecorationPicker is open")
+	dec_picker.select_decoration_definition("decoration.bench")
+	assert_true(dec_picker.is_confirmation_active(), "Decoration confirmation active")
+
+	var cancel_ev: InputEventAction = InputEventAction.new()
+	cancel_ev.action = "ui_cancel"
+	cancel_ev.pressed = true
+	view._unhandled_input(cancel_ev)
+	assert_false(dec_picker.is_confirmation_active(), "First ui_cancel closes decoration confirmation")
+	assert_true(dec_picker.is_picker_open(), "DecorationPicker stays open")
+
+	view._unhandled_input(cancel_ev)
+	assert_false(dec_picker.is_picker_open(), "Second ui_cancel closes DecorationPicker")
+	assert_true(view.should_quit_on_go_back(), "should_quit_on_go_back restored after closing DecorationPicker")
+
+	# 3. JournalPanel + MoveMode priority: back closes top-most overlay first, then MoveMode
+	view.get_plant_view_by_id("plant-back-1").simulate_selection_input()
+	view.get_move_button().pressed.emit()
+	assert_true(view.is_move_mode_active(), "MoveMode active")
+	assert_false(view.should_quit_on_go_back(), "should_quit_on_go_back disabled in MoveMode")
+
+	view.open_journal_panel()
+	assert_true(view.get_journal_panel().is_journal_open(), "JournalPanel opened over MoveMode")
+	assert_true(view.handle_back_action(), "Back handles top-most JournalPanel")
+	assert_false(view.get_journal_panel().is_journal_open(), "JournalPanel closed")
+	assert_true(view.is_move_mode_active(), "MoveMode stays active until next Back")
+	assert_false(view.should_quit_on_go_back(), "should_quit_on_go_back remains disabled while MoveMode active")
+
+	assert_true(view.handle_back_action(), "Second back cancels MoveMode")
+	assert_false(view.is_move_mode_active(), "MoveMode deactivated cleanly")
+	assert_true(view.should_quit_on_go_back(), "should_quit_on_go_back restored cleanly")
+	assert_eq(state.get_plants().get_plant("plant-back-1").get_grid_x(), 0, "Back did not mutate plant placement")
+
+	# 4. Blocked startup clears active back targets and allows normal quit/back behavior
+	view.get_move_button().pressed.emit()
+	assert_true(view.is_move_mode_active(), "MoveMode re-enabled before blocked transition")
+	view.show_blocked_startup_key("ui.garden.blocked_save_error")
+	assert_false(view.has_active_back_target(), "Blocked startup has no active back target")
+	assert_true(view.should_quit_on_go_back(), "Blocked startup restores should_quit_on_go_back")
+	assert_false(view.handle_back_action(), "Blocked startup does not swallow back action")
 
 	view.free()

@@ -20,6 +20,7 @@ extends Control
 
 signal decoration_purchase_requested(definition_id: String)
 signal picker_closed()
+signal ui_tapped()
 
 var _catalog: ContentCatalog = null
 var _snapshot: GardenSnapshot = null
@@ -77,12 +78,12 @@ func _resolve_nodes() -> void:
 
 
 func _connect_dialog_signals() -> void:
-	if _close_button != null and not _close_button.pressed.is_connected(close_picker):
-		_close_button.pressed.connect(close_picker)
+	if _close_button != null and not _close_button.pressed.is_connected(_on_close_button_pressed):
+		_close_button.pressed.connect(_on_close_button_pressed)
 	if _confirm_button != null and not _confirm_button.pressed.is_connected(confirm_purchase):
 		_confirm_button.pressed.connect(confirm_purchase)
-	if _cancel_button != null and not _cancel_button.pressed.is_connected(cancel_confirmation):
-		_cancel_button.pressed.connect(cancel_confirmation)
+	if _cancel_button != null and not _cancel_button.pressed.is_connected(_on_cancel_button_pressed):
+		_cancel_button.pressed.connect(_on_cancel_button_pressed)
 
 
 ## Binds a validated ContentCatalog and populates decoration choices in catalog order.
@@ -105,6 +106,9 @@ func bind_catalog(catalog: ContentCatalog) -> void:
 		btn.text = _format_decoration_button_text(def_id)
 		_option_texts_by_id[def_id] = btn.text
 		btn.custom_minimum_size = Vector2(0, 72)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.focus_mode = Control.FOCUS_ALL
 		btn.add_theme_font_size_override("font_size", 21)
 		_apply_button_icon(btn, def_id)
@@ -223,7 +227,19 @@ func _clear_decoration_buttons() -> void:
 
 
 func _on_decoration_option_pressed(definition_id: String) -> void:
+	if _is_enabled:
+		ui_tapped.emit()
 	select_decoration_definition(definition_id)
+
+
+func _on_close_button_pressed() -> void:
+	ui_tapped.emit()
+	close_picker()
+
+
+func _on_cancel_button_pressed() -> void:
+	ui_tapped.emit()
+	cancel_confirmation()
 
 
 ## Selects a decoration definition and displays the confirmation prompt without emitting purchase request.

@@ -105,6 +105,7 @@ func run_tests() -> void:
 	_test_localization_thai_english_switching_e2e()
 	_test_coarse_grid_placement_and_first_expansion_e2e()
 	_test_portrait_layout_bounds_regression()
+	_test_populated_portrait_layout_and_modal_wrapping_regression()
 	_test_file_hygiene()
 
 
@@ -1428,6 +1429,101 @@ func _test_portrait_layout_bounds_regression() -> void:
 		)
 
 		main_screen.free()
+
+
+func _test_populated_portrait_layout_and_modal_wrapping_regression() -> void:
+	describe("Portrait layout regression: populated MATURE cards and modal option rows wrap without horizontal overflow on 720px portrait widths")
+	_cleanup_test_files()
+
+	var repo: ToggleableSaveRepository = ToggleableSaveRepository.new()
+	var clock: FakeGameClock = FakeGameClock.new(100000, 0)
+	var rng: FakeRandomSource = FakeRandomSource.new([], [10, 20, 30, 40])
+	var app: AppRoot = AppRoot.new(repo, PlantContentLoader.new(), clock, rng)
+	var load_res: LocalSaveLoadResult = app.bootstrap_session()
+	assert_eq(load_res.get_status(), LocalSaveLoadResult.NO_SAVE, "Clean run bootstraps cleanly")
+
+	var state: GameState = app.game_session.get_state()
+	state.get_economy().grant_currency(500)
+	state.get_plants().try_add_plant(PlantState.new("p-mature-1", "plant.banana", 0, GardenZone.ZONE_MAIN, 0, 0))
+	state.get_plants().try_add_plant(PlantState.new("p-mature-2", "plant.butterfly_pea", 0, GardenZone.ZONE_MAIN, 1, 0))
+	state.get_plants().try_add_plant(PlantState.new("p-mature-3", "plant.holy_basil", 0, GardenZone.ZONE_MAIN, 2, 0))
+	state.get_decorations().try_add_decoration(DecorationState.new("d-pop-1", "decoration.bench", 0, GardenZone.ZONE_MAIN, 0, 1))
+	state.get_decorations().try_add_decoration(DecorationState.new("d-pop-2", "decoration.watering_can", 0, GardenZone.ZONE_MAIN, 1, 1))
+
+	var main_screen: MainScreen = _instantiate_bound_main_screen(app)
+	var view: GardenView = main_screen.get_garden_view()
+	var layout_box: Control = view.get_node_or_null("MainMargin/LayoutBox") as Control
+	var picker: PlantingPicker = view.get_planting_picker()
+	var dec_picker: DecorationPicker = view.get_decoration_picker()
+	var journal: JournalPanel = view.get_journal_panel()
+	var pscroll: ScrollContainer = picker.find_child("ScrollContainer", true, false) as ScrollContainer
+	var dscroll: ScrollContainer = dec_picker.find_child("ScrollContainer", true, false) as ScrollContainer
+	var jscroll: ScrollContainer = journal.find_child("ScrollContainer", true, false) as ScrollContainer
+	var jentries: Control = journal.find_child("EntriesContainer", true, false) as Control
+
+	assert_true(pscroll != null and dscroll != null and jscroll != null and jentries != null, "Modal scroll containers exist")
+	assert_eq(pscroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "PlantingPicker disables horizontal scroll")
+	assert_eq(dscroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "DecorationPicker disables horizontal scroll")
+	assert_eq(jscroll.horizontal_scroll_mode, ScrollContainer.SCROLL_MODE_DISABLED, "JournalPanel disables horizontal scroll")
+
+	for locale_code: String in ["th", "en"]:
+		view.set_locale(locale_code)
+		view.refresh_from_session()
+
+		var lb_min: Vector2 = layout_box.get_combined_minimum_size()
+		assert_true(
+			lb_min.x + 56.0 <= 720.0,
+			"[%s] Populated LayoutBox min width %s + 56px margin fits within 720px" % [locale_code, str(lb_min.x)]
+		)
+
+		for pview: PlantView in view.get_plant_views():
+			var pmin: Vector2 = pview.get_combined_minimum_size()
+			assert_true(
+				pmin.x <= 260.0,
+				"[%s] Populated PlantView %s min width %s <= 260px" % [locale_code, pview.get_runtime_instance_id(), str(pmin.x)]
+			)
+
+		for dview: DecorationView in view.get_decoration_views():
+			var dmin: Vector2 = dview.get_combined_minimum_size()
+			assert_true(
+				dmin.x <= 260.0,
+				"[%s] Populated DecorationView %s min width %s <= 260px" % [locale_code, dview.get_runtime_instance_id(), str(dmin.x)]
+			)
+
+		view.open_planting_picker()
+		assert_true(picker.get_plant_buttons().size() > 0, "[%s] PlantingPicker renders plant buttons" % locale_code)
+		for pbtn: Button in picker.get_plant_buttons():
+			assert_eq(pbtn.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART, "[%s] Plant button enables smart word wrap" % locale_code)
+			assert_true(
+				pbtn.get_combined_minimum_size().x <= 568.0,
+				"[%s] Plant button min width %s <= 568px scroll width" % [locale_code, str(pbtn.get_combined_minimum_size().x)]
+			)
+		view.close_planting_picker()
+
+		view.open_decoration_picker()
+		assert_true(dec_picker.get_decoration_buttons().size() > 0, "[%s] DecorationPicker renders decoration buttons" % locale_code)
+		for dbtn: Button in dec_picker.get_decoration_buttons():
+			assert_eq(dbtn.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART, "[%s] Decoration button enables smart word wrap" % locale_code)
+			assert_true(
+				dbtn.get_combined_minimum_size().x <= 568.0,
+				"[%s] Decoration button min width %s <= 568px scroll width" % [locale_code, str(dbtn.get_combined_minimum_size().x)]
+			)
+		view.close_decoration_picker()
+
+		view.open_journal_panel()
+		for entry_node: Node in jentries.get_children():
+			if entry_node is Label:
+				var entry_label: Label = entry_node as Label
+				assert_eq(entry_label.autowrap_mode, TextServer.AUTOWRAP_WORD_SMART, "[%s] Journal entry enables smart word wrap" % locale_code)
+				assert_true(
+					entry_label.get_combined_minimum_size().x <= 568.0,
+					"[%s] Journal entry min width %s <= 568px scroll width" % [locale_code, str(entry_label.get_combined_minimum_size().x)]
+				)
+		view.close_journal_panel()
+
+	main_screen.free()
+	app.free()
+	_cleanup_test_files()
 
 
 func _test_localization_thai_english_switching_e2e() -> void:

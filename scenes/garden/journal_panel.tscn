@@ -60,6 +60,7 @@ size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 34
 text = "สมุดบ้านสวน"
 vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="CloseButton" type="Button" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/HeaderHBox"]
 custom_minimum_size = Vector2(120, 64)
@@ -79,6 +80,7 @@ autowrap_mode = 2
 [node name="ScrollContainer" type="ScrollContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
 [node name="ListMargin" type="MarginContainer" parent="CenterContainer/JournalModalPanel/MarginContainer/VBoxContainer/ScrollContainer"]
 layout_mode = 2

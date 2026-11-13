@@ -213,6 +213,53 @@ func _test_garden_view_audio_integration() -> void:
 	view.show_move_result(GardenPlacementCheckpointResult.moved_saved(move_res))
 	assert_eq(audio.get_last_sfx_cue(), "place_decor", "Successful move triggers place_decor SFX")
 
+	# Modal option selection, confirmation cancel, close button, and back dismiss emit ui_tap
+	var picker: PlantingPicker = view.get_planting_picker()
+	view.open_planting_picker()
+	var pbtn: Button = picker.get_plant_buttons()[0]
+	pbtn.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "PlantingPicker option button emits ui_tap")
+	var pcancel: Button = picker.find_child("CancelButton", true, false) as Button
+	assert_true(pcancel != null, "PlantingPicker CancelButton exists")
+	pcancel.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "PlantingPicker CancelButton emits ui_tap")
+	var pclose: Button = picker.find_child("CloseButton", true, false) as Button
+	assert_true(pclose != null, "PlantingPicker CloseButton exists")
+	pclose.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "PlantingPicker CloseButton emits ui_tap")
+
+	var dec_picker: DecorationPicker = view.get_decoration_picker()
+	view.open_decoration_picker()
+	var dbtn: Button = dec_picker.get_decoration_buttons()[0]
+	dbtn.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "DecorationPicker option button emits ui_tap")
+	var dcancel: Button = dec_picker.find_child("CancelButton", true, false) as Button
+	assert_true(dcancel != null, "DecorationPicker CancelButton exists")
+	dcancel.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "DecorationPicker CancelButton emits ui_tap")
+	var dclose: Button = dec_picker.find_child("CloseButton", true, false) as Button
+	assert_true(dclose != null, "DecorationPicker CloseButton exists")
+	dclose.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "DecorationPicker CloseButton emits ui_tap")
+
+	view.open_journal_panel()
+	var jclose: Button = view.get_journal_panel().get_close_button()
+	assert_true(jclose != null, "JournalPanel CloseButton exists")
+	jclose.pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "JournalPanel CloseButton emits ui_tap")
+
+	# Confirming without double ui_tap allows Gameplay SFX ('plant') to remain active
+	var picker_taps: int = 0
+	picker.ui_tapped.connect(func() -> void:
+		picker_taps += 1
+	)
+	view.open_planting_picker()
+	picker.select_plant_definition("plant.holy_basil")
+	var pconfirm: Button = picker.find_child("ConfirmButton", true, false) as Button
+	assert_true(pconfirm != null, "PlantingPicker ConfirmButton exists")
+	pconfirm.pressed.emit()
+	assert_eq(picker_taps, 0, "ConfirmButton does not emit duplicate ui_tap signal")
+
 	# Blocked state pauses audio cleanly
 	view.show_blocked_startup_key("ui.garden.blocked_save_error")
 	assert_true(audio.is_paused(), "Blocked startup pauses GardenAudioController")

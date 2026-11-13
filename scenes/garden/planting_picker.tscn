@@ -72,6 +72,7 @@ size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 34
 text = "เลือกพันธุ์ไม้ที่จะปลูก"
 vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="CloseButton" type="Button" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/HeaderHBox"]
 custom_minimum_size = Vector2(120, 64)
@@ -83,6 +84,7 @@ text = "ปิด"
 [node name="ScrollContainer" type="ScrollContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
 [node name="ListMargin" type="MarginContainer" parent="CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer"]
 layout_mode = 2
