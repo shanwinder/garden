@@ -204,6 +204,8 @@ const STRINGS: Dictionary = {
 	"ui.garden.journal_status_empty": "สมุดบ้านสวน: ค้นพบแล้ว 0 / 0 รายการ",
 	"ui.garden.journal_status": "สมุดบ้านสวน: ค้นพบแล้ว %d / %d รายการ (พืช %d/%d, ผู้มาเยือน %d/%d)",
 	"ui.garden.journal_button": "สมุดบ้านสวน",
+	"ui.garden.audio_on": "เสียง: เปิด",
+	"ui.garden.audio_off": "เสียง: ปิด",
 	"ui.garden.decorations_status_empty": "ของตกแต่งในสวน: ยังไม่มี",
 	"ui.garden.decorations_status": "ของตกแต่งในสวน (%d ชิ้น): %s",
 	"ui.garden.decorate_button": "ตกแต่งสวน",

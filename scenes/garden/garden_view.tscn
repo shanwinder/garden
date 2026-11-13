@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" path="res://scenes/garden/journal_panel.tscn" id="3_journal_panel"]
 [ext_resource type="PackedScene" path="res://scenes/garden/decoration_picker.tscn" id="4_decoration_picker"]
 [ext_resource type="PackedScene" path="res://scenes/garden/garden_diorama.tscn" id="5_garden_diorama"]
+[ext_resource type="Script" path="res://src/presentation/audio/garden_audio_controller.gd" id="6_audio_controller"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_content"]
 
@@ -192,6 +193,13 @@ layout_mode = 2
 focus_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "สมุดบ้านสวน"
+
+[node name="AudioButton" type="Button" parent="MainMargin/LayoutBox/JournalRow"]
+custom_minimum_size = Vector2(132, 56)
+layout_mode = 2
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "เสียง: เปิด"
 
 [node name="DecorationRow" type="HBoxContainer" parent="MainMargin/LayoutBox"]
 layout_mode = 2
@@ -460,3 +468,6 @@ layout_mode = 1
 [node name="DecorationPicker" parent="." instance=ExtResource("4_decoration_picker")]
 visible = false
 layout_mode = 1
+
+[node name="AudioController" type="Node" parent="."]
+script = ExtResource("6_audio_controller")

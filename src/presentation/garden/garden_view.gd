@@ -107,6 +107,9 @@ var _observe_event_button: Button = null
 var _journal_row: Control = null
 var _journal_status_label: Label = null
 var _journal_button: Button = null
+var _audio_button: Button = null
+var _audio_controller: GardenAudioController = null
+var _suppress_feedback_effects: bool = false
 var _decoration_row: Control = null
 var _decoration_status_label: Label = null
 var _decorate_button: Button = null
@@ -195,6 +198,10 @@ func _resolve_nodes() -> void:
 		_journal_status_label = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalStatusLabel") as Label
 	if _journal_button == null:
 		_journal_button = get_node_or_null("MainMargin/LayoutBox/JournalRow/JournalButton") as Button
+	if _audio_button == null:
+		_audio_button = get_node_or_null("MainMargin/LayoutBox/JournalRow/AudioButton") as Button
+	if _audio_controller == null:
+		_audio_controller = get_node_or_null("AudioController") as GardenAudioController
 	if _decoration_row == null:
 		_decoration_row = get_node_or_null("MainMargin/LayoutBox/DecorationRow") as Control
 	if _decoration_status_label == null:
@@ -291,6 +298,8 @@ func _connect_signals() -> void:
 		_observe_event_button.pressed.connect(_on_observe_event_button_pressed)
 	if _journal_button != null and not _journal_button.pressed.is_connected(open_journal_panel):
 		_journal_button.pressed.connect(open_journal_panel)
+	if _audio_button != null and not _audio_button.pressed.is_connected(toggle_audio_mute):
+		_audio_button.pressed.connect(toggle_audio_mute)
 	if _decorate_button != null and not _decorate_button.pressed.is_connected(open_decoration_picker):
 		_decorate_button.pressed.connect(open_decoration_picker)
 	if _decoration_picker != null and not _decoration_picker.decoration_purchase_requested.is_connected(_on_picker_decoration_purchase_requested):
@@ -380,7 +389,31 @@ func get_locale() -> String:
 
 ## Toggles active display locale between Thai ("th") and English ("en").
 func toggle_locale() -> void:
+	_play_sfx("ui_tap")
 	set_locale(GardenLocalization.other_locale(_locale))
+
+
+## Toggles garden audio mute state and persists audio preference.
+func toggle_audio_mute() -> void:
+	_resolve_nodes()
+	if _audio_controller == null:
+		return
+	var now_muted: bool = _audio_controller.toggle_muted()
+	_update_audio_button_text()
+	if not now_muted:
+		_play_sfx("ui_tap")
+
+
+## Pure query for testing: returns AudioController child node.
+func get_audio_controller() -> GardenAudioController:
+	_resolve_nodes()
+	return _audio_controller
+
+
+## Pure query for testing: returns AudioButton instance.
+func get_audio_button() -> Button:
+	_resolve_nodes()
+	return _audio_button
 
 
 ## Pure query for testing: returns LanguageButton instance.
@@ -404,6 +437,7 @@ func _apply_static_texts() -> void:
 		_observe_event_button.text = GardenLocalization.translate("ui.garden.observe_event_button", _locale)
 	if _journal_button != null:
 		_journal_button.text = GardenLocalization.translate("ui.garden.journal_button", _locale)
+	_update_audio_button_text()
 	if _decorate_button != null:
 		_decorate_button.text = GardenLocalization.translate("ui.garden.decorate_button", _locale)
 	if _plants_section_label != null:
@@ -414,6 +448,21 @@ func _apply_static_texts() -> void:
 		_empty_label.text = GardenLocalization.translate("ui.garden.empty_garden", _locale)
 	if _no_selection_label != null:
 		_no_selection_label.text = GardenLocalization.translate("ui.details.no_selection", _locale)
+
+
+func _update_audio_button_text() -> void:
+	if _audio_button == null:
+		return
+	var is_muted: bool = _audio_controller != null and _audio_controller.is_muted()
+	var key: String = "ui.garden.audio_off" if is_muted else "ui.garden.audio_on"
+	_audio_button.text = GardenLocalization.translate(key, _locale)
+
+
+func _play_sfx(cue_id: String) -> void:
+	if _suppress_feedback_effects:
+		return
+	if _audio_controller != null:
+		_audio_controller.play_sfx(cue_id)
 
 
 ## Displays a safe readable state using a localization key when startup failed or session is unavailable.
@@ -1053,6 +1102,8 @@ func _show_blocked_visual() -> void:
 		_plants_scroll.visible = false
 	if _garden_diorama != null:
 		_garden_diorama.clear_for_blocked_state()
+	if _audio_controller != null:
+		_audio_controller.set_paused(true)
 	if _blocked_container != null:
 		_blocked_container.visible = true
 	if _blocked_label != null:
@@ -1179,6 +1230,9 @@ func _update_environment_and_visitors(now_utc: int) -> void:
 
 	if _background_rect != null:
 		_background_rect.color = _compute_atmosphere_background_color(time_period, weather_state)
+	if _audio_controller != null:
+		_audio_controller.set_paused(false)
+		_audio_controller.update_atmosphere(time_period, weather_state)
 
 	if _environment_label != null:
 		_environment_label.visible = true
@@ -1431,6 +1485,7 @@ func _trigger_diorama_puff_for_decoration(decor: DecorationState) -> void:
 func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
 	if runtime_instance_id.is_empty():
 		return
+	_play_sfx("ui_tap")
 	_is_move_mode = false
 	_target_zone_id = ""
 	_target_grid_x = -1
@@ -1465,6 +1520,7 @@ func open_planting_picker() -> void:
 	if _is_blocked or _session == null:
 		return
 	_resolve_nodes()
+	_play_sfx("ui_tap")
 	if _planting_picker != null:
 		_planting_picker.open_picker()
 
@@ -1519,10 +1575,14 @@ func show_planting_result(result: PlantingCheckpointResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_rejected", _locale)
 		PlantingCheckpointResult.Status.REGISTERED_SAVED:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_saved", _locale)
-			_trigger_diorama_puff_for_plant(result.get_plant())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_plant(result.get_plant())
+				_play_sfx("plant")
 		PlantingCheckpointResult.Status.REGISTERED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_save_failed", _locale)
-			_trigger_diorama_puff_for_plant(result.get_plant())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_plant(result.get_plant())
+				_play_sfx("plant")
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_unknown", _locale)
 
@@ -1609,10 +1669,14 @@ func show_harvest_result(result: HarvestCheckpointResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_rejected", _locale)
 		HarvestCheckpointResult.Status.HARVESTED_SAVED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_saved", [result.get_reward_granted()], _locale)
-			_trigger_diorama_puff_for_plant(result.get_plant())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_plant(result.get_plant())
+				_play_sfx("harvest")
 		HarvestCheckpointResult.Status.HARVESTED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_save_failed", [result.get_reward_granted()], _locale)
-			_trigger_diorama_puff_for_plant(result.get_plant())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_plant(result.get_plant())
+				_play_sfx("harvest")
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_unknown", _locale)
 
@@ -1756,6 +1820,7 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_saved", [vname, vid], _locale)
 				if _visitor_status_label != null:
 					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname, vid], _locale)
+				_play_sfx("discover")
 			VisitorObservationCheckpointResult.Status.OBSERVED_SAVE_FAILED:
 				var vid_fail: String = result.get_selected_visitor_id()
 				_current_visitor_id = vid_fail
@@ -1764,6 +1829,7 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 				_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_save_failed", [vname_fail, vid_fail], _locale)
 				if _visitor_status_label != null:
 					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname_fail, vid_fail], _locale)
+				_play_sfx("discover")
 			VisitorObservationCheckpointResult.Status.NO_ELIGIBLE_VISITORS:
 				_current_visitor_id = ""
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_none_eligible", _locale)
@@ -1779,6 +1845,7 @@ func open_journal_panel() -> void:
 	if _is_blocked or _session == null:
 		return
 	_resolve_nodes()
+	_play_sfx("ui_tap")
 	if _journal_panel != null:
 		_journal_panel.open_journal()
 
@@ -1837,6 +1904,7 @@ func open_decoration_picker() -> void:
 	if _is_blocked or _session == null:
 		return
 	_resolve_nodes()
+	_play_sfx("ui_tap")
 	if _decoration_picker != null:
 		_decoration_picker.open_picker()
 
@@ -1898,10 +1966,14 @@ func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult)
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_rejected", _locale)
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_saved", [result.get_price_spent()], _locale)
-			_trigger_diorama_puff_for_decoration(result.get_decoration())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_decoration(result.get_decoration())
+				_play_sfx("place_decor")
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_save_failed", [result.get_price_spent()], _locale)
-			_trigger_diorama_puff_for_decoration(result.get_decoration())
+			if not _suppress_feedback_effects:
+				_trigger_diorama_puff_for_decoration(result.get_decoration())
+				_play_sfx("place_decor")
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_unknown", _locale)
 
@@ -2254,6 +2326,7 @@ func show_event_result(result: EventSelectionResult) -> void:
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected_desc", [ename, eid, edesc], _locale)
 				else:
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected", [ename, eid], _locale)
+				_play_sfx("discover")
 			EventSelectionResult.Status.NO_ELIGIBLE_EVENTS:
 				_current_event_id = ""
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_none_eligible", _locale)
@@ -2266,6 +2339,7 @@ func show_event_result(result: EventSelectionResult) -> void:
 func _refresh_active_feedback_locale() -> void:
 	if _feedback_area == null or not _feedback_area.visible:
 		return
+	_suppress_feedback_effects = true
 	match _active_feedback_kind:
 		"planting":
 			if _last_checkpoint_result != null:
@@ -2291,6 +2365,7 @@ func _refresh_active_feedback_locale() -> void:
 		"return":
 			if _last_return_summary != null:
 				show_return_summary(_last_return_summary)
+	_suppress_feedback_effects = false
 
 
 ## Pure query for testing: returns ObserveEventButton instance.

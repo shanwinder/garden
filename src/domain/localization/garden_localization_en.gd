@@ -204,6 +204,8 @@ const STRINGS: Dictionary = {
 	"ui.garden.journal_status_empty": "Garden Journal: 0 / 0 discovered",
 	"ui.garden.journal_status": "Garden Journal: %d / %d discovered (Plants %d/%d, Visitors %d/%d)",
 	"ui.garden.journal_button": "Journal",
+	"ui.garden.audio_on": "Sound: On",
+	"ui.garden.audio_off": "Sound: Off",
 	"ui.garden.decorations_status_empty": "Decorations in Garden: None",
 	"ui.garden.decorations_status": "Decorations in Garden (%d): %s",
 	"ui.garden.decorate_button": "Decorate",
