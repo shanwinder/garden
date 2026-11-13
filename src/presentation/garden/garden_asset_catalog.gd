@@ -33,6 +33,18 @@ const PLANT_STAGE_TEXTURE_PATHS: Dictionary = {
 		PlantGrowth.Stage.GROWING: "res://assets/plants/chili/chili_growing.png",
 		PlantGrowth.Stage.MATURE: "res://assets/plants/chili/chili_mature.png",
 	},
+	"plant.jasmine": {
+		PlantGrowth.Stage.PLANTED: "res://assets/plants/jasmine/jasmine_planted.png",
+		PlantGrowth.Stage.SPROUT: "res://assets/plants/jasmine/jasmine_sprout.png",
+		PlantGrowth.Stage.GROWING: "res://assets/plants/jasmine/jasmine_growing.png",
+		PlantGrowth.Stage.MATURE: "res://assets/plants/jasmine/jasmine_mature.png",
+	},
+	"plant.banana": {
+		PlantGrowth.Stage.PLANTED: "res://assets/plants/banana/banana_planted.png",
+		PlantGrowth.Stage.SPROUT: "res://assets/plants/banana/banana_sprout.png",
+		PlantGrowth.Stage.GROWING: "res://assets/plants/banana/banana_growing.png",
+		PlantGrowth.Stage.MATURE: "res://assets/plants/banana/banana_mature.png",
+	},
 }
 
 const DECORATION_TEXTURE_PATHS: Dictionary = {

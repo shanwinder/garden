@@ -80,6 +80,22 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 		assert_false(chili_textures.has(tex), "Each Chili stage uses a distinct texture")
 		chili_textures.append(tex)
 
+	var jasmine_textures: Array[Texture2D] = []
+	for st: PlantGrowth.Stage in stages:
+		var tex: Texture2D = GardenAssetCatalog.get_plant_texture("plant.jasmine", st)
+		assert_true(tex != null, "Jasmine stage texture must load: %s" % str(st))
+		assert_eq(tex.get_size(), Vector2(248, 288), "Jasmine texture size matches 248x288")
+		assert_false(jasmine_textures.has(tex), "Each Jasmine stage uses a distinct texture")
+		jasmine_textures.append(tex)
+
+	var banana_textures: Array[Texture2D] = []
+	for st: PlantGrowth.Stage in stages:
+		var tex: Texture2D = GardenAssetCatalog.get_plant_texture("plant.banana", st)
+		assert_true(tex != null, "Banana stage texture must load: %s" % str(st))
+		assert_eq(tex.get_size(), Vector2(360, 416), "Banana texture size matches 360x416")
+		assert_false(banana_textures.has(tex), "Each Banana stage uses a distinct texture")
+		banana_textures.append(tex)
+
 	var clay_jar: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.clay_jar")
 	assert_true(clay_jar != null and clay_jar.get_size() == Vector2(240, 268), "Clay jar texture loads at 240x268")
 	var bench: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.bench")
@@ -124,7 +140,7 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 	var firefly: Texture2D = GardenAssetCatalog.get_firefly_glow_texture()
 	assert_true(firefly != null and firefly.get_size() == Vector2(64, 64), "Firefly glow texture loads at 64x64")
 
-	assert_true(GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.MATURE) == null, "Non-illustrated plant returns null for fallback")
+	assert_true(GardenAssetCatalog.get_plant_texture("plant.unknown_test", PlantGrowth.Stage.MATURE) == null, "Unmapped plant returns null for fallback")
 	assert_true(GardenAssetCatalog.get_decoration_texture("decoration.unknown_test") == null, "Unmapped decoration returns null for fallback")
 	assert_true(GardenAssetCatalog.get_visitor_texture("visitor.unknown_test") == null, "Unmapped visitor returns null for fallback")
 
@@ -183,6 +199,7 @@ func _test_diorama_growth_stages_and_fallback_tokens() -> void:
 	var state: GameState = GameState.new()
 	state.get_plants().try_add_plant(PlantState.new("p-marigold", "plant.marigold", 1000, GardenZone.ZONE_MAIN, 0, 2))
 	state.get_plants().try_add_plant(PlantState.new("p-banana", "plant.banana", 1000, GardenZone.ZONE_ADJACENT_1, 1, 1))
+	state.get_plants().try_add_plant(PlantState.new("p-unknown", "plant.unknown_test", 1000, GardenZone.ZONE_ADJACENT_1, 2, 1))
 	state.get_decorations().try_add_decoration(DecorationState.new("d-can", "decoration.watering_can", 1000, GardenZone.ZONE_MAIN, 3, 2))
 
 	var snap: GardenSnapshot = GardenSnapshot.new({}, {"plant.marigold": 1, "plant.banana": 1}, 2, 0, {"decoration.watering_can": 1}, 1, GardenTimePeriod.DAY, GardenWeather.CLEAR)
@@ -191,6 +208,10 @@ func _test_diorama_growth_stages_and_fallback_tokens() -> void:
 	diorama.render_garden(state, catalog, 1005, snap, "", "", "", GardenZone.ZONE_MAIN, "en")
 	var planted_tex: Texture2D = (diorama.get_rendered_item_node("p-marigold").get_node("Sprite") as Sprite2D).texture
 	assert_eq(planted_tex, GardenAssetCatalog.get_plant_texture("plant.marigold", PlantGrowth.Stage.PLANTED), "Uses PLANTED marigold texture at t=1005")
+	var banana_planted_sprite: Sprite2D = diorama.get_rendered_item_node("p-banana").get_node_or_null("Sprite") as Sprite2D
+	assert_true(banana_planted_sprite != null, "Illustrated banana renders Sprite2D at t=1005")
+	assert_eq(banana_planted_sprite.texture, GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.PLANTED), "Uses PLANTED banana texture at t=1005")
+	assert_eq(banana_planted_sprite.offset, Vector2(0.0, -208.0), "Banana uses Option A bottom-center offset (-416/2)")
 
 	# Mature at t=4000 (production marigold mature_after_seconds=2700 -> 3700)
 	diorama.render_garden(state, catalog, 4000, snap, "", "", "", GardenZone.ZONE_MAIN, "en")
@@ -199,8 +220,8 @@ func _test_diorama_growth_stages_and_fallback_tokens() -> void:
 	assert_true(planted_tex != mature_tex, "Marigold texture switches across growth stages")
 
 	# Illustrated watering can renders Sprite2D; unillustrated plant renders fallback token
-	var banana_node: Node2D = diorama.get_rendered_item_node("p-banana")
-	assert_true(banana_node != null and banana_node.get_node_or_null("FallbackToken") != null, "Non-illustrated plant renders fallback token")
+	var unknown_node: Node2D = diorama.get_rendered_item_node("p-unknown")
+	assert_true(unknown_node != null and unknown_node.get_node_or_null("FallbackToken") != null, "Unmapped plant renders fallback token")
 	var can_node: Node2D = diorama.get_rendered_item_node("d-can")
 	assert_true(can_node != null and can_node.get_node_or_null("Sprite") != null, "Illustrated watering can decoration renders Sprite2D")
 	var can_sprite: Sprite2D = can_node.get_node("Sprite") as Sprite2D
@@ -295,7 +316,11 @@ func _test_card_sprite_thumbnails_and_fallbacks() -> void:
 	assert_eq(p_icon.texture, GardenAssetCatalog.get_plant_texture("plant.holy_basil", PlantGrowth.Stage.MATURE), "PlantView thumbnail uses mature basil texture")
 
 	p_card.bind_plant_data("p2", "plant.banana", PlantGrowth.Stage.PLANTED, 1000, 60, 100, [], -1, "th")
-	assert_false(p_icon.visible, "Non-VS PlantView cleanly hides missing thumbnail")
+	assert_true(p_icon.visible, "Illustrated banana PlantView displays sprite thumbnail")
+	assert_eq(p_icon.texture, GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.PLANTED), "PlantView thumbnail uses planted banana texture")
+
+	p_card.bind_plant_data("p3", "plant.unknown_test", PlantGrowth.Stage.PLANTED, 1000, 60, 100, [], -1, "th")
+	assert_false(p_icon.visible, "Unmapped PlantView cleanly hides missing thumbnail")
 	p_card.free()
 
 	var d_scene: PackedScene = load(DECORATION_VIEW_SCENE_PATH) as PackedScene
@@ -453,17 +478,21 @@ func _test_picker_sprite_thumbnails_and_fallbacks() -> void:
 	p_picker.bind_catalog(catalog)
 	var p_list: Node = p_picker.get_node("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/PlantListContainer")
 	var found_chili_icon: bool = false
-	var found_banana_null: bool = false
+	var found_jasmine_icon: bool = false
+	var found_banana_icon: bool = false
 	for child: Node in p_list.get_children():
 		var btn: Button = child as Button
 		if btn == null:
 			continue
 		if btn.text.contains("plant.chili"):
 			found_chili_icon = (btn.icon == GardenAssetCatalog.get_plant_texture("plant.chili", PlantGrowth.Stage.MATURE))
+		elif btn.text.contains("plant.jasmine"):
+			found_jasmine_icon = (btn.icon == GardenAssetCatalog.get_plant_texture("plant.jasmine", PlantGrowth.Stage.MATURE))
 		elif btn.text.contains("plant.banana"):
-			found_banana_null = (btn.icon == null)
+			found_banana_icon = (btn.icon == GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.MATURE))
 	assert_true(found_chili_icon, "PlantingPicker shows mature sprite icon for plant.chili")
-	assert_true(found_banana_null, "PlantingPicker leaves icon null for non-illustrated plant.banana")
+	assert_true(found_jasmine_icon, "PlantingPicker shows mature sprite icon for plant.jasmine")
+	assert_true(found_banana_icon, "PlantingPicker shows mature sprite icon for plant.banana")
 	p_picker.free()
 
 	var d_scene: PackedScene = load(DECORATION_PICKER_SCENE_PATH) as PackedScene

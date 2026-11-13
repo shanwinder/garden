@@ -733,7 +733,7 @@ func _test_journal_entry_sprite_thumbnails_respect_discovery() -> void:
 	)
 	assert_true(
 		panel.get_entry_icon_texture_for_id("plant.banana") == null,
-		"Undiscovered/unillustrated banana entry keeps thumbnail null"
+		"Undiscovered banana entry keeps thumbnail null even when asset exists"
 	)
 
 	panel.free()
