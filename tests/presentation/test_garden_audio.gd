@@ -179,6 +179,40 @@ func _test_garden_view_audio_integration() -> void:
 	view.show_visitor_observation_result(vis_obs)
 	assert_eq(audio.get_last_sfx_cue(), "discover", "Visitor observation triggers discover SFX")
 
+	# Tactile navigation & grid controls emit ui_tap, and move result emits place_decor
+	view.get_refresh_button().pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Refresh button triggers ui_tap SFX")
+
+	view.get_zone_adjacent_button().pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Zone tab switch triggers ui_tap SFX")
+	view.get_zone_main_button().pressed.emit()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Switching back to main zone triggers ui_tap SFX")
+
+	var empty_cell: Button = view.get_zone_grid_cell_button(2, 2)
+	if empty_cell != null:
+		empty_cell.pressed.emit()
+		assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Targeting empty grid cell triggers ui_tap SFX")
+
+	var pview: PlantView = view.get_plant_view_by_id("p-audio-1")
+	if pview != null:
+		pview.simulate_selection_input()
+		assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Selecting PlantView card triggers ui_tap SFX")
+		var move_btn: Button = view.get_move_button()
+		if move_btn != null:
+			move_btn.pressed.emit()
+			assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Toggling MoveButton triggers ui_tap SFX")
+
+	var move_res: GardenPlacementResult = GardenPlacementResult.moved(
+		GardenPlacement.KIND_PLANT,
+		"p-audio-1",
+		"plant.holy_basil",
+		GardenZone.ZONE_MAIN,
+		2,
+		2
+	)
+	view.show_move_result(GardenPlacementCheckpointResult.moved_saved(move_res))
+	assert_eq(audio.get_last_sfx_cue(), "place_decor", "Successful move triggers place_decor SFX")
+
 	# Blocked state pauses audio cleanly
 	view.show_blocked_startup_key("ui.garden.blocked_save_error")
 	assert_true(audio.is_paused(), "Blocked startup pauses GardenAudioController")

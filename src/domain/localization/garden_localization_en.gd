@@ -307,9 +307,9 @@ const STRINGS: Dictionary = {
 
 	# PlantingPicker
 	"ui.planting_picker.title": "Choose a Plant",
-	"ui.planting_picker.note": "(This prototype places plants without manual coordinates yet)",
+	"ui.planting_picker.note": "(Plants are placed in your selected cell or the first open cell in an unlocked zone)",
 	"ui.planting_picker.confirm_title": "Confirm Planting",
-	"ui.planting_picker.confirm_notice": "The plant will be added to your garden",
+	"ui.planting_picker.confirm_notice": "The plant will be placed in your garden and begin growing in real time",
 	"ui.planting_picker.mature_seconds": "Matures in %ds",
 	"ui.planting_picker.reward_coins": "Reward +%d coins",
 	"ui.planting_picker.traits": "Traits: %s",

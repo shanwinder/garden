@@ -243,9 +243,9 @@ func _resolve_nodes() -> void:
 	if _plants_scroll == null:
 		_plants_scroll = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll") as ScrollContainer
 	if _empty_container == null:
-		_empty_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/EmptyStateContainer") as Control
+		_empty_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/EmptyStateContainer") as Control
 	if _empty_label == null:
-		_empty_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/EmptyStateContainer/EmptyLabel") as Label
+		_empty_label = get_node_or_null("MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/EmptyStateContainer/EmptyLabel") as Label
 	if _blocked_container == null:
 		_blocked_container = get_node_or_null("MainMargin/LayoutBox/ContentArea/BlockedStateContainer") as Control
 	if _blocked_label == null:
@@ -557,6 +557,8 @@ func _render_snapshot_at(now_utc: int) -> void:
 
 
 func _on_refresh_button_pressed() -> void:
+	if not _is_blocked and _session != null:
+		_play_sfx("ui_tap")
 	refresh_from_session()
 
 
@@ -570,7 +572,7 @@ func _render_garden_items(
 	if _blocked_container != null:
 		_blocked_container.visible = false
 
-	# Gracefully handle completely empty garden (no plants and no decorations).
+	# Gracefully handle completely empty garden (keep living Diorama and zone grid visible).
 	if plants.is_empty() and decorations.is_empty():
 		_clear_plant_views()
 		_clear_decoration_views()
@@ -584,11 +586,10 @@ func _render_garden_items(
 			_decorations_section_label.visible = false
 		if _decorations_container != null:
 			_decorations_container.visible = false
-		_hide_zone_grid()
+		if _plants_scroll != null:
+			_plants_scroll.visible = true
 		if _empty_container != null:
 			_empty_container.visible = true
-		if _plants_scroll != null:
-			_plants_scroll.visible = false
 		_update_details_panel(null, null, PlantGrowth.Stage.INVALID, 0)
 		return
 
@@ -744,6 +745,7 @@ func _sync_selection_highlights() -> void:
 
 
 func _on_plant_selected(runtime_instance_id: String) -> void:
+	_play_sfx("ui_tap")
 	_selected_runtime_instance_id = runtime_instance_id
 	_selected_decoration_instance_id = ""
 
@@ -765,6 +767,7 @@ func _on_plant_selected(runtime_instance_id: String) -> void:
 
 
 func _on_decoration_selected(runtime_instance_id: String) -> void:
+	_play_sfx("ui_tap")
 	_selected_decoration_instance_id = runtime_instance_id
 	_selected_runtime_instance_id = ""
 
@@ -1485,7 +1488,6 @@ func _trigger_diorama_puff_for_decoration(decor: DecorationState) -> void:
 func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
 	if runtime_instance_id.is_empty():
 		return
-	_play_sfx("ui_tap")
 	_is_move_mode = false
 	_target_zone_id = ""
 	_target_grid_x = -1
@@ -3527,15 +3529,6 @@ func _render_zone_grid() -> void:
 		return
 
 	var state: GameState = _session.get_state()
-	var plants: Array[PlantState] = state.get_plants().get_all_plants() if state.get_plants() != null else []
-	var decorations: Array[DecorationState] = (
-		state.get_decorations().get_all_decorations()
-		if state.get_decorations() != null
-		else []
-	)
-	if plants.is_empty() and decorations.is_empty():
-		_hide_zone_grid()
-		return
 
 	var journal: JournalState = state.get_journal()
 	var main_unlocked: bool = GardenZone.is_zone_unlocked(GardenZone.ZONE_MAIN, _last_snapshot, journal)
@@ -3627,6 +3620,8 @@ func _render_zone_grid() -> void:
 			btn.name = "Cell_%d_%d" % [x, y]
 			btn.custom_minimum_size = Vector2(64, 56)
 			btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			btn.clip_text = true
+			btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			btn.focus_mode = Control.FOCUS_ALL
 			btn.add_theme_font_size_override("font_size", 16)
 
@@ -3668,10 +3663,12 @@ func _get_selected_item_display_name() -> String:
 
 
 func _on_zone_main_button_pressed() -> void:
+	_play_sfx("ui_tap")
 	select_active_zone(GardenZone.ZONE_MAIN)
 
 
 func _on_zone_adjacent_button_pressed() -> void:
+	_play_sfx("ui_tap")
 	select_active_zone(GardenZone.ZONE_ADJACENT_1)
 
 
@@ -3692,6 +3689,7 @@ func _on_move_button_pressed() -> void:
 		return
 	if _selected_runtime_instance_id.is_empty() and _selected_decoration_instance_id.is_empty():
 		return
+	_play_sfx("ui_tap")
 	_is_move_mode = not _is_move_mode
 	if _is_move_mode:
 		_target_zone_id = ""
@@ -3758,6 +3756,7 @@ func _on_zone_cell_pressed(zone_id: String, grid_x: int, grid_y: int) -> void:
 		_target_zone_id = zone_id
 		_target_grid_x = grid_x
 		_target_grid_y = grid_y
+	_play_sfx("ui_tap")
 	_render_zone_grid()
 	_sync_diorama_placement_highlight()
 
@@ -3819,6 +3818,7 @@ func show_move_result(result: GardenPlacementCheckpointResult) -> void:
 				else "ui.feedback.move_save_failed"
 			)
 			_feedback_label.text = GardenLocalization.format_key(key, [item_name, zone_name, gx, gy], _locale)
+			_play_sfx("place_decor")
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.move_unknown", _locale)
 

@@ -197,7 +197,7 @@ func _test_c_bind_injected_dependencies() -> void:
 
 
 func _test_d_empty_game_state_displays_empty_garden() -> void:
-	describe("D. Empty GameState displays empty-garden state")
+	describe("D. Empty GameState displays empty-garden state while keeping living diorama and starter grid visible")
 	var view: GardenView = _instantiate_garden_view()
 	var session: GameSession = GameSession.new()
 	var catalog: ContentCatalog = _create_test_catalog()
@@ -208,6 +208,15 @@ func _test_d_empty_game_state_displays_empty_garden() -> void:
 	assert_true(view.is_empty_garden_displayed(), "Empty garden state must be visible")
 	assert_eq(view.get_displayed_plant_count(), 0, "Displayed plant count must be 0")
 	assert_eq(view.get_empty_message(), "สวนของคุณยังไม่มีต้นไม้", "Empty message must match expected Thai text")
+	var plants_scroll: Control = view.find_child("PlantsScroll", true, false) as Control
+	var diorama: Control = view.find_child("GardenDiorama", true, false) as Control
+	var zone_grid: Control = view.find_child("ZoneGridContainer", true, false) as Control
+	var cell_0_0: Button = view.get_zone_grid_cell_button(0, 0)
+	assert_true(plants_scroll != null and plants_scroll.visible, "Empty garden keeps PlantsScroll visible for living diorama")
+	assert_true(diorama != null and diorama.visible, "Empty garden keeps GardenDiorama visible")
+	assert_true(zone_grid != null and zone_grid.visible and cell_0_0 != null, "Empty garden keeps starter 4x4 grid visible for cell targeting")
+	assert_eq(ProjectSettings.get_setting("display/window/stretch/mode"), "canvas_items", "Portrait reference canvas uses canvas_items stretch mode")
+	assert_eq(ProjectSettings.get_setting("display/window/stretch/aspect"), "expand", "Portrait reference canvas uses expand stretch aspect")
 	view.free()
 
 

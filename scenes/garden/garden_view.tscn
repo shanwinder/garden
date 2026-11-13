@@ -268,6 +268,20 @@ theme_override_constants/separation = 16
 [node name="GardenDiorama" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox" instance=ExtResource("5_garden_diorama")]
 layout_mode = 2
 
+[node name="EmptyStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
+visible = false
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="EmptyLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox/EmptyStateContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.92, 0.86, 0.92)
+theme_override_font_sizes/font_size = 24
+text = "สวนของคุณยังไม่มีต้นไม้"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="ZonesSectionLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/PlantsScroll/PlantsMargin/GardenItemsVBox"]
 visible = false
 layout_mode = 2
@@ -340,17 +354,6 @@ size_flags_horizontal = 3
 theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 16
 columns = 2
-
-[node name="EmptyStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea"]
-visible = false
-layout_mode = 2
-
-[node name="EmptyLabel" type="Label" parent="MainMargin/LayoutBox/ContentArea/EmptyStateContainer"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "สวนของคุณยังไม่มีต้นไม้"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="BlockedStateContainer" type="CenterContainer" parent="MainMargin/LayoutBox/ContentArea"]
 visible = false

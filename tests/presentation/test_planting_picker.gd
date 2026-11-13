@@ -172,6 +172,10 @@ func _test_f_correct_thai_display_labels() -> void:
 	assert_true(buttons[2].text.contains("กะเพรา"), "Third button must contain กะเพรา")
 	assert_true(buttons[3].text.contains("มะลิ"), "Fourth button must contain มะลิ")
 	assert_true(buttons[4].text.contains("ดาวเรือง"), "Fifth button must contain ดาวเรือง")
+	var note_label: Label = picker.find_child("NoteLabel", true, false) as Label
+	var confirm_notice: Label = picker.find_child("ConfirmNoticeLabel", true, false) as Label
+	assert_true(note_label != null and not note_label.text.contains("ยังไม่รองรับ"), "Picker note reflects cell placement support")
+	assert_true(confirm_notice != null and not confirm_notice.text.contains("ยังไม่กำหนดตำแหน่ง"), "Confirm notice no longer says unpositioned")
 	picker.free()
 
 

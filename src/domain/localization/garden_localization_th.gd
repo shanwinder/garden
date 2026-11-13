@@ -307,9 +307,9 @@ const STRINGS: Dictionary = {
 
 	# PlantingPicker
 	"ui.planting_picker.title": "เลือกพันธุ์ไม้ที่จะปลูก",
-	"ui.planting_picker.note": "(ระบบทดลองนี้ยังไม่รองรับการกำหนดตำแหน่งในสวน)",
+	"ui.planting_picker.note": "(ต้นไม้จะปลูกในช่องที่เลือก หรือช่องว่างแรกในโซนที่ปลดล็อก)",
 	"ui.planting_picker.confirm_title": "ยืนยันการปลูก",
-	"ui.planting_picker.confirm_notice": "ต้นไม้จะถูกเพิ่มลงในสวนโดยยังไม่กำหนดตำแหน่ง",
+	"ui.planting_picker.confirm_notice": "ต้นไม้จะถูกปลูกและเริ่มเติบโตตามเวลาจริงในสวนทันที",
 	"ui.planting_picker.mature_seconds": "โตเต็มที่ %d วินาที",
 	"ui.planting_picker.reward_coins": "รางวัล +%d เหรียญ",
 	"ui.planting_picker.traits": "คุณสมบัติ: %s",

@@ -23,6 +23,8 @@ App="*res://src/application/app_root.gd"
 window/size/viewport_width=1080
 window/size/viewport_height=1920
 window/handheld/orientation=1
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [rendering]
 
