@@ -38,6 +38,12 @@ const PLANT_STAGE_TEXTURE_PATHS: Dictionary = {
 const DECORATION_TEXTURE_PATHS: Dictionary = {
 	"decoration.clay_jar": "res://assets/decorations/clay_jar/clay_jar_idle.png",
 	"decoration.bench": "res://assets/decorations/bench/bench_idle.png",
+	"decoration.garden_lamp": "res://assets/decorations/garden_lamp/garden_lamp_off.png",
+	"decoration.watering_can": "res://assets/decorations/watering_can/watering_can_idle.png",
+	"decoration.wooden_fence": "res://assets/decorations/wooden_fence/wooden_fence_idle.png",
+	"decoration.plant_pot": "res://assets/decorations/plant_pot/plant_pot_idle.png",
+	"decoration.small_table": "res://assets/decorations/small_table/small_table_idle.png",
+	"decoration.small_pond": "res://assets/decorations/small_pond/small_pond_idle.png",
 }
 
 const DECORATION_LIT_TEXTURE_PATHS: Dictionary = {
@@ -47,6 +53,8 @@ const DECORATION_LIT_TEXTURE_PATHS: Dictionary = {
 const VISITOR_TEXTURE_PATHS: Dictionary = {
 	"visitor.cat": "res://assets/visitors/cat/cat_idle_00.png",
 	"visitor.butterfly": "res://assets/visitors/butterfly/butterfly_flutter_00.png",
+	"visitor.bird": "res://assets/visitors/bird/bird_idle_00.png",
+	"visitor.frog": "res://assets/visitors/frog/frog_idle_00.png",
 }
 
 static var _texture_cache: Dictionary = {}

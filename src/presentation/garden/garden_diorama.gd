@@ -500,6 +500,20 @@ func _create_plant_node(
 	return container
 
 
+func _decoration_shadow_radius(definition_id: String) -> float:
+	match definition_id:
+		"decoration.small_pond":
+			return 64.0
+		"decoration.bench":
+			return 52.0
+		"decoration.wooden_fence":
+			return 48.0
+		"decoration.garden_lamp":
+			return 26.0
+		_:
+			return 40.0
+
+
 func _create_decoration_node(
 	instance_id: String,
 	definition_id: String,
@@ -509,7 +523,7 @@ func _create_decoration_node(
 	time_period: String,
 	locale: String
 ) -> Node2D:
-	var radius: float = 52.0 if definition_id == "decoration.bench" else 40.0
+	var radius: float = _decoration_shadow_radius(definition_id)
 	var container: Node2D = _create_base_item_node(instance_id, world_pos, is_selected, radius)
 	var tex: Texture2D = GardenAssetCatalog.get_decoration_texture(definition_id, time_period)
 	if tex != null:
@@ -534,7 +548,7 @@ func _create_decoration_node(
 			var lamp_glow: Sprite2D = Sprite2D.new()
 			lamp_glow.name = "LampGlow"
 			lamp_glow.texture = glow_tex
-			lamp_glow.position = Vector2(0.0, -78.0)
+			lamp_glow.position = Vector2(0.0, -162.0)
 			lamp_glow.scale = Vector2(2.4, 2.4)
 			lamp_glow.modulate = Color(1.0, 0.86, 0.45, 0.72)
 			var mat: CanvasItemMaterial = CanvasItemMaterial.new()

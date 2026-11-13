@@ -84,11 +84,32 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 	assert_true(clay_jar != null and clay_jar.get_size() == Vector2(240, 268), "Clay jar texture loads at 240x268")
 	var bench: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.bench")
 	assert_true(bench != null and bench.get_size() == Vector2(360, 248), "Bench texture loads at 360x248")
+	var lamp_day: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.garden_lamp", GardenTimePeriod.DAY)
+	var lamp_night: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.garden_lamp", GardenTimePeriod.NIGHT)
+	var lamp_evening: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.garden_lamp", GardenTimePeriod.EVENING)
+	assert_true(lamp_day != null and lamp_day.get_size() == Vector2(128, 240), "Garden lamp off texture loads at 128x240")
+	assert_true(lamp_night != null and lamp_night.get_size() == Vector2(128, 240), "Garden lamp lit texture loads at 128x240")
+	assert_true(lamp_day != lamp_night, "Garden lamp switches to lit variant during night")
+	assert_eq(lamp_evening, lamp_night, "Garden lamp uses lit variant during evening")
+	var watering_can: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.watering_can")
+	assert_true(watering_can != null and watering_can.get_size() == Vector2(168, 148), "Watering can texture loads at 168x148")
+	var wooden_fence: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.wooden_fence")
+	assert_true(wooden_fence != null and wooden_fence.get_size() == Vector2(240, 168), "Wooden fence texture loads at 240x168")
+	var plant_pot: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.plant_pot")
+	assert_true(plant_pot != null and plant_pot.get_size() == Vector2(148, 148), "Plant pot texture loads at 148x148")
+	var small_table: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.small_table")
+	assert_true(small_table != null and small_table.get_size() == Vector2(204, 148), "Small table texture loads at 204x148")
+	var small_pond: Texture2D = GardenAssetCatalog.get_decoration_texture("decoration.small_pond")
+	assert_true(small_pond != null and small_pond.get_size() == Vector2(296, 168), "Small pond texture loads at 296x168")
 
 	var cat: Texture2D = GardenAssetCatalog.get_visitor_texture("visitor.cat")
 	assert_true(cat != null and cat.get_size() == Vector2(168, 124), "Cat texture loads at 168x124")
 	var butterfly: Texture2D = GardenAssetCatalog.get_visitor_texture("visitor.butterfly")
 	assert_true(butterfly != null and butterfly.get_size() == Vector2(64, 64), "Butterfly texture loads at 64x64")
+	var bird: Texture2D = GardenAssetCatalog.get_visitor_texture("visitor.bird")
+	assert_true(bird != null and bird.get_size() == Vector2(80, 80), "Bird texture loads at 80x80")
+	var frog: Texture2D = GardenAssetCatalog.get_visitor_texture("visitor.frog")
+	assert_true(frog != null and frog.get_size() == Vector2(88, 72), "Frog texture loads at 88x72")
 
 	assert_true(GardenAssetCatalog.is_grounded_visitor("visitor.cat"), "Cat is grounded visitor (Option A bottom-center)")
 	assert_true(GardenAssetCatalog.is_grounded_visitor("visitor.frog"), "Frog is grounded visitor (Option A bottom-center)")
@@ -103,9 +124,9 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 	var firefly: Texture2D = GardenAssetCatalog.get_firefly_glow_texture()
 	assert_true(firefly != null and firefly.get_size() == Vector2(64, 64), "Firefly glow texture loads at 64x64")
 
-	assert_true(GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.MATURE) == null, "Non-VS plant returns null for fallback")
-	assert_true(GardenAssetCatalog.get_decoration_texture("decoration.watering_can") == null, "Non-VS decoration returns null for fallback")
-	assert_true(GardenAssetCatalog.get_visitor_texture("visitor.bird") == null, "Non-VS visitor returns null for fallback")
+	assert_true(GardenAssetCatalog.get_plant_texture("plant.banana", PlantGrowth.Stage.MATURE) == null, "Non-illustrated plant returns null for fallback")
+	assert_true(GardenAssetCatalog.get_decoration_texture("decoration.unknown_test") == null, "Unmapped decoration returns null for fallback")
+	assert_true(GardenAssetCatalog.get_visitor_texture("visitor.unknown_test") == null, "Unmapped visitor returns null for fallback")
 
 
 func _test_diorama_background_and_sprite_contract() -> void:
@@ -177,11 +198,14 @@ func _test_diorama_growth_stages_and_fallback_tokens() -> void:
 	assert_eq(mature_tex, GardenAssetCatalog.get_plant_texture("plant.marigold", PlantGrowth.Stage.MATURE), "Uses MATURE marigold texture at t=4000")
 	assert_true(planted_tex != mature_tex, "Marigold texture switches across growth stages")
 
-	# Fallback items render gracefully
+	# Illustrated watering can renders Sprite2D; unillustrated plant renders fallback token
 	var banana_node: Node2D = diorama.get_rendered_item_node("p-banana")
-	assert_true(banana_node != null and banana_node.get_node_or_null("FallbackToken") != null, "Non-VS plant renders fallback token")
+	assert_true(banana_node != null and banana_node.get_node_or_null("FallbackToken") != null, "Non-illustrated plant renders fallback token")
 	var can_node: Node2D = diorama.get_rendered_item_node("d-can")
-	assert_true(can_node != null and can_node.get_node_or_null("FallbackToken") != null, "Non-VS decoration renders fallback token")
+	assert_true(can_node != null and can_node.get_node_or_null("Sprite") != null, "Illustrated watering can decoration renders Sprite2D")
+	var can_sprite: Sprite2D = can_node.get_node("Sprite") as Sprite2D
+	assert_eq(can_sprite.texture, GardenAssetCatalog.get_decoration_texture("decoration.watering_can"), "Watering can uses its imported sprite")
+	assert_eq(can_sprite.offset, Vector2(0.0, -74.0), "Watering can uses Option A bottom-center offset (-148/2)")
 
 	diorama.free()
 
@@ -284,7 +308,11 @@ func _test_card_sprite_thumbnails_and_fallbacks() -> void:
 	assert_eq(d_icon.texture, GardenAssetCatalog.get_decoration_texture("decoration.bench"), "DecorationView thumbnail uses bench texture")
 
 	d_card.bind_decoration_data("d2", "decoration.watering_can", 1000, 15, ["water"], "th")
-	assert_false(d_icon.visible, "Non-VS DecorationView cleanly hides missing thumbnail")
+	assert_true(d_icon.visible, "Illustrated watering_can DecorationView displays sprite thumbnail")
+	assert_eq(d_icon.texture, GardenAssetCatalog.get_decoration_texture("decoration.watering_can"), "DecorationView thumbnail uses watering can texture")
+
+	d_card.bind_decoration_data("d3", "decoration.unknown_test", 1000, 15, [], "th")
+	assert_false(d_icon.visible, "Unmapped DecorationView cleanly hides missing thumbnail")
 	d_card.free()
 
 
@@ -443,7 +471,8 @@ func _test_picker_sprite_thumbnails_and_fallbacks() -> void:
 	d_picker.bind_catalog(catalog)
 	var d_list: Node = d_picker.get_node("CenterContainer/PickerPanel/MarginContainer/VBoxContainer/ScrollContainer/ListMargin/DecorationListContainer")
 	var found_bench_icon: bool = false
-	var found_can_null: bool = false
+	var found_can_icon: bool = false
+	var found_pond_icon: bool = false
 	for child: Node in d_list.get_children():
 		var btn: Button = child as Button
 		if btn == null:
@@ -451,9 +480,12 @@ func _test_picker_sprite_thumbnails_and_fallbacks() -> void:
 		if btn.text.contains("decoration.bench"):
 			found_bench_icon = (btn.icon == GardenAssetCatalog.get_decoration_texture("decoration.bench"))
 		elif btn.text.contains("decoration.watering_can"):
-			found_can_null = (btn.icon == null)
+			found_can_icon = (btn.icon == GardenAssetCatalog.get_decoration_texture("decoration.watering_can"))
+		elif btn.text.contains("decoration.small_pond"):
+			found_pond_icon = (btn.icon == GardenAssetCatalog.get_decoration_texture("decoration.small_pond"))
 	assert_true(found_bench_icon, "DecorationPicker shows sprite icon for decoration.bench")
-	assert_true(found_can_null, "DecorationPicker leaves icon null for non-illustrated decoration.watering_can")
+	assert_true(found_can_icon, "DecorationPicker shows sprite icon for decoration.watering_can")
+	assert_true(found_pond_icon, "DecorationPicker shows sprite icon for decoration.small_pond")
 	d_picker.free()
 
 
@@ -473,6 +505,9 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	var frog_node: Node2D = diorama.get_rendered_visitor_node()
 	assert_true(pond_node != null and frog_node != null, "Pond and Frog rendered")
 	assert_eq(frog_node.position, pond_node.position + GardenDiorama.POND_FROG_OFFSET, "Frog anchors beside small_pond when present")
+	var frog_sprite: Sprite2D = frog_node.get_node_or_null("Sprite") as Sprite2D
+	assert_true(frog_sprite != null and frog_sprite.texture == GardenAssetCatalog.get_visitor_texture("visitor.frog"), "Frog renders illustrated sprite")
+	assert_eq(frog_sprite.offset, Vector2(0.0, -36.0), "Frog uses Option A bottom-center offset (-72/2)")
 
 	var jar_only_state: GameState = GameState.new()
 	jar_only_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
@@ -489,7 +524,11 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	fence_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
 	var bird_snap: GardenSnapshot = GardenSnapshot.new({"perch": 1, "fruit": 1}, {}, 0, 0, {"decoration.wooden_fence": 1, "decoration.clay_jar": 1}, 2, GardenTimePeriod.DAY, GardenWeather.CLEAR)
 	diorama.render_garden(fence_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
-	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-fence").position + GardenDiorama.FENCE_BIRD_PERCH_OFFSET, "Bird perches on wooden_fence when present")
+	var bird_node: Node2D = diorama.get_rendered_visitor_node()
+	assert_eq(bird_node.position, diorama.get_rendered_item_node("d-fence").position + GardenDiorama.FENCE_BIRD_PERCH_OFFSET, "Bird perches on wooden_fence when present")
+	var bird_sprite: Sprite2D = bird_node.get_node_or_null("Sprite") as Sprite2D
+	assert_true(bird_sprite != null and bird_sprite.texture == GardenAssetCatalog.get_visitor_texture("visitor.bird"), "Bird renders illustrated sprite")
+	assert_true(bird_sprite.centered and bird_sprite.offset == Vector2.ZERO, "Bird preserves center pivot (0, 0)")
 
 	diorama.render_garden(jar_only_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
 	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-jar").position + GardenDiorama.JAR_BIRD_PERCH_OFFSET, "Bird perches on clay_jar rim when fence/lamp/table absent")
@@ -497,7 +536,24 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	diorama.render_garden(empty_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
 	assert_eq(diorama.get_rendered_visitor_node().position, GardenDiorama.DEFAULT_BIRD_PERCH_POS, "Bird perches on background fence rail fallback")
 
-	# 3. Tapping center-pivoted bird visitor emits visitor_selected
+	# 3. Garden lamp switches between off (day) and lit + LampGlow (night)
+	var lamp_state: GameState = GameState.new()
+	lamp_state.get_decorations().try_add_decoration(DecorationState.new("d-lamp", "decoration.garden_lamp", 1000, GardenZone.ZONE_MAIN, 1, 1))
+	var lamp_day_snap: GardenSnapshot = GardenSnapshot.new({"light": 1, "perch": 1}, {}, 0, 0, {"decoration.garden_lamp": 1}, 1, GardenTimePeriod.DAY, GardenWeather.CLEAR)
+	diorama.render_garden(lamp_state, catalog, 2000, lamp_day_snap, "", "", "", GardenZone.ZONE_MAIN, "th")
+	var lamp_day_node: Node2D = diorama.get_rendered_item_node("d-lamp")
+	assert_eq((lamp_day_node.get_node("Sprite") as Sprite2D).texture, GardenAssetCatalog.get_decoration_texture("decoration.garden_lamp", GardenTimePeriod.DAY), "Garden lamp uses off sprite during day")
+	assert_true(lamp_day_node.get_node_or_null("LampGlow") == null, "Garden lamp has no LampGlow during day")
+
+	var lamp_night_snap: GardenSnapshot = GardenSnapshot.new({"light": 1, "perch": 1}, {}, 0, 0, {"decoration.garden_lamp": 1}, 1, GardenTimePeriod.NIGHT, GardenWeather.CLEAR)
+	diorama.render_garden(lamp_state, catalog, 2000, lamp_night_snap, "", "", "", GardenZone.ZONE_MAIN, "th")
+	var lamp_night_node: Node2D = diorama.get_rendered_item_node("d-lamp")
+	assert_eq((lamp_night_node.get_node("Sprite") as Sprite2D).texture, GardenAssetCatalog.get_decoration_texture("decoration.garden_lamp", GardenTimePeriod.NIGHT), "Garden lamp switches to lit sprite at night")
+	var lamp_glow: Sprite2D = lamp_night_node.get_node_or_null("LampGlow") as Sprite2D
+	assert_true(lamp_glow != null and lamp_glow.position == Vector2(0.0, -162.0), "Night garden lamp aligns LampGlow over lantern glass panes")
+
+	# 4. Tapping center-pivoted bird visitor emits visitor_selected
+	diorama.render_garden(empty_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
 	var tapped_visitors: Array[String] = []
 	diorama.visitor_selected.connect(func(vid: String) -> void:
 		tapped_visitors.append(vid)

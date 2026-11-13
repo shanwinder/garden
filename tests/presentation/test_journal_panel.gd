@@ -717,14 +717,23 @@ func _test_journal_entry_sprite_thumbnails_respect_discovery() -> void:
 		panel.get_entry_icon_texture_for_id("visitor.butterfly") == null,
 		"Undiscovered butterfly entry hides sprite thumbnail"
 	)
+	assert_true(
+		panel.get_entry_icon_texture_for_id("visitor.bird") == null,
+		"Undiscovered bird entry hides sprite thumbnail even when asset exists"
+	)
 	assert_eq(
 		panel.get_entry_icon_texture_for_id("decoration.bench"),
 		GardenAssetCatalog.get_decoration_texture("decoration.bench"),
 		"Illustrated bench decoration entry shows bench thumbnail"
 	)
+	assert_eq(
+		panel.get_entry_icon_texture_for_id("decoration.watering_can"),
+		GardenAssetCatalog.get_decoration_texture("decoration.watering_can"),
+		"Illustrated watering_can decoration entry shows watering can thumbnail"
+	)
 	assert_true(
-		panel.get_entry_icon_texture_for_id("decoration.watering_can") == null,
-		"Unillustrated decoration entry keeps thumbnail null"
+		panel.get_entry_icon_texture_for_id("plant.banana") == null,
+		"Undiscovered/unillustrated banana entry keeps thumbnail null"
 	)
 
 	panel.free()
