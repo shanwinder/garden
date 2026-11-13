@@ -28,6 +28,7 @@ var _summary_label: Label = null
 var _entries_container: Container = null
 
 var _entry_texts_by_id: Dictionary = {}
+var _entry_icons_by_id: Dictionary = {}
 var _discovered_count: int = 0
 var _total_catalog_count: int = 0
 var _discovered_plant_count: int = 0
@@ -105,6 +106,7 @@ func bind_journal(
 	_clear_entries()
 
 	_entry_texts_by_id.clear()
+	_entry_icons_by_id.clear()
 	_discovered_count = 0
 	_total_catalog_count = 0
 	_discovered_plant_count = 0
@@ -165,7 +167,13 @@ func bind_journal(
 				_locale
 			)
 		_entry_texts_by_id[def_id] = entry_text
-		_add_entry_label(entry_text, is_disc)
+		var plant_icon: Texture2D = (
+			GardenAssetCatalog.get_plant_texture(def_id, PlantGrowth.Stage.MATURE)
+			if is_disc
+			else null
+		)
+		_entry_icons_by_id[def_id] = plant_icon
+		_add_entry_label(entry_text, is_disc, plant_icon)
 
 	_add_section_header(GardenLocalization.format_key("ui.journal.section_visitors", [visitors.size()], _locale))
 	for visitor_def: VisitorDefinition in visitors:
@@ -214,7 +222,13 @@ func bind_journal(
 				_locale
 			)
 		_entry_texts_by_id[def_id] = entry_text
-		_add_entry_label(entry_text, is_disc)
+		var visitor_icon: Texture2D = (
+			GardenAssetCatalog.get_visitor_thumbnail(def_id)
+			if is_disc
+			else null
+		)
+		_entry_icons_by_id[def_id] = visitor_icon
+		_add_entry_label(entry_text, is_disc, visitor_icon)
 
 	if not catalog_decorations.is_empty():
 		_add_section_header(GardenLocalization.format_key("ui.journal.section_decorations", [catalog_decorations.size()], _locale))
@@ -239,7 +253,9 @@ func bind_journal(
 					_locale
 				)
 			_entry_texts_by_id[def_id] = entry_text
-			_add_entry_label(entry_text, is_placed)
+			var decor_icon: Texture2D = GardenAssetCatalog.get_decoration_texture(def_id)
+			_entry_icons_by_id[def_id] = decor_icon
+			_add_entry_label(entry_text, is_placed, decor_icon)
 
 	if not catalog_events.is_empty():
 		_add_section_header(GardenLocalization.format_key("ui.journal.section_events", [catalog_events.size()], _locale))
@@ -426,18 +442,32 @@ func _add_section_header(title: String) -> void:
 	_entries_container.add_child(header)
 
 
-func _add_entry_label(text: String, is_discovered: bool) -> void:
+func _add_entry_label(text: String, is_discovered: bool, icon_texture: Texture2D = null) -> void:
 	if _entries_container == null:
 		return
 	var lbl: Label = Label.new()
 	lbl.text = text
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lbl.add_theme_font_size_override("font_size", 21)
 	if is_discovered:
 		lbl.add_theme_color_override("font_color", Color(0.9, 0.96, 0.9, 1))
 	else:
 		lbl.add_theme_color_override("font_color", Color(0.62, 0.68, 0.64, 1))
-	_entries_container.add_child(lbl)
+	if icon_texture != null:
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		var icon_rect: TextureRect = TextureRect.new()
+		icon_rect.texture = icon_texture
+		icon_rect.custom_minimum_size = Vector2(48, 48)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		row.add_child(icon_rect)
+		row.add_child(lbl)
+		_entries_container.add_child(row)
+	else:
+		_entries_container.add_child(lbl)
 
 
 func _clear_entries() -> void:
@@ -1425,3 +1455,8 @@ func has_plant_positive_harvest_reward_in_journal(definition_id: String) -> bool
 ## Pure query for testing: returns true if a plant [param definition_id] in the bound catalog has a positive mature_after_seconds duration (> 0).
 func has_plant_positive_mature_duration_in_journal(definition_id: String) -> bool:
 	return get_plant_mature_after_seconds_in_journal(definition_id) > 0
+
+
+## Pure query for testing: returns the sprite thumbnail Texture2D rendered for [param entry_id], or null.
+func get_entry_icon_texture_for_id(entry_id: String) -> Texture2D:
+	return _entry_icons_by_id.get(entry_id, null) as Texture2D

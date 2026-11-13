@@ -19,6 +19,7 @@ func run_tests() -> void:
 	_test_read_only_presentation_boundary()
 	_test_decorations_and_ambient_events_sections_rendering()
 	_test_secret_combination_event_hides_recipe()
+	_test_journal_entry_sprite_thumbnails_respect_discovery()
 
 
 func _create_production_catalog() -> ContentCatalog:
@@ -679,4 +680,51 @@ func _test_secret_combination_event_hides_recipe() -> void:
 	assert_true(active_text.contains(secret_name), "Active secret shows its display name")
 	assert_true(active_text.contains(GardenLocalization.get_event_description(secret_id)), "Active secret shows its description")
 	assert_false(active_text.contains(jasmine_name + " x3"), "Active secret still hides the exact recipe")
+	panel.free()
+
+
+func _test_journal_entry_sprite_thumbnails_respect_discovery() -> void:
+	describe("JournalPanel renders sprite thumbnails for discovered entities without spoiling undiscovered entries")
+	var panel: JournalPanel = _instantiate_journal()
+	var catalog: ContentCatalog = _create_full_production_catalog()
+	var journal: JournalState = JournalState.new()
+	assert_true(journal.try_record_sighting("plant.holy_basil", 100), "Record holy_basil sighting")
+	assert_true(journal.try_record_sighting("visitor.cat", 120), "Record cat sighting")
+	assert_true(journal.try_record_sighting("visitor.firefly", 140), "Record firefly sighting")
+
+	panel.bind_journal(journal, catalog)
+
+	assert_eq(
+		panel.get_entry_icon_texture_for_id("plant.holy_basil"),
+		GardenAssetCatalog.get_plant_texture("plant.holy_basil", PlantGrowth.Stage.MATURE),
+		"Discovered holy_basil entry shows mature sprite thumbnail"
+	)
+	assert_true(
+		panel.get_entry_icon_texture_for_id("plant.marigold") == null,
+		"Undiscovered marigold entry hides sprite thumbnail to avoid spoiling [???]"
+	)
+	assert_eq(
+		panel.get_entry_icon_texture_for_id("visitor.cat"),
+		GardenAssetCatalog.get_visitor_texture("visitor.cat"),
+		"Discovered cat entry shows cat sprite thumbnail"
+	)
+	assert_eq(
+		panel.get_entry_icon_texture_for_id("visitor.firefly"),
+		GardenAssetCatalog.get_firefly_glow_texture(),
+		"Discovered firefly entry shows firefly glow thumbnail"
+	)
+	assert_true(
+		panel.get_entry_icon_texture_for_id("visitor.butterfly") == null,
+		"Undiscovered butterfly entry hides sprite thumbnail"
+	)
+	assert_eq(
+		panel.get_entry_icon_texture_for_id("decoration.bench"),
+		GardenAssetCatalog.get_decoration_texture("decoration.bench"),
+		"Illustrated bench decoration entry shows bench thumbnail"
+	)
+	assert_true(
+		panel.get_entry_icon_texture_for_id("decoration.watering_can") == null,
+		"Unillustrated decoration entry keeps thumbnail null"
+	)
+
 	panel.free()

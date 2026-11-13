@@ -40,6 +40,10 @@ const DECORATION_TEXTURE_PATHS: Dictionary = {
 	"decoration.bench": "res://assets/decorations/bench/bench_idle.png",
 }
 
+const DECORATION_LIT_TEXTURE_PATHS: Dictionary = {
+	"decoration.garden_lamp": "res://assets/decorations/garden_lamp/garden_lamp_on.png",
+}
+
 const VISITOR_TEXTURE_PATHS: Dictionary = {
 	"visitor.cat": "res://assets/visitors/cat/cat_idle_00.png",
 	"visitor.butterfly": "res://assets/visitors/butterfly/butterfly_flutter_00.png",
@@ -91,16 +95,24 @@ static func get_plant_texture(definition_id: String, stage: PlantGrowth.Stage) -
 	return load_cached_texture(get_plant_texture_path(definition_id, stage))
 
 
-## Returns the resource path for a Vertical Slice decoration sprite, or empty if unmapped.
-static func get_decoration_texture_path(definition_id: String) -> String:
+## Returns the resource path for a decoration sprite (preferring lit variant during evening/night if present).
+static func get_decoration_texture_path(definition_id: String, time_period: String = "") -> String:
+	var is_lit_hours: bool = (
+		time_period == GardenTimePeriod.NIGHT
+		or time_period == GardenTimePeriod.EVENING
+	)
+	if is_lit_hours and DECORATION_LIT_TEXTURE_PATHS.has(definition_id):
+		var lit_path: String = str(DECORATION_LIT_TEXTURE_PATHS[definition_id])
+		if ResourceLoader.exists(lit_path):
+			return lit_path
 	if DECORATION_TEXTURE_PATHS.has(definition_id):
 		return str(DECORATION_TEXTURE_PATHS[definition_id])
 	return ""
 
 
-## Returns the cached Texture2D for a Vertical Slice decoration sprite, or null for fallback.
-static func get_decoration_texture(definition_id: String) -> Texture2D:
-	return load_cached_texture(get_decoration_texture_path(definition_id))
+## Returns the cached Texture2D for a decoration sprite, or null for fallback.
+static func get_decoration_texture(definition_id: String, time_period: String = "") -> Texture2D:
+	return load_cached_texture(get_decoration_texture_path(definition_id, time_period))
 
 
 ## Returns the resource path for a Vertical Slice visitor sprite, or empty if unmapped.
@@ -115,10 +127,20 @@ static func get_visitor_texture(visitor_id: String) -> Texture2D:
 	return load_cached_texture(get_visitor_texture_path(visitor_id))
 
 
+## Returns a UI thumbnail texture for a visitor (including firefly glow fallback for visitor.firefly).
+static func get_visitor_thumbnail(visitor_id: String) -> Texture2D:
+	var direct_tex: Texture2D = get_visitor_texture(visitor_id)
+	if direct_tex != null:
+		return direct_tex
+	if visitor_id == "visitor.firefly":
+		return get_firefly_glow_texture()
+	return null
+
+
 ## Returns true if the visitor stands/rests on ground or surface (Option A bottom-center pivot).
-## Airborne insects like butterfly keep Sprite2D centered at (0, 0).
+## Airborne/perching flying visitors (butterfly, bird) keep Sprite2D centered at (0, 0).
 static func is_grounded_visitor(visitor_id: String) -> bool:
-	return visitor_id != "visitor.butterfly"
+	return visitor_id != "visitor.butterfly" and visitor_id != "visitor.bird"
 
 
 ## Returns the soft rain streak particle texture.

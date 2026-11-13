@@ -22,6 +22,7 @@ func run_tests() -> void:
 	_test_diorama_growth_stages_and_fallback_tokens()
 	_test_diorama_visitor_bench_and_butterfly_pivots()
 	_test_diorama_jasmine_butterfly_and_firefly_visitor()
+	_test_diorama_bird_and_frog_visitor_anchoring()
 	_test_diorama_atmosphere_day_night_rain_fireflies()
 	_test_diorama_cell_and_visitor_tapping_and_highlights()
 	_test_card_sprite_thumbnails_and_fallbacks()
@@ -90,7 +91,11 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 	assert_true(butterfly != null and butterfly.get_size() == Vector2(64, 64), "Butterfly texture loads at 64x64")
 
 	assert_true(GardenAssetCatalog.is_grounded_visitor("visitor.cat"), "Cat is grounded visitor (Option A bottom-center)")
+	assert_true(GardenAssetCatalog.is_grounded_visitor("visitor.frog"), "Frog is grounded visitor (Option A bottom-center)")
 	assert_false(GardenAssetCatalog.is_grounded_visitor("visitor.butterfly"), "Butterfly is airborne (center pivot)")
+	assert_false(GardenAssetCatalog.is_grounded_visitor("visitor.bird"), "Garden bird uses center-of-body perching pivot")
+	assert_eq(GardenAssetCatalog.get_visitor_thumbnail("visitor.firefly"), GardenAssetCatalog.get_firefly_glow_texture(), "Firefly thumbnail resolves to glow texture")
+	assert_eq(GardenAssetCatalog.get_decoration_texture("decoration.clay_jar", GardenTimePeriod.NIGHT), clay_jar, "Decoration without night variant falls back to idle texture")
 	assert_eq(GardenAssetCatalog.compute_bottom_center_offset(clay_jar), Vector2(0.0, -134.0), "Bottom-center offset equals -height/2")
 
 	var rain: Texture2D = GardenAssetCatalog.get_rain_streak_texture()
@@ -450,3 +455,54 @@ func _test_picker_sprite_thumbnails_and_fallbacks() -> void:
 	assert_true(found_bench_icon, "DecorationPicker shows sprite icon for decoration.bench")
 	assert_true(found_can_null, "DecorationPicker leaves icon null for non-illustrated decoration.watering_can")
 	d_picker.free()
+
+
+func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
+	describe("GardenDiorama anchors Frog near pond/jar and Bird on fence/jar/banana perches")
+	var scene: PackedScene = load(GARDEN_DIORAMA_SCENE_PATH) as PackedScene
+	var diorama: GardenDiorama = scene.instantiate() as GardenDiorama
+	var catalog: ContentCatalog = _create_full_catalog()
+
+	# 1. Frog beside small_pond, fallback beside clay_jar, fallback to default ground
+	var pond_state: GameState = GameState.new()
+	pond_state.get_decorations().try_add_decoration(DecorationState.new("d-pond", "decoration.small_pond", 1000, GardenZone.ZONE_MAIN, 1, 2))
+	pond_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
+	var frog_snap: GardenSnapshot = GardenSnapshot.new({"water": 2}, {}, 0, 0, {"decoration.small_pond": 1, "decoration.clay_jar": 1}, 2, GardenTimePeriod.DAY, GardenWeather.RAIN)
+	diorama.render_garden(pond_state, catalog, 2000, frog_snap, "visitor.frog", "", "", GardenZone.ZONE_MAIN, "th")
+	var pond_node: Node2D = diorama.get_rendered_item_node("d-pond")
+	var frog_node: Node2D = diorama.get_rendered_visitor_node()
+	assert_true(pond_node != null and frog_node != null, "Pond and Frog rendered")
+	assert_eq(frog_node.position, pond_node.position + GardenDiorama.POND_FROG_OFFSET, "Frog anchors beside small_pond when present")
+
+	var jar_only_state: GameState = GameState.new()
+	jar_only_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
+	diorama.render_garden(jar_only_state, catalog, 2000, frog_snap, "visitor.frog", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-jar").position + GardenDiorama.JAR_FROG_OFFSET, "Frog anchors beside clay_jar without pond")
+
+	var empty_state: GameState = GameState.new()
+	diorama.render_garden(empty_state, catalog, 2000, frog_snap, "visitor.frog", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_eq(diorama.get_rendered_visitor_node().position, GardenDiorama.DEFAULT_FROG_GROUND_POS, "Frog uses damp ground fallback without water decor")
+
+	# 2. Bird on wooden_fence -> clay_jar -> default background fence perch
+	var fence_state: GameState = GameState.new()
+	fence_state.get_decorations().try_add_decoration(DecorationState.new("d-fence", "decoration.wooden_fence", 1000, GardenZone.ZONE_MAIN, 0, 0))
+	fence_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
+	var bird_snap: GardenSnapshot = GardenSnapshot.new({"perch": 1, "fruit": 1}, {}, 0, 0, {"decoration.wooden_fence": 1, "decoration.clay_jar": 1}, 2, GardenTimePeriod.DAY, GardenWeather.CLEAR)
+	diorama.render_garden(fence_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-fence").position + GardenDiorama.FENCE_BIRD_PERCH_OFFSET, "Bird perches on wooden_fence when present")
+
+	diorama.render_garden(jar_only_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-jar").position + GardenDiorama.JAR_BIRD_PERCH_OFFSET, "Bird perches on clay_jar rim when fence/lamp/table absent")
+
+	diorama.render_garden(empty_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_eq(diorama.get_rendered_visitor_node().position, GardenDiorama.DEFAULT_BIRD_PERCH_POS, "Bird perches on background fence rail fallback")
+
+	# 3. Tapping center-pivoted bird visitor emits visitor_selected
+	var tapped_visitors: Array[String] = []
+	diorama.visitor_selected.connect(func(vid: String) -> void:
+		tapped_visitors.append(vid)
+	)
+	diorama.simulate_tap_at_world_pos(GardenDiorama.DEFAULT_BIRD_PERCH_POS)
+	assert_eq(tapped_visitors, ["visitor.bird"], "Tapping center-pivoted bird visitor emits visitor_selected")
+
+	diorama.free()

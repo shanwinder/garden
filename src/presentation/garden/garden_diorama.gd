@@ -27,10 +27,23 @@ const ZONE_ADJACENT_COL_STEP: Vector2 = Vector2(68.0, 12.0)
 const ZONE_ADJACENT_ROW_STEP: Vector2 = Vector2(-6.0, 92.0)
 
 const BENCH_CAT_PERCH_OFFSET: Vector2 = Vector2(-8.0, -74.0)
+const JASMINE_CAT_REST_OFFSET: Vector2 = Vector2(36.0, 6.0)
 const DEFAULT_CAT_GROUND_POS: Vector2 = Vector2(185.0, 540.0)
 const DEFAULT_BUTTERFLY_POS: Vector2 = Vector2(-20.0, 290.0)
 const DEFAULT_FIREFLY_POS: Vector2 = Vector2(-60.0, 250.0)
 const FLOWER_BUTTERFLY_OFFSET: Vector2 = Vector2(24.0, -172.0)
+
+const POND_FROG_OFFSET: Vector2 = Vector2(-68.0, 14.0)
+const JAR_FROG_OFFSET: Vector2 = Vector2(72.0, 10.0)
+const DEFAULT_FROG_GROUND_POS: Vector2 = Vector2(145.0, 500.0)
+
+const FENCE_BIRD_PERCH_OFFSET: Vector2 = Vector2(0.0, -124.0)
+const LAMP_BIRD_PERCH_OFFSET: Vector2 = Vector2(4.0, -214.0)
+const TABLE_BIRD_PERCH_OFFSET: Vector2 = Vector2(28.0, -118.0)
+const JAR_BIRD_PERCH_OFFSET: Vector2 = Vector2(-42.0, -206.0)
+const BANANA_BIRD_PERCH_OFFSET: Vector2 = Vector2(36.0, -246.0)
+const BENCH_BIRD_PERCH_OFFSET: Vector2 = Vector2(88.0, -172.0)
+const DEFAULT_BIRD_PERCH_POS: Vector2 = Vector2(-150.0, 178.0)
 
 const FIREFLY_ANCHORS: Array[Vector2] = [
 	Vector2(-240.0, 230.0),
@@ -205,8 +218,14 @@ func render_garden(
 	var decorations: Array[DecorationState] = decor_collection.get_all_decorations() if decor_collection != null else []
 
 	var bench_pos: Vector2 = Vector2.INF
+	var pond_pos: Vector2 = Vector2.INF
+	var jar_pos: Vector2 = Vector2.INF
+	var fence_pos: Vector2 = Vector2.INF
+	var lamp_pos: Vector2 = Vector2.INF
+	var table_pos: Vector2 = Vector2.INF
 	var marigold_mature_pos: Vector2 = Vector2.INF
 	var jasmine_mature_pos: Vector2 = Vector2.INF
+	var banana_mature_pos: Vector2 = Vector2.INF
 	var any_mature_pos: Vector2 = Vector2.INF
 	var any_plant_pos: Vector2 = Vector2.INF
 
@@ -218,8 +237,25 @@ func render_garden(
 			decor_state.get_grid_x(),
 			decor_state.get_grid_y()
 		)
-		if def_id == "decoration.bench" and bench_pos == Vector2.INF:
-			bench_pos = world_pos
+		match def_id:
+			"decoration.bench":
+				if bench_pos == Vector2.INF:
+					bench_pos = world_pos
+			"decoration.small_pond":
+				if pond_pos == Vector2.INF:
+					pond_pos = world_pos
+			"decoration.clay_jar":
+				if jar_pos == Vector2.INF:
+					jar_pos = world_pos
+			"decoration.wooden_fence":
+				if fence_pos == Vector2.INF:
+					fence_pos = world_pos
+			"decoration.garden_lamp":
+				if lamp_pos == Vector2.INF:
+					lamp_pos = world_pos
+			"decoration.small_table":
+				if table_pos == Vector2.INF:
+					table_pos = world_pos
 
 		var item_node: Node2D = _create_decoration_node(
 			inst_id,
@@ -264,6 +300,8 @@ func render_garden(
 				marigold_mature_pos = world_pos
 			if def_id == "plant.jasmine" and jasmine_mature_pos == Vector2.INF:
 				jasmine_mature_pos = world_pos
+			if def_id == "plant.banana" and banana_mature_pos == Vector2.INF:
+				banana_mature_pos = world_pos
 
 		var item_node: Node2D = _create_plant_node(
 			inst_id,
@@ -286,12 +324,22 @@ func render_garden(
 		}
 
 	var flower_mature_pos: Vector2 = marigold_mature_pos if marigold_mature_pos != Vector2.INF else jasmine_mature_pos
+	var visitor_anchors: Dictionary = {
+		"bench_pos": bench_pos,
+		"jasmine_mature_pos": jasmine_mature_pos,
+		"flower_mature_pos": flower_mature_pos,
+		"any_mature_pos": any_mature_pos,
+		"any_plant_pos": any_plant_pos,
+		"pond_pos": pond_pos,
+		"jar_pos": jar_pos,
+		"fence_pos": fence_pos,
+		"lamp_pos": lamp_pos,
+		"table_pos": table_pos,
+		"banana_mature_pos": banana_mature_pos,
+	}
 	_render_active_visitor(
 		active_visitor_id,
-		bench_pos,
-		flower_mature_pos,
-		any_mature_pos,
-		any_plant_pos,
+		visitor_anchors,
 		catalog,
 		locale
 	)
@@ -463,7 +511,7 @@ func _create_decoration_node(
 ) -> Node2D:
 	var radius: float = 52.0 if definition_id == "decoration.bench" else 40.0
 	var container: Node2D = _create_base_item_node(instance_id, world_pos, is_selected, radius)
-	var tex: Texture2D = GardenAssetCatalog.get_decoration_texture(definition_id)
+	var tex: Texture2D = GardenAssetCatalog.get_decoration_texture(definition_id, time_period)
 	if tex != null:
 		var sprite: Sprite2D = Sprite2D.new()
 		sprite.name = "Sprite"
@@ -565,12 +613,63 @@ func _add_fallback_token(
 	container.add_child(tag)
 
 
+func _compute_visitor_anchor(visitor_id: String, anchors: Dictionary) -> Vector2:
+	var bench_pos: Vector2 = anchors.get("bench_pos", Vector2.INF)
+	var jasmine_mature_pos: Vector2 = anchors.get("jasmine_mature_pos", Vector2.INF)
+	var flower_mature_pos: Vector2 = anchors.get("flower_mature_pos", Vector2.INF)
+	var any_mature_pos: Vector2 = anchors.get("any_mature_pos", Vector2.INF)
+	var any_plant_pos: Vector2 = anchors.get("any_plant_pos", Vector2.INF)
+	var pond_pos: Vector2 = anchors.get("pond_pos", Vector2.INF)
+	var jar_pos: Vector2 = anchors.get("jar_pos", Vector2.INF)
+	var fence_pos: Vector2 = anchors.get("fence_pos", Vector2.INF)
+	var lamp_pos: Vector2 = anchors.get("lamp_pos", Vector2.INF)
+	var table_pos: Vector2 = anchors.get("table_pos", Vector2.INF)
+	var banana_mature_pos: Vector2 = anchors.get("banana_mature_pos", Vector2.INF)
+
+	match visitor_id:
+		"visitor.cat":
+			if bench_pos != Vector2.INF:
+				return bench_pos + BENCH_CAT_PERCH_OFFSET
+			if jasmine_mature_pos != Vector2.INF:
+				return jasmine_mature_pos + JASMINE_CAT_REST_OFFSET
+			return DEFAULT_CAT_GROUND_POS
+		"visitor.butterfly":
+			if flower_mature_pos != Vector2.INF:
+				return flower_mature_pos + FLOWER_BUTTERFLY_OFFSET
+			if any_mature_pos != Vector2.INF:
+				return any_mature_pos + FLOWER_BUTTERFLY_OFFSET
+			if any_plant_pos != Vector2.INF:
+				return any_plant_pos + Vector2(18.0, -130.0)
+			return DEFAULT_BUTTERFLY_POS
+		"visitor.firefly":
+			return DEFAULT_FIREFLY_POS
+		"visitor.frog":
+			if pond_pos != Vector2.INF:
+				return pond_pos + POND_FROG_OFFSET
+			if jar_pos != Vector2.INF:
+				return jar_pos + JAR_FROG_OFFSET
+			return DEFAULT_FROG_GROUND_POS
+		"visitor.bird":
+			if fence_pos != Vector2.INF:
+				return fence_pos + FENCE_BIRD_PERCH_OFFSET
+			if lamp_pos != Vector2.INF:
+				return lamp_pos + LAMP_BIRD_PERCH_OFFSET
+			if table_pos != Vector2.INF:
+				return table_pos + TABLE_BIRD_PERCH_OFFSET
+			if jar_pos != Vector2.INF:
+				return jar_pos + JAR_BIRD_PERCH_OFFSET
+			if banana_mature_pos != Vector2.INF:
+				return banana_mature_pos + BANANA_BIRD_PERCH_OFFSET
+			if bench_pos != Vector2.INF:
+				return bench_pos + BENCH_BIRD_PERCH_OFFSET
+			return DEFAULT_BIRD_PERCH_POS
+		_:
+			return DEFAULT_CAT_GROUND_POS
+
+
 func _render_active_visitor(
 	visitor_id: String,
-	bench_pos: Vector2,
-	flower_mature_pos: Vector2,
-	any_mature_pos: Vector2,
-	any_plant_pos: Vector2,
+	anchors: Dictionary,
 	catalog: ContentCatalog,
 	locale: String
 ) -> void:
@@ -580,23 +679,7 @@ func _render_active_visitor(
 	var visitor_node: Node2D = Node2D.new()
 	visitor_node.name = "Visitor_%s" % visitor_id.validate_node_name()
 	visitor_node.set_meta("visitor_id", visitor_id)
-
-	var anchor_pos: Vector2 = DEFAULT_CAT_GROUND_POS
-	if visitor_id == "visitor.cat":
-		anchor_pos = bench_pos + BENCH_CAT_PERCH_OFFSET if bench_pos != Vector2.INF else DEFAULT_CAT_GROUND_POS
-	elif visitor_id == "visitor.butterfly":
-		if flower_mature_pos != Vector2.INF:
-			anchor_pos = flower_mature_pos + FLOWER_BUTTERFLY_OFFSET
-		elif any_mature_pos != Vector2.INF:
-			anchor_pos = any_mature_pos + FLOWER_BUTTERFLY_OFFSET
-		elif any_plant_pos != Vector2.INF:
-			anchor_pos = any_plant_pos + Vector2(18.0, -130.0)
-		else:
-			anchor_pos = DEFAULT_BUTTERFLY_POS
-	elif visitor_id == "visitor.firefly":
-		anchor_pos = DEFAULT_FIREFLY_POS
-
-	visitor_node.position = anchor_pos
+	visitor_node.position = _compute_visitor_anchor(visitor_id, anchors)
 
 	var tex: Texture2D = GardenAssetCatalog.get_visitor_texture(visitor_id)
 	if tex != null:
@@ -641,6 +724,10 @@ func _start_visitor_idle_tween(visitor_id: String, sprite: Sprite2D) -> void:
 	if visitor_id == "visitor.butterfly":
 		tween.tween_property(sprite, "position", Vector2(10.0, -10.0), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tween.tween_property(sprite, "position", Vector2(-8.0, 6.0), 1.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	elif visitor_id == "visitor.bird":
+		tween.tween_property(sprite, "position", Vector2(2.0, -5.0), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(sprite, "position", Vector2.ZERO, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_interval(2.0)
 	else:
 		tween.tween_property(sprite, "position", Vector2(0.0, -2.5), 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tween.tween_property(sprite, "position", Vector2.ZERO, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -814,7 +901,7 @@ func _handle_local_world_tap(local_world_pos: Vector2) -> void:
 	if _active_visitor_node != null and not _active_visitor_id.is_empty():
 		var visitor_center: Vector2 = _active_visitor_node.position
 		if GardenAssetCatalog.is_grounded_visitor(_active_visitor_id) and _active_visitor_id != "visitor.firefly":
-			visitor_center += Vector2(0.0, -40.0)
+			visitor_center += Vector2(0.0, -38.0)
 		var visitor_dist: float = local_world_pos.distance_to(visitor_center)
 		if visitor_dist <= 56.0 and (best_id.is_empty() or visitor_dist < best_dist):
 			visitor_selected.emit(_active_visitor_id)
