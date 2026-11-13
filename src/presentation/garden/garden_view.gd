@@ -1408,6 +1408,26 @@ func _sync_diorama_placement_highlight() -> void:
 		)
 
 
+func _trigger_diorama_puff_for_plant(plant: PlantState) -> void:
+	_resolve_nodes()
+	if _garden_diorama != null and plant != null:
+		_garden_diorama.play_feedback_puff_at_cell(
+			plant.get_zone_id(),
+			plant.get_grid_x(),
+			plant.get_grid_y()
+		)
+
+
+func _trigger_diorama_puff_for_decoration(decor: DecorationState) -> void:
+	_resolve_nodes()
+	if _garden_diorama != null and decor != null:
+		_garden_diorama.play_feedback_puff_at_cell(
+			decor.get_zone_id(),
+			decor.get_grid_x(),
+			decor.get_grid_y()
+		)
+
+
 func _on_diorama_item_selected(item_kind: String, runtime_instance_id: String) -> void:
 	if runtime_instance_id.is_empty():
 		return
@@ -1499,8 +1519,10 @@ func show_planting_result(result: PlantingCheckpointResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_rejected", _locale)
 		PlantingCheckpointResult.Status.REGISTERED_SAVED:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_saved", _locale)
+			_trigger_diorama_puff_for_plant(result.get_plant())
 		PlantingCheckpointResult.Status.REGISTERED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_save_failed", _locale)
+			_trigger_diorama_puff_for_plant(result.get_plant())
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.planting_unknown", _locale)
 
@@ -1587,8 +1609,10 @@ func show_harvest_result(result: HarvestCheckpointResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_rejected", _locale)
 		HarvestCheckpointResult.Status.HARVESTED_SAVED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_saved", [result.get_reward_granted()], _locale)
+			_trigger_diorama_puff_for_plant(result.get_plant())
 		HarvestCheckpointResult.Status.HARVESTED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.harvest_save_failed", [result.get_reward_granted()], _locale)
+			_trigger_diorama_puff_for_plant(result.get_plant())
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.harvest_unknown", _locale)
 
@@ -1874,8 +1898,10 @@ func show_decoration_purchase_result(result: DecorationPurchaseCheckpointResult)
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_rejected", _locale)
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_saved", [result.get_price_spent()], _locale)
+			_trigger_diorama_puff_for_decoration(result.get_decoration())
 		DecorationPurchaseCheckpointResult.Status.PURCHASED_SAVE_FAILED:
 			_feedback_label.text = GardenLocalization.format_key("ui.feedback.decoration_save_failed", [result.get_price_spent()], _locale)
+			_trigger_diorama_puff_for_decoration(result.get_decoration())
 		_:
 			_feedback_label.text = GardenLocalization.translate("ui.feedback.decoration_unknown", _locale)
 

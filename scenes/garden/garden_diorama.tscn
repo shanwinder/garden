@@ -25,11 +25,16 @@ centered = false
 
 [node name="ZoneHighlightsLayer" type="Node2D" parent="WorldOrigin/WorldRoot"]
 
+[node name="RainRipplesGroup" type="Node2D" parent="WorldOrigin/WorldRoot"]
+visible = false
+
 [node name="PlacedItemsRoot" type="Node2D" parent="WorldOrigin/WorldRoot"]
 y_sort_enabled = true
 
 [node name="VisitorsRoot" type="Node2D" parent="WorldOrigin/WorldRoot"]
 y_sort_enabled = true
+
+[node name="FeedbackEffectsLayer" type="Node2D" parent="WorldOrigin/WorldRoot"]
 
 [node name="LightsLayer" type="Node2D" parent="WorldOrigin"]
 

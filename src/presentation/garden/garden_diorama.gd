@@ -53,12 +53,22 @@ const FIREFLY_ANCHORS: Array[Vector2] = [
 	Vector2(-150.0, 360.0),
 ]
 
+const RAIN_RIPPLE_DEFAULT_POSITIONS: Array[Vector2] = [
+	Vector2(-180.0, 485.0),
+	Vector2(35.0, 520.0),
+	Vector2(205.0, 470.0),
+]
+
+const MAX_AMBIENT_PLANT_SWAYS: int = 3
+
 var _world_origin: Node2D = null
 var _world_root: Node2D = null
 var _background_sprite: Sprite2D = null
 var _zone_highlights_layer: Node2D = null
+var _rain_ripples_group: Node2D = null
 var _placed_items_root: Node2D = null
 var _visitors_root: Node2D = null
+var _feedback_effects_layer: Node2D = null
 var _lights_layer: Node2D = null
 var _house_porch_glow: Sprite2D = null
 var _fireflies_group: Node2D = null
@@ -66,6 +76,7 @@ var _rain_particles: CPUParticles2D = null
 var _mist_overlay: ColorRect = null
 
 var _active_tweens: Array[Tween] = []
+var _active_lamp_glows: Array[Sprite2D] = []
 var _item_entries: Dictionary = {} # runtime_instance_id -> Dictionary{node, kind, zone_id, grid_x, grid_y, world_pos}
 var _zone_cells: Array[Dictionary] = [] # {zone_id, grid_x, grid_y, world_pos, occupied, marker}
 var _active_visitor_node: Node2D = null
@@ -106,10 +117,14 @@ func _resolve_nodes() -> void:
 		_background_sprite = get_node_or_null("WorldOrigin/WorldRoot/BackgroundSprite") as Sprite2D
 	if _zone_highlights_layer == null:
 		_zone_highlights_layer = get_node_or_null("WorldOrigin/WorldRoot/ZoneHighlightsLayer") as Node2D
+	if _rain_ripples_group == null:
+		_rain_ripples_group = get_node_or_null("WorldOrigin/WorldRoot/RainRipplesGroup") as Node2D
 	if _placed_items_root == null:
 		_placed_items_root = get_node_or_null("WorldOrigin/WorldRoot/PlacedItemsRoot") as Node2D
 	if _visitors_root == null:
 		_visitors_root = get_node_or_null("WorldOrigin/WorldRoot/VisitorsRoot") as Node2D
+	if _feedback_effects_layer == null:
+		_feedback_effects_layer = get_node_or_null("WorldOrigin/WorldRoot/FeedbackEffectsLayer") as Node2D
 	if _lights_layer == null:
 		_lights_layer = get_node_or_null("WorldOrigin/LightsLayer") as Node2D
 	if _house_porch_glow == null:
@@ -204,9 +219,11 @@ func render_garden(
 	_last_weather_state = weather_state
 
 	_clear_node_children(_zone_highlights_layer)
+	_clear_node_children(_rain_ripples_group)
 	_clear_node_children(_placed_items_root)
 	_clear_node_children(_visitors_root)
 	_clear_node_children(_fireflies_group)
+	_active_lamp_glows.clear()
 	_item_entries.clear()
 	_zone_cells.clear()
 	_active_visitor_node = null
@@ -277,6 +294,7 @@ func render_garden(
 			"world_pos": world_pos,
 		}
 
+	var sway_candidates: Array[Node2D] = []
 	for plant_state: PlantState in plants:
 		var inst_id: String = plant_state.get_runtime_instance_id()
 		var def_id: String = plant_state.get_definition_id()
@@ -314,6 +332,13 @@ func render_garden(
 		)
 		if _placed_items_root != null:
 			_placed_items_root.add_child(item_node)
+		if stage >= PlantGrowth.Stage.GROWING or inst_id == _selected_plant_id:
+			var plant_sprite: Node2D = item_node.get_node_or_null("Sprite") as Node2D
+			if plant_sprite != null:
+				if inst_id == _selected_plant_id:
+					sway_candidates.push_front(plant_sprite)
+				else:
+					sway_candidates.append(plant_sprite)
 		_item_entries[inst_id] = {
 			"node": item_node,
 			"kind": "plant",
@@ -322,6 +347,8 @@ func render_garden(
 			"grid_y": plant_state.get_grid_y(),
 			"world_pos": world_pos,
 		}
+
+	_start_plant_sway_tweens(sway_candidates)
 
 	var flower_mature_pos: Vector2 = marigold_mature_pos if marigold_mature_pos != Vector2.INF else jasmine_mature_pos
 	var visitor_anchors: Dictionary = {
@@ -343,7 +370,7 @@ func render_garden(
 		catalog,
 		locale
 	)
-	_apply_atmosphere(time_period, weather_state, active_visitor_id, snapshot)
+	_apply_atmosphere(time_period, weather_state, active_visitor_id, snapshot, pond_pos)
 
 
 ## Updates zone cell target / move-mode highlights in place without rebuilding placed sprites.
@@ -388,13 +415,18 @@ func clear_for_blocked_state() -> void:
 	_resolve_nodes()
 	_kill_active_tweens()
 	_clear_node_children(_zone_highlights_layer)
+	_clear_node_children(_rain_ripples_group)
 	_clear_node_children(_placed_items_root)
 	_clear_node_children(_visitors_root)
+	_clear_node_children(_feedback_effects_layer)
 	_clear_node_children(_fireflies_group)
+	_active_lamp_glows.clear()
 	_item_entries.clear()
 	_zone_cells.clear()
 	_active_visitor_node = null
 	_active_visitor_id = ""
+	if _rain_ripples_group != null:
+		_rain_ripples_group.visible = false
 	if _rain_particles != null:
 		_rain_particles.emitting = false
 		_rain_particles.visible = false
@@ -555,6 +587,7 @@ func _create_decoration_node(
 			mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 			lamp_glow.material = mat
 			container.add_child(lamp_glow)
+			_active_lamp_glows.append(lamp_glow)
 
 	return container
 
@@ -695,20 +728,23 @@ func _render_active_visitor(
 	visitor_node.set_meta("visitor_id", visitor_id)
 	visitor_node.position = _compute_visitor_anchor(visitor_id, anchors)
 
-	var tex: Texture2D = GardenAssetCatalog.get_visitor_texture(visitor_id)
-	if tex != null:
-		var sprite: Sprite2D = Sprite2D.new()
-		sprite.name = "Sprite"
-		sprite.texture = tex
-		sprite.centered = true
-		sprite.scale = Vector2.ONE
-		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var visitor_frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames(visitor_id)
+	if visitor_frames != null:
+		var anim_sprite: AnimatedSprite2D = AnimatedSprite2D.new()
+		anim_sprite.name = "Sprite"
+		anim_sprite.sprite_frames = visitor_frames
+		anim_sprite.animation = &"idle"
+		anim_sprite.centered = true
+		anim_sprite.scale = Vector2.ONE
+		anim_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		var frame_tex: Texture2D = visitor_frames.get_frame_texture(&"idle", 0)
 		if GardenAssetCatalog.is_grounded_visitor(visitor_id):
-			sprite.offset = GardenAssetCatalog.compute_bottom_center_offset(tex)
+			anim_sprite.offset = GardenAssetCatalog.compute_bottom_center_offset(frame_tex)
 		else:
-			sprite.offset = Vector2.ZERO
-		visitor_node.add_child(sprite)
-		_start_visitor_idle_tween(visitor_id, sprite)
+			anim_sprite.offset = Vector2.ZERO
+		anim_sprite.play(&"idle")
+		visitor_node.add_child(anim_sprite)
+		_start_visitor_idle_tween(visitor_id, anim_sprite)
 	elif visitor_id == "visitor.firefly" and GardenAssetCatalog.get_firefly_glow_texture() != null:
 		var glow_sprite: Sprite2D = Sprite2D.new()
 		glow_sprite.name = "Sprite"
@@ -730,7 +766,7 @@ func _render_active_visitor(
 	_active_visitor_node = visitor_node
 
 
-func _start_visitor_idle_tween(visitor_id: String, sprite: Sprite2D) -> void:
+func _start_visitor_idle_tween(visitor_id: String, sprite: Node2D) -> void:
 	if not is_inside_tree() or sprite == null:
 		return
 	var tween: Tween = create_tween()
@@ -748,11 +784,41 @@ func _start_visitor_idle_tween(visitor_id: String, sprite: Sprite2D) -> void:
 	_active_tweens.append(tween)
 
 
+func _start_plant_sway_tweens(plant_sprites: Array[Node2D]) -> void:
+	if not is_inside_tree() or plant_sprites.is_empty():
+		return
+	var sway_count: int = mini(plant_sprites.size(), MAX_AMBIENT_PLANT_SWAYS)
+	for i: int in range(sway_count):
+		var sprite: Node2D = plant_sprites[i]
+		if sprite == null or not is_instance_valid(sprite):
+			continue
+		var angle_rad: float = 0.022 if i % 2 == 0 else -0.020
+		var half_period: float = 2.4 + float(i) * 0.35
+		var tween: Tween = create_tween()
+		tween.set_loops()
+		tween.tween_property(sprite, "rotation", angle_rad, half_period).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_property(sprite, "rotation", -angle_rad * 0.85, half_period).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		_active_tweens.append(tween)
+
+
+func _start_glow_pulse_tween(glow_sprite: Sprite2D, base_alpha: float, duration: float) -> void:
+	if not is_inside_tree() or glow_sprite == null or not is_instance_valid(glow_sprite):
+		return
+	var low_alpha: float = maxf(0.18, base_alpha * 0.78)
+	var high_alpha: float = minf(0.95, base_alpha * 1.12)
+	var tween: Tween = create_tween()
+	tween.set_loops()
+	tween.tween_property(glow_sprite, "modulate:a", high_alpha, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(glow_sprite, "modulate:a", low_alpha, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_active_tweens.append(tween)
+
+
 func _apply_atmosphere(
 	time_period: String,
 	weather_state: String,
 	active_visitor_id: String,
-	snapshot: GardenSnapshot
+	snapshot: GardenSnapshot,
+	pond_pos: Vector2 = Vector2.INF
 ) -> void:
 	var period_tint: Color = _compute_world_period_tint(time_period)
 	var weather_mult: Color = _compute_weather_multiplier(weather_state)
@@ -768,6 +834,31 @@ func _apply_atmosphere(
 		_rain_particles.visible = is_raining
 		_rain_particles.emitting = is_raining
 
+	if _rain_ripples_group != null:
+		_rain_ripples_group.visible = is_raining
+		if is_raining:
+			var ripple_frames: SpriteFrames = GardenAssetCatalog.get_rain_ripple_sprite_frames()
+			if ripple_frames != null:
+				var ripple_positions: Array[Vector2] = []
+				if pond_pos != Vector2.INF:
+					ripple_positions.append(pond_pos + Vector2(-18.0, -34.0))
+					ripple_positions.append(pond_pos + Vector2(28.0, -24.0))
+				for pos: Vector2 in RAIN_RIPPLE_DEFAULT_POSITIONS:
+					ripple_positions.append(pos)
+				var total_ripples: int = mini(ripple_positions.size(), 4)
+				for idx: int in range(total_ripples):
+					var ripple: AnimatedSprite2D = AnimatedSprite2D.new()
+					ripple.name = "RainRipple_%d" % idx
+					ripple.sprite_frames = ripple_frames
+					ripple.animation = &"ripple"
+					ripple.position = ripple_positions[idx]
+					ripple.scale = Vector2.ONE
+					ripple.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+					ripple.modulate = Color(1.0, 1.0, 1.0, 0.72)
+					ripple.frame = idx % ripple_frames.get_frame_count(&"ripple")
+					ripple.play(&"ripple")
+					_rain_ripples_group.add_child(ripple)
+
 	var is_warm_light_hours: bool = (
 		time_period == GardenTimePeriod.NIGHT
 		or time_period == GardenTimePeriod.EVENING
@@ -777,6 +868,12 @@ func _apply_atmosphere(
 		if is_warm_light_hours:
 			var glow_alpha: float = 0.72 if time_period == GardenTimePeriod.NIGHT else 0.40
 			_house_porch_glow.modulate = Color(1.0, 0.84, 0.48, glow_alpha)
+			_start_glow_pulse_tween(_house_porch_glow, glow_alpha, 2.2)
+
+	if is_warm_light_hours:
+		for l_idx: int in range(_active_lamp_glows.size()):
+			var lamp_glow: Sprite2D = _active_lamp_glows[l_idx]
+			_start_glow_pulse_tween(lamp_glow, 0.72, 1.8 + float(l_idx) * 0.25)
 
 	var show_fireflies: bool = (time_period == GardenTimePeriod.NIGHT and not is_raining)
 	if not show_fireflies and active_visitor_id == "visitor.firefly":
@@ -1052,6 +1149,57 @@ func get_target_cell() -> Dictionary:
 	}
 
 
+## Plays a one-shot harvest/planting sparkle puff at the specified logical grid cell.
+func play_feedback_puff_at_cell(zone_id: String, grid_x: int, grid_y: int) -> void:
+	play_feedback_puff_at_world_pos(compute_grid_world_position(zone_id, grid_x, grid_y))
+
+
+## Plays a one-shot harvest/planting sparkle puff at an existing rendered item's world anchor.
+func play_feedback_puff_at_item(runtime_instance_id: String) -> void:
+	if _item_entries.has(runtime_instance_id):
+		var world_pos: Vector2 = _item_entries[runtime_instance_id].get("world_pos", Vector2.INF)
+		if world_pos != Vector2.INF:
+			play_feedback_puff_at_world_pos(world_pos)
+
+
+## Plays a one-shot harvest/planting sparkle puff at a WorldOrigin-local position.
+func play_feedback_puff_at_world_pos(world_pos: Vector2) -> void:
+	_resolve_nodes()
+	if _feedback_effects_layer == null:
+		return
+	var puff_frames: SpriteFrames = GardenAssetCatalog.get_harvest_puff_sprite_frames()
+	if puff_frames == null:
+		return
+	var puff: AnimatedSprite2D = AnimatedSprite2D.new()
+	puff.name = "FeedbackPuff_%d" % _feedback_effects_layer.get_child_count()
+	puff.sprite_frames = puff_frames
+	puff.animation = &"puff"
+	puff.centered = true
+	var frame0: Texture2D = puff_frames.get_frame_texture(&"puff", 0)
+	puff.offset = GardenAssetCatalog.compute_bottom_center_offset(frame0)
+	puff.position = world_pos
+	puff.scale = Vector2.ONE
+	puff.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	puff.animation_finished.connect(func() -> void:
+		if is_instance_valid(puff):
+			puff.queue_free()
+	)
+	_feedback_effects_layer.add_child(puff)
+	puff.play(&"puff")
+
+
 ## Pure query for testing: returns true when diorama is highlighting valid move cells.
 func is_move_highlight_active() -> bool:
 	return _is_move_mode
+
+
+## Pure query for testing: returns number of active raindrop ripple nodes.
+func get_rain_ripple_count() -> int:
+	_resolve_nodes()
+	return _rain_ripples_group.get_child_count() if _rain_ripples_group != null else 0
+
+
+## Pure query for testing: returns number of active one-shot feedback effect nodes.
+func get_feedback_effect_count() -> int:
+	_resolve_nodes()
+	return _feedback_effects_layer.get_child_count() if _feedback_effects_layer != null else 0

@@ -69,7 +69,67 @@ const VISITOR_TEXTURE_PATHS: Dictionary = {
 	"visitor.frog": "res://assets/visitors/frog/frog_idle_00.png",
 }
 
+const VISITOR_ANIMATION_SPECS: Dictionary = {
+	"visitor.cat": {
+		"fps": 6.0,
+		"loop": true,
+		"frames": [
+			"res://assets/visitors/cat/cat_idle_00.png",
+			"res://assets/visitors/cat/cat_idle_01.png",
+			"res://assets/visitors/cat/cat_idle_02.png",
+			"res://assets/visitors/cat/cat_idle_03.png",
+		],
+	},
+	"visitor.butterfly": {
+		"fps": 12.0,
+		"loop": true,
+		"frames": [
+			"res://assets/visitors/butterfly/butterfly_flutter_00.png",
+			"res://assets/visitors/butterfly/butterfly_flutter_01.png",
+			"res://assets/visitors/butterfly/butterfly_flutter_02.png",
+			"res://assets/visitors/butterfly/butterfly_flutter_03.png",
+		],
+	},
+	"visitor.bird": {
+		"fps": 8.0,
+		"loop": true,
+		"frames": [
+			"res://assets/visitors/bird/bird_idle_00.png",
+			"res://assets/visitors/bird/bird_idle_01.png",
+			"res://assets/visitors/bird/bird_idle_02.png",
+			"res://assets/visitors/bird/bird_idle_03.png",
+		],
+	},
+	"visitor.frog": {
+		"fps": 6.0,
+		"loop": true,
+		"frames": [
+			"res://assets/visitors/frog/frog_idle_00.png",
+			"res://assets/visitors/frog/frog_idle_01.png",
+			"res://assets/visitors/frog/frog_idle_02.png",
+			"res://assets/visitors/frog/frog_idle_03.png",
+		],
+	},
+}
+
+const EFFECT_RAIN_RIPPLE_FRAMES: Array[String] = [
+	"res://assets/effects/rain/effect_rain_ripple_00.png",
+	"res://assets/effects/rain/effect_rain_ripple_01.png",
+	"res://assets/effects/rain/effect_rain_ripple_02.png",
+	"res://assets/effects/rain/effect_rain_ripple_03.png",
+	"res://assets/effects/rain/effect_rain_ripple_04.png",
+]
+
+const EFFECT_HARVEST_PUFF_FRAMES: Array[String] = [
+	"res://assets/effects/feedback/effect_harvest_puff_00.png",
+	"res://assets/effects/feedback/effect_harvest_puff_01.png",
+	"res://assets/effects/feedback/effect_harvest_puff_02.png",
+	"res://assets/effects/feedback/effect_harvest_puff_03.png",
+	"res://assets/effects/feedback/effect_harvest_puff_04.png",
+]
+
 static var _texture_cache: Dictionary = {}
+static var _sprite_frames_cache: Dictionary = {}
 
 
 ## Loads and caches a Texture2D by resource path, returning null if unavailable.
@@ -88,9 +148,10 @@ static func load_cached_texture(resource_path: String) -> Texture2D:
 	return null
 
 
-## Clears internal cached texture references (primarily for test isolation).
+## Clears internal cached texture and SpriteFrames references (primarily for test isolation).
 static func clear_cache() -> void:
 	_texture_cache.clear()
+	_sprite_frames_cache.clear()
 
 
 ## Returns the 1080x1920 background artwork texture for the main garden scene.
@@ -145,6 +206,74 @@ static func get_visitor_texture_path(visitor_id: String) -> String:
 ## Returns the cached Texture2D for a Vertical Slice visitor sprite, or null for fallback.
 static func get_visitor_texture(visitor_id: String) -> Texture2D:
 	return load_cached_texture(get_visitor_texture_path(visitor_id))
+
+
+## Builds and caches a SpriteFrames resource for an animated visitor, or null if unmapped.
+static func get_visitor_sprite_frames(visitor_id: String) -> SpriteFrames:
+	if not VISITOR_ANIMATION_SPECS.has(visitor_id):
+		return null
+	var cache_key: String = "visitor:%s" % visitor_id
+	if _sprite_frames_cache.has(cache_key):
+		return _sprite_frames_cache[cache_key] as SpriteFrames
+	var spec: Dictionary = VISITOR_ANIMATION_SPECS[visitor_id]
+	var frame_paths: Array = spec.get("frames", [])
+	var frames: SpriteFrames = _build_sprite_frames(
+		&"idle",
+		frame_paths,
+		float(spec.get("fps", 8.0)),
+		bool(spec.get("loop", true))
+	)
+	if frames != null:
+		_sprite_frames_cache[cache_key] = frames
+	return frames
+
+
+## Returns cached SpriteFrames for raindrop water ripples, or null if unavailable.
+static func get_rain_ripple_sprite_frames() -> SpriteFrames:
+	var cache_key: String = "effect:rain_ripple"
+	if _sprite_frames_cache.has(cache_key):
+		return _sprite_frames_cache[cache_key] as SpriteFrames
+	var frames: SpriteFrames = _build_sprite_frames(&"ripple", EFFECT_RAIN_RIPPLE_FRAMES, 10.0, true)
+	if frames != null:
+		_sprite_frames_cache[cache_key] = frames
+	return frames
+
+
+## Returns cached one-shot SpriteFrames for harvest/planting sparkle puffs, or null if unavailable.
+static func get_harvest_puff_sprite_frames() -> SpriteFrames:
+	var cache_key: String = "effect:harvest_puff"
+	if _sprite_frames_cache.has(cache_key):
+		return _sprite_frames_cache[cache_key] as SpriteFrames
+	var frames: SpriteFrames = _build_sprite_frames(&"puff", EFFECT_HARVEST_PUFF_FRAMES, 12.0, false)
+	if frames != null:
+		_sprite_frames_cache[cache_key] = frames
+	return frames
+
+
+static func _build_sprite_frames(
+	anim_name: StringName,
+	frame_paths: Array,
+	fps: float,
+	loop: bool
+) -> SpriteFrames:
+	var loaded_textures: Array[Texture2D] = []
+	for path_var: Variant in frame_paths:
+		var tex: Texture2D = load_cached_texture(str(path_var))
+		if tex == null:
+			return null
+		loaded_textures.append(tex)
+	if loaded_textures.is_empty():
+		return null
+
+	var sf: SpriteFrames = SpriteFrames.new()
+	if sf.has_animation(&"default"):
+		sf.remove_animation(&"default")
+	sf.add_animation(anim_name)
+	sf.set_animation_speed(anim_name, fps)
+	sf.set_animation_loop(anim_name, loop)
+	for tex: Texture2D in loaded_textures:
+		sf.add_frame(anim_name, tex)
+	return sf
 
 
 ## Returns a UI thumbnail texture for a visitor (including firefly glow fallback for visitor.firefly).

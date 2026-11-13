@@ -144,6 +144,25 @@ func _test_asset_catalog_vertical_slice_textures_and_caching() -> void:
 	assert_true(GardenAssetCatalog.get_decoration_texture("decoration.unknown_test") == null, "Unmapped decoration returns null for fallback")
 	assert_true(GardenAssetCatalog.get_visitor_texture("visitor.unknown_test") == null, "Unmapped visitor returns null for fallback")
 
+	var cat_frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames("visitor.cat")
+	assert_true(cat_frames != null and cat_frames.get_frame_count(&"idle") == 4, "Cat SpriteFrames loads 4 idle frames")
+	assert_eq(cat_frames.get_animation_speed(&"idle"), 6.0, "Cat SpriteFrames plays at 6 FPS")
+	var bfly_frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames("visitor.butterfly")
+	assert_true(bfly_frames != null and bfly_frames.get_frame_count(&"idle") == 4, "Butterfly SpriteFrames loads 4 flutter frames")
+	assert_eq(bfly_frames.get_animation_speed(&"idle"), 12.0, "Butterfly SpriteFrames plays at 12 FPS")
+	var bird_frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames("visitor.bird")
+	assert_true(bird_frames != null and bird_frames.get_frame_count(&"idle") == 4, "Bird SpriteFrames loads 4 idle frames")
+	var frog_frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames("visitor.frog")
+	assert_true(frog_frames != null and frog_frames.get_frame_count(&"idle") == 4, "Frog SpriteFrames loads 4 idle frames")
+	assert_true(GardenAssetCatalog.get_visitor_sprite_frames("visitor.unknown_test") == null, "Unmapped visitor SpriteFrames returns null")
+
+	var ripple_frames: SpriteFrames = GardenAssetCatalog.get_rain_ripple_sprite_frames()
+	assert_true(ripple_frames != null and ripple_frames.get_frame_count(&"ripple") == 5, "Rain ripple SpriteFrames loads 5 frames")
+	assert_true(ripple_frames.get_animation_loop(&"ripple"), "Rain ripple animation loops")
+	var puff_frames: SpriteFrames = GardenAssetCatalog.get_harvest_puff_sprite_frames()
+	assert_true(puff_frames != null and puff_frames.get_frame_count(&"puff") == 5, "Harvest puff SpriteFrames loads 5 frames")
+	assert_false(puff_frames.get_animation_loop(&"puff"), "Harvest puff animation plays once")
+
 
 func _test_diorama_background_and_sprite_contract() -> void:
 	describe("GardenDiorama enforces 1:1 Sprite2D scale, Linear filter, and Option A bottom-center pivots")
@@ -249,8 +268,9 @@ func _test_diorama_visitor_bench_and_butterfly_pivots() -> void:
 	assert_true(cat_node != null, "Cat visitor node rendered")
 	var bench_node: Node2D = diorama.get_rendered_item_node("d-bench")
 	assert_eq(cat_node.position, bench_node.position + GardenDiorama.BENCH_CAT_PERCH_OFFSET, "Cat anchors on bench seat surface when bench exists")
-	var cat_sprite: Sprite2D = cat_node.get_node_or_null("Sprite") as Sprite2D
+	var cat_sprite: AnimatedSprite2D = cat_node.get_node_or_null("Sprite") as AnimatedSprite2D
 	assert_true(cat_sprite != null and cat_sprite.offset == Vector2(0.0, -62.0), "Cat uses Option A bottom-center offset (-124/2)")
+	assert_true(cat_sprite.is_playing() and cat_sprite.animation == &"idle", "Cat AnimatedSprite2D plays idle animation")
 
 	# 2. Butterfly anchored over mature marigold with center pivot
 	diorama.render_garden(state, catalog, 4000, snap, "visitor.butterfly", "", "", GardenZone.ZONE_MAIN, "th")
@@ -258,8 +278,9 @@ func _test_diorama_visitor_bench_and_butterfly_pivots() -> void:
 	assert_true(butterfly_node != null, "Butterfly visitor node rendered")
 	var marigold_node: Node2D = diorama.get_rendered_item_node("p-marigold")
 	assert_eq(butterfly_node.position, marigold_node.position + GardenDiorama.FLOWER_BUTTERFLY_OFFSET, "Butterfly anchors near mature marigold")
-	var bfly_sprite: Sprite2D = butterfly_node.get_node_or_null("Sprite") as Sprite2D
+	var bfly_sprite: AnimatedSprite2D = butterfly_node.get_node_or_null("Sprite") as AnimatedSprite2D
 	assert_true(bfly_sprite != null and bfly_sprite.centered and bfly_sprite.offset == Vector2.ZERO, "Butterfly preserves center pivot (0, 0)")
+	assert_true(bfly_sprite.is_playing() and bfly_sprite.animation == &"idle", "Butterfly AnimatedSprite2D plays flutter animation")
 
 	# 3. Cat without bench falls back to foreground stone paver
 	var no_bench_state: GameState = GameState.new()
@@ -299,7 +320,15 @@ func _test_diorama_atmosphere_day_night_rain_fireflies() -> void:
 	diorama.render_garden(state, catalog, 2000, day_rain, "", "", "", GardenZone.ZONE_MAIN, "th")
 	assert_true(diorama.is_rain_active(), "Rain weather enables RainParticles emission")
 	assert_true(diorama.get_rain_particles().texture == GardenAssetCatalog.get_rain_streak_texture(), "RainParticles uses imported rain streak texture")
+	assert_true(diorama.get_rain_ripple_count() >= 3, "Rain weather renders animated raindrop ripples")
 	assert_false(diorama.are_fireflies_visible(), "Rain hides night fireflies")
+
+	# Feedback puff at cell & blocked cleanup
+	diorama.play_feedback_puff_at_cell(GardenZone.ZONE_MAIN, 0, 0)
+	assert_eq(diorama.get_feedback_effect_count(), 1, "play_feedback_puff_at_cell spawns one-shot AnimatedSprite2D puff")
+	diorama.clear_for_blocked_state()
+	assert_eq(diorama.get_rain_ripple_count(), 0, "Blocked cleanup clears rain ripples")
+	assert_eq(diorama.get_feedback_effect_count(), 0, "Blocked cleanup clears feedback puffs")
 
 	diorama.free()
 
@@ -534,9 +563,10 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	var frog_node: Node2D = diorama.get_rendered_visitor_node()
 	assert_true(pond_node != null and frog_node != null, "Pond and Frog rendered")
 	assert_eq(frog_node.position, pond_node.position + GardenDiorama.POND_FROG_OFFSET, "Frog anchors beside small_pond when present")
-	var frog_sprite: Sprite2D = frog_node.get_node_or_null("Sprite") as Sprite2D
-	assert_true(frog_sprite != null and frog_sprite.texture == GardenAssetCatalog.get_visitor_texture("visitor.frog"), "Frog renders illustrated sprite")
+	var frog_sprite: AnimatedSprite2D = frog_node.get_node_or_null("Sprite") as AnimatedSprite2D
+	assert_true(frog_sprite != null and frog_sprite.sprite_frames == GardenAssetCatalog.get_visitor_sprite_frames("visitor.frog"), "Frog renders animated SpriteFrames")
 	assert_eq(frog_sprite.offset, Vector2(0.0, -36.0), "Frog uses Option A bottom-center offset (-72/2)")
+	assert_true(frog_sprite.is_playing(), "Frog AnimatedSprite2D plays idle animation")
 
 	var jar_only_state: GameState = GameState.new()
 	jar_only_state.get_decorations().try_add_decoration(DecorationState.new("d-jar", "decoration.clay_jar", 1000, GardenZone.ZONE_MAIN, 2, 1))
@@ -555,9 +585,10 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	diorama.render_garden(fence_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
 	var bird_node: Node2D = diorama.get_rendered_visitor_node()
 	assert_eq(bird_node.position, diorama.get_rendered_item_node("d-fence").position + GardenDiorama.FENCE_BIRD_PERCH_OFFSET, "Bird perches on wooden_fence when present")
-	var bird_sprite: Sprite2D = bird_node.get_node_or_null("Sprite") as Sprite2D
-	assert_true(bird_sprite != null and bird_sprite.texture == GardenAssetCatalog.get_visitor_texture("visitor.bird"), "Bird renders illustrated sprite")
+	var bird_sprite: AnimatedSprite2D = bird_node.get_node_or_null("Sprite") as AnimatedSprite2D
+	assert_true(bird_sprite != null and bird_sprite.sprite_frames == GardenAssetCatalog.get_visitor_sprite_frames("visitor.bird"), "Bird renders animated SpriteFrames")
 	assert_true(bird_sprite.centered and bird_sprite.offset == Vector2.ZERO, "Bird preserves center pivot (0, 0)")
+	assert_true(bird_sprite.is_playing(), "Bird AnimatedSprite2D plays idle animation")
 
 	diorama.render_garden(jar_only_state, catalog, 2000, bird_snap, "visitor.bird", "", "", GardenZone.ZONE_MAIN, "th")
 	assert_eq(diorama.get_rendered_visitor_node().position, diorama.get_rendered_item_node("d-jar").position + GardenDiorama.JAR_BIRD_PERCH_OFFSET, "Bird perches on clay_jar rim when fence/lamp/table absent")
