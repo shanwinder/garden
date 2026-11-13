@@ -621,4 +621,66 @@ func _test_diorama_bird_and_frog_visitor_anchoring() -> void:
 	diorama.simulate_tap_at_world_pos(GardenDiorama.DEFAULT_BIRD_PERCH_POS)
 	assert_eq(tapped_visitors, ["visitor.bird"], "Tapping center-pivoted bird visitor emits visitor_selected")
 
+	_assert_light_trait_and_event_visuals(diorama, catalog)
 	diorama.free()
+
+
+func _assert_light_trait_and_event_visuals(diorama: GardenDiorama, catalog: ContentCatalog) -> void:
+	# 5. Canonical EnvironmentalTrait.LIGHT boosts night fireflies to full count
+	var lamp_only_state: GameState = GameState.new()
+	lamp_only_state.get_decorations().try_add_decoration(DecorationState.new("d-lamp-ff", "decoration.garden_lamp", 1000, GardenZone.ZONE_MAIN, 1, 1))
+	var dim_night_snap: GardenSnapshot = GardenSnapshot.new({}, {}, 0, 0, {}, 0, GardenTimePeriod.NIGHT, GardenWeather.CLEAR)
+	diorama.render_garden(lamp_only_state, catalog, 2000, dim_night_snap, "", "", "", GardenZone.ZONE_MAIN, "th")
+	var fireflies_group: Node2D = diorama.find_child("FirefliesGroup", true, false) as Node2D
+	assert_true(fireflies_group != null and fireflies_group.visible, "FirefliesGroup visible on clear night")
+	var baseline_firefly_count: int = fireflies_group.get_child_count()
+	assert_true(baseline_firefly_count > 0, "Night renders baseline fireflies without LIGHT trait")
+
+	var lit_night_snap: GardenSnapshot = GardenSnapshot.new({EnvironmentalTrait.LIGHT: 1, EnvironmentalTrait.PERCH: 1}, {}, 0, 0, {"decoration.garden_lamp": 1}, 1, GardenTimePeriod.NIGHT, GardenWeather.CLEAR)
+	diorama.render_garden(lamp_only_state, catalog, 2000, lit_night_snap, "", "", "", GardenZone.ZONE_MAIN, "th")
+	assert_true(fireflies_group.visible, "FirefliesGroup stays visible with LIGHT trait")
+	assert_true(fireflies_group.get_child_count() > baseline_firefly_count, "Canonical LIGHT trait expands night firefly count beyond baseline")
+
+	# 6. Ambient/special events stage visually and respect evening/night/rain atmosphere
+	var event_state: GameState = GameState.new()
+	event_state.get_plants().try_add_plant(PlantState.new("p-jas-1", "plant.jasmine", 100, GardenZone.ZONE_MAIN, 0, 0))
+	event_state.get_plants().try_add_plant(PlantState.new("p-jas-2", "plant.jasmine", 100, GardenZone.ZONE_MAIN, 1, 0))
+	event_state.get_plants().try_add_plant(PlantState.new("p-jas-3", "plant.jasmine", 100, GardenZone.ZONE_MAIN, 2, 0))
+	event_state.get_decorations().try_add_decoration(DecorationState.new("d-bench-ev", "decoration.bench", 100, GardenZone.ZONE_MAIN, 0, 1))
+	event_state.get_decorations().try_add_decoration(DecorationState.new("d-pond-ev", "decoration.small_pond", 100, GardenZone.ZONE_MAIN, 1, 1))
+
+	var evening_clear: GardenSnapshot = GardenSnapshot.new({"dense_vegetation": 1, "flower": 1, "water": 1}, {}, 3, 3, {"decoration.bench": 1, "decoration.small_pond": 1}, 2, GardenTimePeriod.EVENING, GardenWeather.CLEAR)
+	diorama.render_garden(event_state, catalog, 500, evening_clear, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.firefly_night_glow")
+	assert_eq(diorama.get_active_event_id(), "event.firefly_night_glow", "Diorama tracks active event ID")
+	assert_true(diorama.get_rendered_event_nodes().size() >= 1, "event.firefly_night_glow stages focal event node")
+	assert_true(fireflies_group.visible and fireflies_group.get_child_count() > baseline_firefly_count, "event.firefly_night_glow activates full fireflies in EVENING")
+
+	var event_specs: Array[Dictionary] = [
+		{"id": "event.morning_butterflies", "visitor": "", "period": GardenTimePeriod.MORNING, "weather": GardenWeather.CLEAR, "min_nodes": 2},
+		{"id": "event.bird_shade_song", "visitor": "", "period": GardenTimePeriod.DAY, "weather": GardenWeather.CLOUDY, "min_nodes": 1},
+		{"id": "event.cat_sleeping_bench", "visitor": "", "period": GardenTimePeriod.DAY, "weather": GardenWeather.CLEAR, "min_nodes": 2},
+		{"id": "event.cat_sleeping_bench", "visitor": "visitor.cat", "period": GardenTimePeriod.DAY, "weather": GardenWeather.CLEAR, "min_nodes": 1},
+		{"id": "event.cat_jasmine_night_rest", "visitor": "", "period": GardenTimePeriod.NIGHT, "weather": GardenWeather.CLEAR, "min_nodes": 2},
+		{"id": "event.frog_rain_chorus", "visitor": "", "period": GardenTimePeriod.DAY, "weather": GardenWeather.RAIN, "min_nodes": 2},
+	]
+	for spec: Dictionary in event_specs:
+		var ev_id: String = str(spec["id"])
+		var vis_id: String = str(spec["visitor"])
+		var ev_snap: GardenSnapshot = GardenSnapshot.new({}, {}, 3, 3, {}, 2, str(spec["period"]), str(spec["weather"]))
+		diorama.render_garden(event_state, catalog, 500, ev_snap, vis_id, "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, ev_id)
+		assert_eq(diorama.get_active_event_id(), ev_id, "Active event set for %s" % ev_id)
+		var nodes: Array[Node2D] = diorama.get_rendered_event_nodes()
+		assert_true(nodes.size() >= int(spec["min_nodes"]), "%s renders expected event nodes" % ev_id)
+		if vis_id == "visitor.cat":
+			assert_eq(nodes.size(), 1, "Avoids duplicating second cat when visitor.cat is already active")
+		for node: Node2D in nodes:
+			assert_eq(str(node.get_meta("event_id", "")), ev_id, "Event node carries event_id metadata")
+
+	diorama.render_garden(event_state, catalog, 500, evening_clear, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "")
+	assert_eq(diorama.get_active_event_id(), "", "Empty active_event_id clears tracked event")
+	assert_eq(diorama.get_rendered_event_nodes().size(), 0, "Empty active_event_id removes event stage nodes")
+
+	diorama.render_garden(event_state, catalog, 500, evening_clear, "", "", "", GardenZone.ZONE_MAIN, "th", "", -1, -1, false, "event.morning_butterflies")
+	diorama.clear_for_blocked_state()
+	assert_eq(diorama.get_active_event_id(), "", "clear_for_blocked_state clears active event ID")
+	assert_eq(diorama.get_rendered_event_nodes().size(), 0, "clear_for_blocked_state removes event stage nodes")

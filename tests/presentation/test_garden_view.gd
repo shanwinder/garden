@@ -1902,17 +1902,32 @@ func _test_ambient_event_observation_button_and_feedback() -> void:
 		gview.get_feedback_text().contains("ฝูงผีเสื้อโบยบินวนเวียนตอมดอกไม้ในแสงแดดอ่อน"),
 		"Feedback displays event flavor description"
 	)
+	assert_eq(
+		gview.get_garden_diorama().get_active_event_id(),
+		"event.morning_butterflies",
+		"Observing event immediately updates GardenDiorama active event"
+	)
+	assert_true(
+		gview.get_garden_diorama().get_rendered_event_nodes().size() >= 2,
+		"GardenDiorama stages companion visuals for observed event"
+	)
 
 	# 4. Shift time to t = 14400 (night, rain) -> morning_butterflies no longer eligible, button disabled, current_event_id cleared
 	clock.set_utc_seconds(14400)
 	gview.refresh_from_session()
 	assert_false(gview.is_observe_event_button_enabled(), "ObserveEventButton disabled when no events eligible at night rain")
 	assert_eq(gview.get_current_event_id(), "", "Current event ID cleared when no longer eligible")
+	assert_eq(gview.get_garden_diorama().get_active_event_id(), "", "GardenDiorama active event cleared when no longer eligible")
+	assert_eq(gview.get_garden_diorama().get_rendered_event_nodes().size(), 0, "GardenDiorama event nodes removed when cleared")
 	assert_eq(gview.get_journal_panel().get_active_event_entry_count(), 0, "JournalPanel active event count returns to 0")
 
 	# 5. Direct show_event_result for NO_ELIGIBLE_EVENTS and INVALID_INPUT
+	var direct_event_def: EventDefinition = app.get_content_catalog().get_event("event.morning_butterflies")
+	gview.show_event_result(EventSelectionResult.selected(direct_event_def, ["event.morning_butterflies"], gview.get_last_garden_snapshot()))
+	assert_eq(gview.get_garden_diorama().get_active_event_id(), "event.morning_butterflies", "Direct SELECTED syncs event into GardenDiorama")
 	gview.show_event_result(EventSelectionResult.no_eligible_events(gview.get_last_garden_snapshot()))
 	assert_eq(gview.get_feedback_text(), "ยังไม่มีเหตุการณ์พิเศษที่เกิดขึ้นในสวนขณะนี้", "NO_ELIGIBLE_EVENTS feedback")
+	assert_eq(gview.get_garden_diorama().get_active_event_id(), "", "NO_ELIGIBLE_EVENTS clears active event from GardenDiorama")
 	gview.show_event_result(EventSelectionResult.invalid_input())
 	assert_eq(gview.get_feedback_text(), "ระบบยังไม่พร้อมสำหรับการชมเหตุการณ์ในสวน", "INVALID_INPUT feedback")
 

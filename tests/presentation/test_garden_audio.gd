@@ -179,6 +179,21 @@ func _test_garden_view_audio_integration() -> void:
 	view.show_visitor_observation_result(vis_obs)
 	assert_eq(audio.get_last_sfx_cue(), "discover", "Visitor observation triggers discover SFX")
 
+	# Toggling locale while visitor or event feedback is displayed must NOT replay discover SFX
+	audio.play_sfx("ui_tap")
+	view.toggle_locale()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Locale toggle with active visitor feedback does not replay discover SFX")
+	view.toggle_locale()
+
+	var butterflies_def: EventDefinition = catalog.get_event("event.morning_butterflies")
+	var ev_sel: EventSelectionResult = EventSelectionResult.selected(butterflies_def, ["event.morning_butterflies"], view.get_last_garden_snapshot())
+	view.show_event_result(ev_sel)
+	assert_eq(audio.get_last_sfx_cue(), "discover", "Event selection triggers discover SFX")
+	audio.play_sfx("ui_tap")
+	view.toggle_locale()
+	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Locale toggle with active event feedback does not replay discover SFX")
+	view.toggle_locale()
+
 	# Tactile navigation & grid controls emit ui_tap, and move result emits place_decor
 	view.get_refresh_button().pressed.emit()
 	assert_eq(audio.get_last_sfx_cue(), "ui_tap", "Refresh button triggers ui_tap SFX")

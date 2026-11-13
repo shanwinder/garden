@@ -1498,7 +1498,8 @@ func _update_garden_diorama(now_utc: int) -> void:
 		_target_zone_id,
 		_target_grid_x,
 		_target_grid_y,
-		_is_move_mode
+		_is_move_mode,
+		_current_event_id
 	)
 
 
@@ -1875,7 +1876,8 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_saved", [vname, vid], _locale)
 				if _visitor_status_label != null:
 					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname, vid], _locale)
-				_play_sfx("discover")
+				if not _suppress_feedback_effects:
+					_play_sfx("discover")
 			VisitorObservationCheckpointResult.Status.OBSERVED_SAVE_FAILED:
 				var vid_fail: String = result.get_selected_visitor_id()
 				_current_visitor_id = vid_fail
@@ -1884,7 +1886,8 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 				_feedback_label.text = GardenLocalization.format_key("ui.feedback.visitor_observed_save_failed", [vname_fail, vid_fail], _locale)
 				if _visitor_status_label != null:
 					_visitor_status_label.text = GardenLocalization.format_key("ui.garden.visitor_active", [vname_fail, vid_fail], _locale)
-				_play_sfx("discover")
+				if not _suppress_feedback_effects:
+					_play_sfx("discover")
 			VisitorObservationCheckpointResult.Status.NO_ELIGIBLE_VISITORS:
 				_current_visitor_id = ""
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_none_eligible", _locale)
@@ -1892,7 +1895,8 @@ func show_visitor_observation_result(result: VisitorObservationCheckpointResult)
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_not_ready", _locale)
 			_:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.visitor_unknown", _locale)
-	_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
+	if not _suppress_feedback_effects:
+		_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 ## Opens the journal modal panel.
@@ -2386,7 +2390,8 @@ func show_event_result(result: EventSelectionResult) -> void:
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected_desc", [ename, eid, edesc], _locale)
 				else:
 					_feedback_label.text = GardenLocalization.format_key("ui.feedback.event_selected", [ename, eid], _locale)
-				_play_sfx("discover")
+				if not _suppress_feedback_effects:
+					_play_sfx("discover")
 			EventSelectionResult.Status.NO_ELIGIBLE_EVENTS:
 				_current_event_id = ""
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_none_eligible", _locale)
@@ -2394,6 +2399,8 @@ func show_event_result(result: EventSelectionResult) -> void:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_not_ready", _locale)
 			_:
 				_feedback_label.text = GardenLocalization.translate("ui.feedback.event_unknown", _locale)
+	if not _suppress_feedback_effects:
+		_update_garden_diorama(_game_clock.utc_now_seconds() if _game_clock != null else _last_refresh_utc_seconds)
 
 
 func _refresh_active_feedback_locale() -> void:

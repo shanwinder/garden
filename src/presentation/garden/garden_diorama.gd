@@ -81,6 +81,9 @@ var _item_entries: Dictionary = {} # runtime_instance_id -> Dictionary{node, kin
 var _zone_cells: Array[Dictionary] = [] # {zone_id, grid_x, grid_y, world_pos, occupied, marker}
 var _active_visitor_node: Node2D = null
 var _active_visitor_id: String = ""
+var _events_root: Node2D = null
+var _event_nodes: Array[Node2D] = []
+var _active_event_id: String = ""
 
 var _selected_plant_id: String = ""
 var _selected_decoration_id: String = ""
@@ -183,6 +186,326 @@ static func compute_grid_world_position(zone_id: String, grid_x: int, grid_y: in
 	)
 
 
+## Returns the currently rendered ambient/special event ID (empty if none active).
+func get_active_event_id() -> String:
+	return _active_event_id
+
+
+## Returns an array of active event stage/companion visual nodes rendered in EventsRoot.
+func get_rendered_event_nodes() -> Array[Node2D]:
+	var valid_nodes: Array[Node2D] = []
+	for node: Node2D in _event_nodes:
+		if node != null and is_instance_valid(node):
+			valid_nodes.append(node)
+	return valid_nodes
+
+
+func _ensure_events_root() -> Node2D:
+	if _events_root != null and is_instance_valid(_events_root):
+		return _events_root
+	if _visitors_root == null:
+		return null
+	var parent_node: Node = _visitors_root.get_parent()
+	if parent_node == null:
+		return null
+	var existing: Node2D = parent_node.get_node_or_null("EventsRoot") as Node2D
+	if existing != null:
+		_events_root = existing
+		return _events_root
+	var created: Node2D = Node2D.new()
+	created.name = "EventsRoot"
+	created.y_sort_enabled = _visitors_root.y_sort_enabled
+	created.z_index = _visitors_root.z_index
+	parent_node.add_child(created)
+	var visitors_idx: int = _visitors_root.get_index()
+	if visitors_idx >= 0:
+		parent_node.move_child(created, visitors_idx + 1)
+	_events_root = created
+	return _events_root
+
+
+func _first_valid_anchor(candidates: Array[Vector2], fallback: Vector2) -> Vector2:
+	for pos: Vector2 in candidates:
+		if pos != Vector2.INF:
+			return pos
+	return fallback
+
+
+func _register_subtle_float_tween(target: Node2D, amplitude: float, duration: float, delay: float = 0.0) -> void:
+	if target == null or not is_inside_tree():
+		return
+	var base_y: float = target.position.y
+	var tween: Tween = create_tween()
+	if tween == null:
+		return
+	if delay > 0.0:
+		tween.tween_interval(delay)
+	tween.set_loops()
+	tween.set_trans(Tween.TRANS_SINE)
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(target, "position:y", base_y - amplitude, duration)
+	tween.tween_property(target, "position:y", base_y + amplitude * 0.5, duration)
+	_active_tweens.append(tween)
+
+
+func _create_event_glow_node(
+	node_name: String,
+	world_pos: Vector2,
+	tint: Color,
+	active_event_id: String,
+	role: String = "aura"
+) -> Node2D:
+	var events_root: Node2D = _ensure_events_root()
+	if events_root == null:
+		return null
+	var glow_tex: Texture2D = GardenAssetCatalog.get_firefly_glow_texture()
+	var holder: Node2D = Node2D.new()
+	holder.name = node_name
+	holder.position = world_pos
+	holder.z_index = 18
+	holder.set_meta("event_id", active_event_id)
+	holder.set_meta("actor_role", role)
+
+	if glow_tex != null:
+		var sprite: Sprite2D = Sprite2D.new()
+		sprite.name = "GlowSprite"
+		sprite.texture = glow_tex
+		sprite.scale = Vector2.ONE
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		sprite.modulate = tint
+		holder.add_child(sprite)
+		if is_inside_tree():
+			var tween: Tween = create_tween()
+			if tween != null:
+				tween.set_loops()
+				tween.set_trans(Tween.TRANS_SINE)
+				tween.set_ease(Tween.EASE_IN_OUT)
+				tween.tween_property(sprite, "modulate:a", clampf(tint.a * 0.65, 0.15, 1.0), 1.4)
+				tween.tween_property(sprite, "modulate:a", tint.a, 1.4)
+				_active_tweens.append(tween)
+
+	events_root.add_child(holder)
+	_event_nodes.append(holder)
+	return holder
+
+
+func _create_event_actor_node(
+	node_name: String,
+	visitor_id: String,
+	world_pos: Vector2,
+	active_event_id: String,
+	flip_h: bool = false,
+	float_amplitude: float = 0.0,
+	float_duration: float = 1.6,
+	float_delay: float = 0.0
+) -> Node2D:
+	var events_root: Node2D = _ensure_events_root()
+	if events_root == null:
+		return null
+	var actor_root: Node2D = Node2D.new()
+	actor_root.name = node_name
+	actor_root.position = world_pos
+	actor_root.z_index = 20 if not GardenAssetCatalog.is_grounded_visitor(visitor_id) else 12
+	actor_root.set_meta("event_id", active_event_id)
+	actor_root.set_meta("species_id", visitor_id)
+	actor_root.set_meta("actor_role", "companion")
+
+	var is_grounded: bool = GardenAssetCatalog.is_grounded_visitor(visitor_id)
+	var frames: SpriteFrames = GardenAssetCatalog.get_visitor_sprite_frames(visitor_id)
+	if frames != null:
+		var anim: AnimatedSprite2D = AnimatedSprite2D.new()
+		anim.name = "AnimatedSprite"
+		anim.sprite_frames = frames
+		anim.animation = &"idle"
+		anim.flip_h = flip_h
+		anim.scale = Vector2.ONE
+		anim.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		if is_grounded:
+			var first_tex: Texture2D = frames.get_frame_texture(&"idle", 0)
+			anim.offset = GardenAssetCatalog.compute_bottom_center_offset(first_tex)
+		actor_root.add_child(anim)
+		anim.play(&"idle")
+	else:
+		var tex: Texture2D = GardenAssetCatalog.get_visitor_texture(visitor_id)
+		var sprite: Sprite2D = Sprite2D.new()
+		sprite.name = "Sprite"
+		sprite.texture = tex
+		sprite.flip_h = flip_h
+		sprite.scale = Vector2.ONE
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		if is_grounded and tex != null:
+			sprite.offset = GardenAssetCatalog.compute_bottom_center_offset(tex)
+		actor_root.add_child(sprite)
+
+	events_root.add_child(actor_root)
+	_event_nodes.append(actor_root)
+	if float_amplitude > 0.0:
+		_register_subtle_float_tween(actor_root, float_amplitude, float_duration, float_delay)
+	return actor_root
+
+
+func _render_active_event(
+	active_event_id: String,
+	active_visitor_id: String,
+	anchors: Dictionary
+) -> void:
+	if active_event_id.is_empty():
+		return
+
+	var bench_pos: Vector2 = anchors.get("bench_pos", Vector2.INF)
+	var jasmine_mature_pos: Vector2 = anchors.get("jasmine_mature_pos", Vector2.INF)
+	var jasmine_any_pos: Vector2 = anchors.get("jasmine_any_pos", Vector2.INF)
+	var flower_mature_pos: Vector2 = anchors.get("flower_mature_pos", Vector2.INF)
+	var any_mature_pos: Vector2 = anchors.get("any_mature_pos", Vector2.INF)
+	var any_plant_pos: Vector2 = anchors.get("any_plant_pos", Vector2.INF)
+	var pond_pos: Vector2 = anchors.get("pond_pos", Vector2.INF)
+	var jar_pos: Vector2 = anchors.get("jar_pos", Vector2.INF)
+	var fence_pos: Vector2 = anchors.get("fence_pos", Vector2.INF)
+	var table_pos: Vector2 = anchors.get("table_pos", Vector2.INF)
+
+	match active_event_id:
+		"event.morning_butterflies":
+			var bloom_base: Vector2 = _first_valid_anchor(
+				[flower_mature_pos, any_mature_pos, any_plant_pos],
+				Vector2(460.0, 1140.0)
+			)
+			_create_event_actor_node(
+				"EventButterfly_0",
+				"visitor.butterfly",
+				bloom_base + Vector2(-42.0, -58.0),
+				active_event_id,
+				false,
+				5.5,
+				1.35,
+				0.0
+			)
+			_create_event_actor_node(
+				"EventButterfly_1",
+				"visitor.butterfly",
+				bloom_base + Vector2(46.0, -40.0),
+				active_event_id,
+				true,
+				6.0,
+				1.5,
+				0.4
+			)
+		"event.bird_shade_song":
+			var perch_base: Vector2 = _first_valid_anchor(
+				[
+					fence_pos + Vector2(22.0, -78.0) if fence_pos != Vector2.INF else Vector2.INF,
+					table_pos + Vector2(20.0, -68.0) if table_pos != Vector2.INF else Vector2.INF,
+				],
+				DEFAULT_BIRD_PERCH_POS
+			)
+			var bird_pos: Vector2 = perch_base if active_visitor_id != "visitor.bird" else perch_base + Vector2(56.0, -12.0)
+			_create_event_actor_node(
+				"EventBird_0",
+				"visitor.bird",
+				bird_pos,
+				active_event_id,
+				active_visitor_id == "visitor.bird",
+				2.5,
+				1.8,
+				0.0
+			)
+		"event.cat_sleeping_bench":
+			var rest_bench_pos: Vector2 = bench_pos + Vector2(0.0, -34.0) if bench_pos != Vector2.INF else Vector2(420.0, 1180.0)
+			_create_event_glow_node(
+				"EventBenchWarmth",
+				rest_bench_pos + Vector2(0.0, -20.0),
+				Color(1.0, 0.94, 0.76, 0.42),
+				active_event_id
+			)
+			if active_visitor_id != "visitor.cat":
+				_create_event_actor_node(
+					"EventCat_0",
+					"visitor.cat",
+					rest_bench_pos,
+					active_event_id,
+					false,
+					1.5,
+					2.2,
+					0.0
+				)
+		"event.cat_jasmine_night_rest":
+			var jasmine_anchor: Vector2 = _first_valid_anchor(
+				[jasmine_mature_pos, jasmine_any_pos, bench_pos],
+				Vector2(440.0, 1200.0)
+			)
+			_create_event_glow_node(
+				"EventJasmineMoonHalo",
+				jasmine_anchor + Vector2(0.0, -48.0),
+				Color(0.88, 0.93, 1.0, 0.52),
+				active_event_id
+			)
+			if active_visitor_id != "visitor.cat":
+				_create_event_actor_node(
+					"EventCatJasmine_0",
+					"visitor.cat",
+					jasmine_anchor + Vector2(54.0, 14.0),
+					active_event_id,
+					true,
+					1.4,
+					2.4,
+					0.0
+				)
+		"event.frog_rain_chorus":
+			var water_anchor: Vector2 = _first_valid_anchor(
+				[
+					pond_pos + Vector2(-38.0, 12.0) if pond_pos != Vector2.INF else Vector2.INF,
+					jar_pos + Vector2(-34.0, 8.0) if jar_pos != Vector2.INF else Vector2.INF,
+				],
+				Vector2(340.0, 1280.0)
+			)
+			if active_visitor_id != "visitor.frog":
+				_create_event_actor_node(
+					"EventFrog_0",
+					"visitor.frog",
+					water_anchor,
+					active_event_id,
+					false,
+					2.0,
+					1.4,
+					0.0
+				)
+			_create_event_actor_node(
+				"EventFrog_1",
+				"visitor.frog",
+				water_anchor + Vector2(76.0, 4.0),
+				active_event_id,
+				true,
+				2.0,
+				1.6,
+				0.5
+			)
+		"event.firefly_night_glow":
+			var firefly_anchor: Vector2 = _first_valid_anchor(
+				[
+					any_mature_pos + Vector2(0.0, -56.0) if any_mature_pos != Vector2.INF else Vector2.INF,
+					any_plant_pos + Vector2(0.0, -44.0) if any_plant_pos != Vector2.INF else Vector2.INF,
+				],
+				Vector2(540.0, 1040.0)
+			)
+			_create_event_glow_node(
+				"EventFireflyFocal",
+				firefly_anchor,
+				Color(1.0, 0.95, 0.58, 0.90),
+				active_event_id,
+				"firefly_focal"
+			)
+		_:
+			var generic_anchor: Vector2 = _first_valid_anchor(
+				[any_mature_pos, any_plant_pos],
+				Vector2(540.0, 1120.0)
+			)
+			_create_event_glow_node(
+				"EventShimmer",
+				generic_anchor + Vector2(0.0, -40.0),
+				Color(1.0, 0.96, 0.80, 0.50),
+				active_event_id
+			)
+
+
 ## Rebuilds the diorama visuals cleanly from authoritative state and snapshot context.
 func render_garden(
 	state: GameState,
@@ -197,7 +520,8 @@ func render_garden(
 	target_zone_id: String = "",
 	target_grid_x: int = -1,
 	target_grid_y: int = -1,
-	is_move_mode: bool = false
+	is_move_mode: bool = false,
+	active_event_id: String = ""
 ) -> void:
 	_resolve_nodes()
 	_setup_static_layers()
@@ -212,6 +536,7 @@ func render_garden(
 	_target_grid_y = target_grid_y
 	_is_move_mode = is_move_mode
 	_active_visitor_id = active_visitor_id
+	_active_event_id = active_event_id
 
 	var time_period: String = snapshot.get_time_period() if snapshot != null else GardenTimePeriod.period_for_utc_seconds(now_utc)
 	var weather_state: String = snapshot.get_weather_state() if snapshot != null else GardenWeather.weather_for_utc_seconds(now_utc)
@@ -222,10 +547,12 @@ func render_garden(
 	_clear_node_children(_rain_ripples_group)
 	_clear_node_children(_placed_items_root)
 	_clear_node_children(_visitors_root)
+	_clear_node_children(_events_root)
 	_clear_node_children(_fireflies_group)
 	_active_lamp_glows.clear()
 	_item_entries.clear()
 	_zone_cells.clear()
+	_event_nodes.clear()
 	_active_visitor_node = null
 
 	_render_zone_markers(state, snapshot)
@@ -350,10 +677,19 @@ func render_garden(
 
 	_start_plant_sway_tweens(sway_candidates)
 
+	var jasmine_any_pos: Vector2 = Vector2.INF
+	if state != null and state.get_plants() != null:
+		for p: PlantState in state.get_plants().get_all_plants():
+			if p != null and p.get_definition_id() == "plant.jasmine":
+				var jentry: Variant = _item_entries.get(p.get_runtime_instance_id(), null)
+				if jentry is Dictionary:
+					jasmine_any_pos = (jentry as Dictionary).get("world_pos", Vector2.INF)
+					break
 	var flower_mature_pos: Vector2 = marigold_mature_pos if marigold_mature_pos != Vector2.INF else jasmine_mature_pos
 	var visitor_anchors: Dictionary = {
 		"bench_pos": bench_pos,
 		"jasmine_mature_pos": jasmine_mature_pos,
+		"jasmine_any_pos": jasmine_any_pos,
 		"flower_mature_pos": flower_mature_pos,
 		"any_mature_pos": any_mature_pos,
 		"any_plant_pos": any_plant_pos,
@@ -369,6 +705,11 @@ func render_garden(
 		visitor_anchors,
 		catalog,
 		locale
+	)
+	_render_active_event(
+		_active_event_id,
+		active_visitor_id,
+		visitor_anchors
 	)
 	_apply_atmosphere(time_period, weather_state, active_visitor_id, snapshot, pond_pos)
 
@@ -418,13 +759,16 @@ func clear_for_blocked_state() -> void:
 	_clear_node_children(_rain_ripples_group)
 	_clear_node_children(_placed_items_root)
 	_clear_node_children(_visitors_root)
+	_clear_node_children(_events_root)
 	_clear_node_children(_feedback_effects_layer)
 	_clear_node_children(_fireflies_group)
 	_active_lamp_glows.clear()
 	_item_entries.clear()
 	_zone_cells.clear()
+	_event_nodes.clear()
 	_active_visitor_node = null
 	_active_visitor_id = ""
+	_active_event_id = ""
 	if _rain_ripples_group != null:
 		_rain_ripples_group.visible = false
 	if _rain_particles != null:
@@ -876,7 +1220,10 @@ func _apply_atmosphere(
 			_start_glow_pulse_tween(lamp_glow, 0.72, 1.8 + float(l_idx) * 0.25)
 
 	var show_fireflies: bool = (time_period == GardenTimePeriod.NIGHT and not is_raining)
-	if not show_fireflies and active_visitor_id == "visitor.firefly":
+	if not show_fireflies and (
+		active_visitor_id == "visitor.firefly"
+		or (not is_raining and _active_event_id == "event.firefly_night_glow")
+	):
 		show_fireflies = true
 	if _fireflies_group != null:
 		_fireflies_group.visible = show_fireflies
@@ -884,7 +1231,14 @@ func _apply_atmosphere(
 			var count: int = FIREFLY_ANCHORS.size()
 			var has_firefly_trait: bool = (
 				active_visitor_id == "visitor.firefly"
-				or (snapshot != null and snapshot.get_trait_count("warm") > 0)
+				or _active_event_id == "event.firefly_night_glow"
+				or (
+					snapshot != null
+					and (
+						snapshot.get_trait_count(EnvironmentalTrait.LIGHT) > 0
+						or snapshot.get_trait_count("warm") > 0
+					)
+				)
 			)
 			if not has_firefly_trait and count > 3:
 				count = 3
@@ -895,7 +1249,8 @@ func _apply_atmosphere(
 				mote.texture = glow_tex
 				mote.position = FIREFLY_ANCHORS[i]
 				mote.scale = Vector2.ONE
-				mote.modulate = Color(1.0, 0.94, 0.56, 0.85)
+				var firefly_alpha: float = 0.94 if _active_event_id == "event.firefly_night_glow" else 0.85
+				mote.modulate = Color(1.0, 0.94, 0.56, firefly_alpha)
 				var mat: CanvasItemMaterial = CanvasItemMaterial.new()
 				mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 				mote.material = mat
